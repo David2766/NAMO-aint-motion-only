@@ -1,0 +1,214 @@
+globals:
+  - id: target_1_reduced_since_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: target_2_reduced_since_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: target_3_reduced_since_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: target_1_calibration_filter_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_2_calibration_filter_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_3_calibration_filter_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_1_calibration_reduced_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_2_calibration_reduced_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_3_calibration_reduced_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_1_software_zone_mask
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: target_2_software_zone_mask
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: target_3_software_zone_mask
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: software_zone_configured_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: software_detection_zone_count_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: software_filter_zone_count_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: software_zone_1_presence_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: software_zone_2_presence_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: software_zone_3_presence_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: software_zone_4_presence_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: software_zone_5_presence_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: software_zone_6_presence_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: software_zone_1_target_count_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: software_zone_2_target_count_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: software_zone_3_target_count_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: software_zone_4_target_count_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: software_zone_5_target_count_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: software_zone_6_target_count_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+binary_sensor:
+  - platform: template
+    name: "구역 설정됨"
+    id: custom_zone_configured
+    lambda: |-
+      return id(software_zone_configured_state);
+
+  # Factory reset button
+
+sensor:
+  - platform: template
+    name: "구역 1 대상 수"
+    id: software_zone_1_target_count
+    entity_category: diagnostic
+    update_interval: 500ms
+    accuracy_decimals: 0
+    lambda: |-
+      return id(software_zone_1_target_count_state);
+  - platform: template
+    name: "구역 2 대상 수"
+    id: software_zone_2_target_count
+    entity_category: diagnostic
+    update_interval: 500ms
+    accuracy_decimals: 0
+    lambda: |-
+      return id(software_zone_2_target_count_state);
+  - platform: template
+    name: "구역 3 대상 수"
+    id: software_zone_3_target_count
+    entity_category: diagnostic
+    update_interval: 500ms
+    accuracy_decimals: 0
+    lambda: |-
+      return id(software_zone_3_target_count_state);
+  - platform: template
+    name: "구역 4 대상 수"
+    id: software_zone_4_target_count
+    entity_category: diagnostic
+    update_interval: 500ms
+    accuracy_decimals: 0
+    disabled_by_default: true
+    lambda: |-
+      return id(software_zone_4_target_count_state);
+  - platform: template
+    name: "구역 5 대상 수"
+    id: software_zone_5_target_count
+    entity_category: diagnostic
+    update_interval: 500ms
+    accuracy_decimals: 0
+    disabled_by_default: true
+    lambda: |-
+      return id(software_zone_5_target_count_state);
+  - platform: template
+    name: "구역 6 대상 수"
+    id: software_zone_6_target_count
+    entity_category: diagnostic
+    update_interval: 500ms
+    accuracy_decimals: 0
+    disabled_by_default: true
+    lambda: |-
+      return id(software_zone_6_target_count_state);
+
+  # HA-facing target 1 values with ghost-data cleanup
+
+text:
+  - platform: template
+    name: "구역 1 이름"
+    id: zone_1_name
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: "구역 1"
+    min_length: 0
+    max_length: 32
+    mode: text
+  - platform: template
+    name: "구역 2 이름"
+    id: zone_2_name
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: "구역 2"
+    min_length: 0
+    max_length: 32
+    mode: text
+  - platform: template
+    name: "구역 3 이름"
+    id: zone_3_name
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: "구역 3"
+    min_length: 0
+    max_length: 32
+    mode: text
+
+text_sensor:
+  - platform: template
+    name: "구역 요약"
+    id: zone_summary
+    entity_category: diagnostic
+    update_interval: 5s
+    lambda: |-
+      return std::string("탐지 ") + std::to_string(id(software_detection_zone_count_state)) + " / 필터 " + std::to_string(id(software_filter_zone_count_state));

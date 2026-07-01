@@ -1,0 +1,99 @@
+number:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    presence_timeout:
+      name: "Presence Timeout"
+      entity_category: config
+    zone_1:
+      x1:
+        name: "Zone 1 X1"
+        id: zone_1_x1
+        entity_category: config
+      y1:
+        name: "Zone 1 Y1"
+        id: zone_1_y1
+        entity_category: config
+      x2:
+        name: "Zone 1 X2"
+        id: zone_1_x2
+        entity_category: config
+      y2:
+        name: "Zone 1 Y2"
+        id: zone_1_y2
+        entity_category: config
+    zone_2:
+      x1:
+        name: "Zone 2 X1"
+        id: zone_2_x1
+        entity_category: config
+      y1:
+        name: "Zone 2 Y1"
+        id: zone_2_y1
+        entity_category: config
+      x2:
+        name: "Zone 2 X2"
+        id: zone_2_x2
+        entity_category: config
+      y2:
+        name: "Zone 2 Y2"
+        id: zone_2_y2
+        entity_category: config
+    zone_3:
+      x1:
+        name: "Zone 3 X1"
+        id: zone_3_x1
+        entity_category: config
+      y1:
+        name: "Zone 3 Y1"
+        id: zone_3_y1
+        entity_category: config
+      x2:
+        name: "Zone 3 X2"
+        id: zone_3_x2
+        entity_category: config
+      y2:
+        name: "Zone 3 Y2"
+        id: zone_3_y2
+        entity_category: config
+
+  - platform: template
+    name: "LED Blink Duration"
+    id: led_blink_duration
+    icon: "mdi:timer-outline"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    min_value: 0
+    max_value: 300
+    initial_value: 60
+    step: 30
+    unit_of_measurement: "s"
+    mode: slider
+
+  - platform: template
+    name: "Temperature User Offset"
+    id: temperature_user_offset
+    icon: "mdi:thermometer-plus"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: 0.0
+    min_value: -2.0
+    max_value: 2.0
+    step: 0.1
+    unit_of_measurement: "°C"
+    mode: box
+
+  - platform: template
+    name: "Humidity User Offset"
+    id: humidity_user_offset
+    icon: "mdi:water-percent"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: 0.0
+    min_value: -5.0
+    max_value: 5.0
+    step: 0.5
+    unit_of_measurement: "%"
+    mode: box

@@ -1,0 +1,363 @@
+sensor:
+  - platform: sht4x
+    temperature:
+      id: temperature_raw
+      internal: true
+    humidity:
+      id: humidity_raw
+      internal: true
+    address: 0x44
+    update_interval: 30s
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    target_count:
+      name: "Target Count Raw"
+      id: ld2450_target_count
+      entity_category: diagnostic
+      disabled_by_default: true
+      filters:
+        - throttle: 2s
+    still_target_count:
+      name: "Still Target Count Raw"
+      id: ld2450_still_target_count
+      entity_category: diagnostic
+      disabled_by_default: true
+      filters:
+        - throttle: 2s
+    moving_target_count:
+      name: "Moving Target Count Raw"
+      id: ld2450_moving_target_count
+      entity_category: diagnostic
+      disabled_by_default: true
+      filters:
+        - throttle: 2s
+    target_1:
+      x:
+        id: target_1_x_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      y:
+        id: target_1_y_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      speed:
+        id: target_1_speed_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      angle:
+        id: target_1_angle_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      distance:
+        id: target_1_distance_raw
+        internal: true
+        filters:
+          - throttle: 2s
+    target_2:
+      x:
+        id: target_2_x_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      y:
+        id: target_2_y_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      speed:
+        id: target_2_speed_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      angle:
+        id: target_2_angle_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      distance:
+        id: target_2_distance_raw
+        internal: true
+        filters:
+          - throttle: 2s
+    target_3:
+      x:
+        id: target_3_x_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      y:
+        id: target_3_y_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      speed:
+        id: target_3_speed_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      angle:
+        id: target_3_angle_raw
+        internal: true
+        filters:
+          - throttle: 2s
+      distance:
+        id: target_3_distance_raw
+        internal: true
+        filters:
+          - throttle: 2s
+    zone_1:
+      target_count:
+        name: "Zone 1 Target Count Raw"
+        id: zone_1_target_count
+        entity_category: diagnostic
+        disabled_by_default: true
+        filters:
+          - throttle: 2s
+    zone_2:
+      target_count:
+        name: "Zone 2 Target Count Raw"
+        id: zone_2_target_count
+        entity_category: diagnostic
+        disabled_by_default: true
+        filters:
+          - throttle: 2s
+    zone_3:
+      target_count:
+        name: "Zone 3 Target Count Raw"
+        id: zone_3_target_count
+        entity_category: diagnostic
+        disabled_by_default: true
+        filters:
+          - throttle: 2s
+  - platform: template
+    name: "Still Target Count"
+    id: still_target_count_filtered
+    entity_category: diagnostic
+    update_interval: 500ms
+    accuracy_decimals: 0
+    lambda: |-
+      int count = 0;
+      if (id(target_1_direction_raw).state != "NA" && !id(target_1_filtered) && fabsf(id(target_1_speed_raw).state) <= id(dir_stationary_speed)) count++;
+      if (id(target_2_direction_raw).state != "NA" && !id(target_2_filtered) && fabsf(id(target_2_speed_raw).state) <= id(dir_stationary_speed)) count++;
+      if (id(target_3_direction_raw).state != "NA" && !id(target_3_filtered) && fabsf(id(target_3_speed_raw).state) <= id(dir_stationary_speed)) count++;
+      return count;
+  - platform: template
+    name: "Moving Target Count"
+    id: moving_target_count_filtered
+    entity_category: diagnostic
+    update_interval: 500ms
+    accuracy_decimals: 0
+    lambda: |-
+      int count = 0;
+      if (id(target_1_direction_raw).state != "NA" && !id(target_1_filtered) && fabsf(id(target_1_speed_raw).state) > id(dir_stationary_speed)) count++;
+      if (id(target_2_direction_raw).state != "NA" && !id(target_2_filtered) && fabsf(id(target_2_speed_raw).state) > id(dir_stationary_speed)) count++;
+      if (id(target_3_direction_raw).state != "NA" && !id(target_3_filtered) && fabsf(id(target_3_speed_raw).state) > id(dir_stationary_speed)) count++;
+      return count;
+  - platform: template
+    name: "Detection Zone Count"
+    id: detection_zone_count
+    entity_category: diagnostic
+    update_interval: 5s
+    accuracy_decimals: 0
+    disabled_by_default: true
+    lambda: |-
+      return id(software_detection_zone_count_state);
+  - platform: template
+    name: "Filter Zone Count"
+    id: filter_zone_count
+    entity_category: diagnostic
+    update_interval: 5s
+    accuracy_decimals: 0
+    disabled_by_default: true
+    lambda: |-
+      return id(software_filter_zone_count_state);
+  - platform: template
+    id: target_1_x_display
+    entity_category: diagnostic
+    name: "타겟1 X"
+    unit_of_measurement: "mm"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_1_direction_raw).state == "NA" || id(target_1_filtered)) {
+        return 0;
+      }
+      return id(target_1_x_raw).state;
+  - platform: template
+    id: target_1_y_display
+    entity_category: diagnostic
+    name: "타겟1 Y"
+    unit_of_measurement: "mm"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_1_direction_raw).state == "NA" || id(target_1_filtered)) {
+        return 0;
+      }
+      return id(target_1_y_raw).state;
+  - platform: template
+    id: target_1_speed_display
+    entity_category: diagnostic
+    name: "타겟1 Speed"
+    unit_of_measurement: "cm/s"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_1_direction_raw).state == "NA" || id(target_1_filtered)) {
+        return 0;
+      }
+      return id(target_1_speed_raw).state;
+  - platform: template
+    id: target_1_angle_display
+    entity_category: diagnostic
+    name: "타겟1 Angle"
+    unit_of_measurement: "°"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_1_direction_raw).state == "NA" || id(target_1_filtered)) {
+        return 0;
+      }
+      return id(target_1_angle_raw).state;
+  - platform: template
+    id: target_1_distance_display
+    entity_category: diagnostic
+    name: "타겟1 Distance"
+    unit_of_measurement: "mm"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_1_direction_raw).state == "NA" || id(target_1_filtered)) {
+        return 0;
+      }
+      return id(target_1_distance_raw).state;
+
+  # HA-facing target 2 values with ghost-data cleanup
+  - platform: template
+    id: target_2_x_display
+    entity_category: diagnostic
+    name: "타겟2 X"
+    unit_of_measurement: "mm"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_2_direction_raw).state == "NA" || id(target_2_filtered)) {
+        return 0;
+      }
+      return id(target_2_x_raw).state;
+  - platform: template
+    id: target_2_y_display
+    entity_category: diagnostic
+    name: "타겟2 Y"
+    unit_of_measurement: "mm"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_2_direction_raw).state == "NA" || id(target_2_filtered)) {
+        return 0;
+      }
+      return id(target_2_y_raw).state;
+  - platform: template
+    id: target_2_speed_display
+    entity_category: diagnostic
+    name: "타겟2 Speed"
+    unit_of_measurement: "cm/s"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_2_direction_raw).state == "NA" || id(target_2_filtered)) {
+        return 0;
+      }
+      return id(target_2_speed_raw).state;
+  - platform: template
+    id: target_2_angle_display
+    entity_category: diagnostic
+    name: "타겟2 Angle"
+    unit_of_measurement: "°"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_2_direction_raw).state == "NA" || id(target_2_filtered)) {
+        return 0;
+      }
+      return id(target_2_angle_raw).state;
+  - platform: template
+    id: target_2_distance_display
+    entity_category: diagnostic
+    name: "타겟2 Distance"
+    unit_of_measurement: "mm"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_2_direction_raw).state == "NA" || id(target_2_filtered)) {
+        return 0;
+      }
+      return id(target_2_distance_raw).state;
+
+  # HA-facing target 3 values with ghost-data cleanup
+  - platform: template
+    id: target_3_x_display
+    entity_category: diagnostic
+    name: "타겟3 X"
+    unit_of_measurement: "mm"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_3_direction_raw).state == "NA" || id(target_3_filtered)) {
+        return 0;
+      }
+      return id(target_3_x_raw).state;
+  - platform: template
+    id: target_3_y_display
+    entity_category: diagnostic
+    name: "타겟3 Y"
+    unit_of_measurement: "mm"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_3_direction_raw).state == "NA" || id(target_3_filtered)) {
+        return 0;
+      }
+      return id(target_3_y_raw).state;
+  - platform: template
+    id: target_3_speed_display
+    entity_category: diagnostic
+    name: "타겟3 Speed"
+    unit_of_measurement: "cm/s"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_3_direction_raw).state == "NA" || id(target_3_filtered)) {
+        return 0;
+      }
+      return id(target_3_speed_raw).state;
+  - platform: template
+    id: target_3_angle_display
+    entity_category: diagnostic
+    name: "타겟3 Angle"
+    unit_of_measurement: "°"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_3_direction_raw).state == "NA" || id(target_3_filtered)) {
+        return 0;
+      }
+      return id(target_3_angle_raw).state;
+  - platform: template
+    id: target_3_distance_display
+    entity_category: diagnostic
+    name: "타겟3 Distance"
+    unit_of_measurement: "mm"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      if (id(target_3_direction_raw).state == "NA" || id(target_3_filtered)) {
+        return 0;
+      }
+      return id(target_3_distance_raw).state;
+
+# LD2450 and status LED controls

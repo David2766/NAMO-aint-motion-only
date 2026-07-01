@@ -1,0 +1,32 @@
+{
+  "name": "presence-sensor-dashboard",
+  "version": "0.1.0",
+  "description": "Embedded dashboard source for Presence Sensor XIAO S3 firmware",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build:web": "vite build --mode web",
+    "build:dashboard": "npm run build:web && node scripts/generate-dashboard-assets.mjs",
+    "dev:web": "vite --mode web",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,css}\" \"*.{json,ts}\""
+  },
+  "keywords": [
+    "home-assistant",
+    "lovelace",
+    "ld2450",
+    "radar"
+  ],
+  "author": "",
+  "license": "AGPL-3.0-or-later",
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "eslint": "^10.5.0",
+    "playwright": "^1.61.0",
+    "prettier": "^3.8.4",
+    "svelte": "^5.56.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9"
+  }
+}

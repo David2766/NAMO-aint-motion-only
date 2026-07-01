@@ -1,0 +1,45 @@
+select:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    zone_type:
+      name: "LD2450 Zone Type"
+      entity_category: config
+  - platform: template
+    name: "Direction Tuning Preset"
+    id: direction_tuning_preset
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    options:
+      - "Sensitive"
+      - "Standard"
+      - "Stable"
+    initial_option: "Standard"
+    set_action:
+      - lambda: |-
+          id(dir_preset_name) = x;
+          if (x == "Sensitive") {
+            // Sensitive: 1 consecutive sample, about 0.5s.
+            id(dir_consecutive_need) = 1;
+            id(dir_stationary_speed) = 30;
+            id(dir_target_lost_timeout_ms) = 800;
+          } else if (x == "Stable") {
+            // Stable: 3 consecutive samples, about 1.5s.
+            id(dir_consecutive_need) = 3;
+            id(dir_stationary_speed) = 50;
+            id(dir_target_lost_timeout_ms) = 2500;
+          } else {
+            // Standard: 2 consecutive samples, about 1s.
+            id(dir_consecutive_need) = 2;
+            id(dir_stationary_speed) = 40;
+            id(dir_target_lost_timeout_ms) = 1500;
+          }
+          // Reset direction counters.
+          id(dir_consecutive_count) = 0;
+          id(dir_last_observed) = "정지";
+          id(dir2_consecutive_count) = 0;
+          id(dir2_last_observed) = "정지";
+          id(dir3_consecutive_count) = 0;
+          id(dir3_last_observed) = "정지";
+
+# Device control buttons

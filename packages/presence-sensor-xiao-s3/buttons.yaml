@@ -1,0 +1,16 @@
+button:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    factory_reset:
+      name: "LD2450 Factory Reset"
+      entity_category: config
+    restart:
+      name: "LD2450 Restart"
+      entity_category: config
+
+  - platform: restart
+    name: "Restart Device"
+    id: restart_device
+    entity_category: config
+
+# LD2450 metadata and direction text sensors

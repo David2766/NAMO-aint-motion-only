@@ -1,0 +1,73 @@
+globals:
+  - id: today_calibration_filter_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_calibration_reduced_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_calibration_filter_zone_1_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_calibration_filter_zone_2_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_calibration_filter_zone_3_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_calibration_filter_zone_4_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_calibration_reduced_zone_1_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_calibration_reduced_zone_2_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_calibration_reduced_zone_3_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_calibration_reduced_zone_4_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_software_zone_1_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_software_zone_2_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_software_zone_3_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_software_zone_4_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_software_zone_5_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: today_software_zone_6_hits
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: stats_current_day_key
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: heatmap_last_record_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'

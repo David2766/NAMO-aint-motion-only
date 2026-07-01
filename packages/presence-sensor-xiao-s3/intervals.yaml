@@ -1,0 +1,4 @@
+interval:
+  - interval: 500ms
+    then:
+      - lambda: !include lambdas/interval-500ms.yaml

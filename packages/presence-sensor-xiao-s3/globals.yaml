@@ -1,0 +1,141 @@
+globals:
+  - id: dir_stationary_speed
+    type: int
+    restore_value: yes
+    initial_value: '40'
+  - id: dir_target_lost_timeout_ms
+    type: int
+    restore_value: yes
+    initial_value: '1500'
+  - id: dir_last_seen_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: dir_stable_value
+    type: std::string
+    restore_value: no
+    initial_value: '"정지"'
+  - id: dir_preset_name
+    type: std::string
+    restore_value: yes
+    initial_value: '"Standard"'
+  - id: dir_consecutive_need
+    type: int
+    restore_value: yes
+    initial_value: '2'
+  - id: dir_consecutive_count
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: dir_last_observed
+    type: std::string
+    restore_value: no
+    initial_value: '"정지"'
+  - id: cnt_zero_hold_ms
+    type: int
+    restore_value: yes
+    initial_value: '1200'
+  - id: cnt_last_nonzero_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: cnt_stable_total
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: target_1_filtered
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_2_filtered
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_3_filtered
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_1_filter_blocked
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_2_filter_blocked
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: target_3_filter_blocked
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: state_presence_stable
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: state_motion_stable
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: state_presence_last_on_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: state_motion_last_on_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: dir2_last_seen_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: dir2_stable_value
+    type: std::string
+    restore_value: no
+    initial_value: '"정지"'
+  - id: dir2_consecutive_count
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: dir2_last_observed
+    type: std::string
+    restore_value: no
+    initial_value: '"정지"'
+  - id: dir3_last_seen_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: dir3_stable_value
+    type: std::string
+    restore_value: no
+    initial_value: '"정지"'
+  - id: dir3_consecutive_count
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: dir3_last_observed
+    type: std::string
+    restore_value: no
+    initial_value: '"정지"'
+  - id: led_blink_end_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: led_enabled
+    type: bool
+    restore_value: yes
+    initial_value: 'true'
+  - id: led_blink_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: led_last_toggle_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: led_last_presence
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: led_auto_finished
+    type: bool
+    restore_value: no
+    initial_value: 'false'

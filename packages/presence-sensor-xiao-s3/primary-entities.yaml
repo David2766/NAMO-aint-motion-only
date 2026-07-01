@@ -1,0 +1,150 @@
+binary_sensor:
+  - platform: template
+    name: "01. 재실"
+    id: presence_combined
+    device_class: occupancy
+    lambda: |-
+      return id(state_presence_stable);
+
+  - platform: template
+    name: "02. 움직임"
+    id: motion_combined
+    device_class: motion
+    lambda: |-
+      return id(state_motion_stable);
+
+  - platform: template
+    name: "03. 이동 중인 대상"
+    id: moving_target_filtered
+    device_class: motion
+    lambda: |-
+      return
+        (id(target_1_direction_raw).state != "NA" && !id(target_1_filtered) && fabsf(id(target_1_speed_raw).state) > id(dir_stationary_speed)) ||
+        (id(target_2_direction_raw).state != "NA" && !id(target_2_filtered) && fabsf(id(target_2_speed_raw).state) > id(dir_stationary_speed)) ||
+        (id(target_3_direction_raw).state != "NA" && !id(target_3_filtered) && fabsf(id(target_3_speed_raw).state) > id(dir_stationary_speed));
+    filters:
+      - delayed_off: 1s
+
+  - platform: template
+    name: "04. 멈춰있는 대상"
+    id: still_target_filtered
+    device_class: occupancy
+    lambda: |-
+      return
+        (id(target_1_direction_raw).state != "NA" && !id(target_1_filtered) && fabsf(id(target_1_speed_raw).state) <= id(dir_stationary_speed)) ||
+        (id(target_2_direction_raw).state != "NA" && !id(target_2_filtered) && fabsf(id(target_2_speed_raw).state) <= id(dir_stationary_speed)) ||
+        (id(target_3_direction_raw).state != "NA" && !id(target_3_filtered) && fabsf(id(target_3_speed_raw).state) <= id(dir_stationary_speed));
+    filters:
+      - delayed_off: 1s
+
+  - platform: template
+    name: "09. 구역 1 감지"
+    id: software_zone_1_presence
+    device_class: occupancy
+    lambda: |-
+      return id(software_zone_1_presence_state);
+    filters:
+      - delayed_off: 1s
+
+  - platform: template
+    name: "10. 구역 2 감지"
+    id: software_zone_2_presence
+    device_class: occupancy
+    lambda: |-
+      return id(software_zone_2_presence_state);
+    filters:
+      - delayed_off: 1s
+
+  - platform: template
+    name: "11. 구역 3 감지"
+    id: software_zone_3_presence
+    device_class: occupancy
+    lambda: |-
+      return id(software_zone_3_presence_state);
+    filters:
+      - delayed_off: 1s
+
+  - platform: template
+    name: "12. 구역 4 감지"
+    id: software_zone_4_presence
+    device_class: occupancy
+    lambda: |-
+      return id(software_zone_4_presence_state);
+    filters:
+      - delayed_off: 1s
+
+  - platform: template
+    name: "13. 구역 5 감지"
+    id: software_zone_5_presence
+    device_class: occupancy
+    lambda: |-
+      return id(software_zone_5_presence_state);
+    filters:
+      - delayed_off: 1s
+
+  - platform: template
+    name: "14. 구역 6 감지"
+    id: software_zone_6_presence
+    device_class: occupancy
+    lambda: |-
+      return id(software_zone_6_presence_state);
+    filters:
+      - delayed_off: 1s
+
+sensor:
+  - platform: template
+    name: "05. 대상 수"
+    id: target_count_stable
+    update_interval: 500ms
+    accuracy_decimals: 0
+    lambda: |-
+      return id(cnt_stable_total);
+
+  - platform: template
+    name: "06. 온도"
+    id: temperature_corrected
+    device_class: temperature
+    state_class: measurement
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 30s
+    lambda: |-
+      const float raw = id(temperature_raw).state;
+      if (isnan(raw)) {
+        return {};
+      }
+      if (!id(environment_correction_enable_switch).state) {
+        return raw;
+      }
+      return 0.95f * raw + 0.42f + id(temperature_user_offset).state;
+
+  - platform: template
+    name: "07. 습도"
+    id: humidity_corrected
+    device_class: humidity
+    state_class: measurement
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    update_interval: 30s
+    lambda: |-
+      const float raw = id(humidity_raw).state;
+      if (isnan(raw)) {
+        return {};
+      }
+      if (!id(environment_correction_enable_switch).state) {
+        return raw;
+      }
+      const float corrected = raw + id(humidity_user_offset).state;
+      if (corrected < 0.0f) {
+        return 0.0f;
+      }
+      if (corrected > 100.0f) {
+        return 100.0f;
+      }
+      return corrected;
+
+  - platform: bh1750
+    name: "08. 밝기"
+    id: illuminance_lux
+    address: 0x23
+    update_interval: 5s

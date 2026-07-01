@@ -1,0 +1,38 @@
+switch:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    bluetooth:
+      name: "Bluetooth"
+      entity_category: config
+    multi_target:
+      name: "Multi Target Tracking"
+      entity_category: config
+
+  - platform: template
+    name: "Status LED Enable"
+    id: status_led_enable_switch
+    icon: "mdi:led-on"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - lambda: |-
+          id(led_enabled) = true;
+          id(led_blink_end_ms) = 0;
+          id(led_blink_state) = false;
+          id(led_auto_finished) = false;
+    turn_off_action:
+      - lambda: |-
+          id(led_enabled) = false;
+          id(led_blink_end_ms) = 0;
+          id(led_blink_state) = false;
+          id(led_auto_finished) = false;
+      - light.turn_off: status_led
+
+  - platform: template
+    name: "Environment Correction Enable"
+    id: environment_correction_enable_switch
+    icon: "mdi:tune-variant"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON

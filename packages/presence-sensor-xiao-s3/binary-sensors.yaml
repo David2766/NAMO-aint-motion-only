@@ -1,0 +1,44 @@
+binary_sensor:
+  # PIR motion input
+  - platform: gpio
+    pin: GPIO1
+    name: "PIR Motion Raw"
+    id: pir_motion
+    device_class: motion
+    entity_category: diagnostic
+    disabled_by_default: true
+    filters:
+      - delayed_off: 5s
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    has_target:
+      name: "Presence LD2450 Raw"
+      id: ld2450_has_target
+      disabled_by_default: true
+      device_class: occupancy
+      filters:
+        - delayed_off: 10s
+    has_moving_target:
+      name: "Moving Target Raw"
+      disabled_by_default: true
+      device_class: motion
+    has_still_target:
+      name: "Still Target Raw"
+      disabled_by_default: true
+      device_class: occupancy
+
+  # Software zone presence for automation
+  - platform: gpio
+    pin:
+      number: GPIO0
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "Factory Reset Button"
+    internal: true
+    filters:
+      - delayed_on: 5s
+    on_press:
+      - logger.log: "Factory reset - WiFi credentials will be cleared on next boot"
+      - button.press: restart_device

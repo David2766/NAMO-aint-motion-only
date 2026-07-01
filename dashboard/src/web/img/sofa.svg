@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 170 80" width="100%" height="100%">
+  <style>
+    .base { fill: #f8fafc; stroke: #334155; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .accent { fill: #e2e8f0; stroke: #334155; stroke-width: 1.5; stroke-linejoin: round; }
+    .detail { fill: none; stroke: #94a3b8; stroke-width: 1.5; stroke-linecap: round; }
+  </style>
+  <rect x="5" y="5" width="160" height="70" rx="6" class="base" />
+  <rect x="5" y="5" width="20" height="70" rx="4" class="accent" />
+  <rect x="145" y="5" width="20" height="70" rx="4" class="accent" />
+  <rect x="25" y="5" width="120" height="20" class="accent" />
+  <line x1="65" y1="25" x2="65" y2="75" class="detail" />
+  <line x1="105" y1="25" x2="105" y2="75" class="detail" />
+</svg>

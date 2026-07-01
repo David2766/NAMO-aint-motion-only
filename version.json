@@ -1,0 +1,7 @@
+{
+  "firmware": "0.4.0",
+  "dashboard": "0.4.0",
+  "configSchema": 1,
+  "floorplanSchema": 1,
+  "statsSchema": 1
+}

@@ -1,0 +1,811 @@
+|-
+  const uint32_t now = millis();
+  
+  auto clamp_value = [](float value, float min_value, float max_value) -> float {
+    if (value < min_value) return min_value;
+    if (value > max_value) return max_value;
+    return value;
+  };
+  
+  auto zone_config_for = [&](int zone_index) -> std::string {
+    const std::string cached = id(radar_api).software_zone_config(zone_index);
+    if (!cached.empty()) return cached;
+    return "";
+  };
+  
+  auto calibration_config_for = [&](int zone_index) -> std::string {
+    const std::string cached = id(radar_api).calibration_zone_config(zone_index);
+    if (!cached.empty()) return cached;
+    return "";
+  };
+  
+  auto zone_config_valid = [&](const std::string &value, int zone_index) -> bool {
+    std::string needle = std::string("\"id\":\"zone_") + std::to_string(zone_index) + "\"";
+    return !value.empty() && value != "__EMPTY__" && value.find(needle) != std::string::npos && value.find("\"points\"") != std::string::npos;
+  };
+  
+  auto calibration_config_valid = [&](const std::string &value, int zone_index) -> bool {
+    std::string needle = std::string("\"id\":\"calibration_") + std::to_string(zone_index) + "\"";
+    return !value.empty() && value != "__EMPTY__" && value.find(needle) != std::string::npos && value.find("\"points\"") != std::string::npos;
+  };
+  
+  bool has_software_config = false;
+  for (int zone_index = 1; zone_index <= 6; zone_index++) {
+    if (zone_config_valid(zone_config_for(zone_index), zone_index)) {
+      has_software_config = true;
+      break;
+    }
+  }
+  
+  auto zone_type_is = [&](int zone_index, const char *type) -> bool {
+    const std::string zone_config = zone_config_for(zone_index);
+    if (!zone_config_valid(zone_config, zone_index)) return false;
+    std::string needle = std::string("\"type\":\"") + type + "\"";
+    return zone_config.find(needle) != std::string::npos;
+  };
+  
+  auto point_in_zone_config = [&](const std::string &zone_config, float tx, float ty) -> bool {
+    const size_t end = zone_config.size();
+    size_t points_pos = zone_config.find("\"points\"");
+    if (points_pos == std::string::npos || points_pos >= end) return false;
+  
+    float xs[8];
+    float ys[8];
+    int point_count = 0;
+    size_t pos = zone_config.find('[', points_pos);
+    if (pos == std::string::npos || pos >= end) return false;
+  
+    auto read_number = [&](size_t &cursor, float &value) -> bool {
+      while (cursor < end && !(zone_config[cursor] == '-' || (zone_config[cursor] >= '0' && zone_config[cursor] <= '9'))) cursor++;
+      if (cursor >= end) return false;
+      const size_t number_start = cursor;
+      if (zone_config[cursor] == '-') cursor++;
+      while (cursor < end && zone_config[cursor] >= '0' && zone_config[cursor] <= '9') cursor++;
+      value = atof(zone_config.substr(number_start, cursor - number_start).c_str());
+      return true;
+    };
+  
+    while (pos < end && point_count < 8) {
+      float x = 0;
+      float y = 0;
+      if (!read_number(pos, x)) break;
+      if (!read_number(pos, y)) break;
+      xs[point_count] = clamp_value(x, -4860.0f, 4860.0f);
+      ys[point_count] = clamp_value(y, 0.0f, 7560.0f);
+      point_count++;
+      size_t next = zone_config.find('[', pos);
+      size_t zone_close = zone_config.find("]]", pos);
+      if (next == std::string::npos || (zone_close != std::string::npos && zone_close < next) || next >= end) break;
+      pos = next;
+    }
+  
+    if (point_count < 3) return false;
+    bool inside = false;
+    for (int i = 0, j = point_count - 1; i < point_count; j = i++) {
+      const bool intersects = ((ys[i] > ty) != (ys[j] > ty)) &&
+        (tx < (xs[j] - xs[i]) * (ty - ys[i]) / ((ys[j] - ys[i]) == 0 ? 0.0001f : (ys[j] - ys[i])) + xs[i]);
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  };
+  
+  auto point_in_software_zone = [&](int zone_index, float tx, float ty) -> bool {
+    const std::string zone_config = zone_config_for(zone_index);
+    if (!zone_config_valid(zone_config, zone_index)) return false;
+    return point_in_zone_config(zone_config, tx, ty);
+  };
+  
+  auto calibration_zone_type_is = [&](int zone_index, const char *type) -> bool {
+    const std::string zone_config = calibration_config_for(zone_index);
+    if (!calibration_config_valid(zone_config, zone_index)) return false;
+    std::string needle = std::string("\"type\":\"") + type + "\"";
+    return zone_config.find(needle) != std::string::npos;
+  };
+  
+  auto point_in_calibration_zone_type = [&](int zone_index, const char *type, float tx, float ty) -> bool {
+    const std::string zone_config = calibration_config_for(zone_index);
+    if (!calibration_config_valid(zone_config, zone_index)) return false;
+    if (!calibration_zone_type_is(zone_index, type)) return false;
+    return point_in_zone_config(zone_config, tx, ty);
+  };
+  
+  auto point_in_any_calibration_zone_type = [&](const char *type, float tx, float ty) -> bool {
+    for (int zone_index = 1; zone_index <= 4; zone_index++) {
+      if (point_in_calibration_zone_type(zone_index, type, tx, ty)) return true;
+    }
+    return false;
+  };
+  
+  auto calibration_zone_index_for_type = [&](const char *type, float tx, float ty) -> int {
+    for (int zone_index = 1; zone_index <= 4; zone_index++) {
+      if (point_in_calibration_zone_type(zone_index, type, tx, ty)) return zone_index;
+    }
+    return 0;
+  };
+  
+  auto software_zone_contains = [&](int zone_index, float tx, float ty) -> bool {
+    return point_in_software_zone(zone_index, tx, ty);
+  };
+  
+  auto software_zone_type_is = [&](int zone_index, const char *type) -> bool {
+    return zone_type_is(zone_index, type);
+  };
+  
+  auto target_reduced_since = [&](int target_index) -> uint32_t {
+    if (target_index == 1) return id(target_1_reduced_since_ms);
+    if (target_index == 2) return id(target_2_reduced_since_ms);
+    if (target_index == 3) return id(target_3_reduced_since_ms);
+    return 0;
+  };
+  
+  auto set_target_reduced_since = [&](int target_index, uint32_t value) {
+    if (target_index == 1) id(target_1_reduced_since_ms) = value;
+    if (target_index == 2) id(target_2_reduced_since_ms) = value;
+    if (target_index == 3) id(target_3_reduced_since_ms) = value;
+  };
+  
+  auto target_filter_mode = [&](int target_index, float tx, float ty) -> int {
+    const int calibration_filter_zone = calibration_zone_index_for_type("filter", tx, ty);
+    if (calibration_filter_zone > 0) {
+      set_target_reduced_since(target_index, 0);
+      return 10 + calibration_filter_zone;
+    }
+    for (int zone_index = 1; zone_index <= 6; zone_index++) {
+      if (software_zone_type_is(zone_index, "filter") && software_zone_contains(zone_index, tx, ty)) {
+        set_target_reduced_since(target_index, 0);
+        return 2;
+      }
+    }
+    const int calibration_reduced_zone = calibration_zone_index_for_type("reduced", tx, ty);
+    if (calibration_reduced_zone > 0) {
+      uint32_t since = target_reduced_since(target_index);
+      if (since == 0) {
+        since = now;
+        set_target_reduced_since(target_index, since);
+      }
+      const uint32_t required_ms = id(pir_motion).state ? 800 : 2500;
+      return (now - since) < required_ms ? 20 + calibration_reduced_zone : 0;
+    }
+    set_target_reduced_since(target_index, 0);
+    return 0;
+  };
+  
+  auto previous_calibration_filter_active = [&](int target_index) -> bool {
+    if (target_index == 1) return id(target_1_calibration_filter_active);
+    if (target_index == 2) return id(target_2_calibration_filter_active);
+    if (target_index == 3) return id(target_3_calibration_filter_active);
+    return false;
+  };
+  
+  auto previous_calibration_reduced_active = [&](int target_index) -> bool {
+    if (target_index == 1) return id(target_1_calibration_reduced_active);
+    if (target_index == 2) return id(target_2_calibration_reduced_active);
+    if (target_index == 3) return id(target_3_calibration_reduced_active);
+    return false;
+  };
+  
+  auto set_previous_calibration_filter_active = [&](int target_index, bool value) {
+    if (target_index == 1) id(target_1_calibration_filter_active) = value;
+    if (target_index == 2) id(target_2_calibration_filter_active) = value;
+    if (target_index == 3) id(target_3_calibration_filter_active) = value;
+  };
+  
+  auto set_previous_calibration_reduced_active = [&](int target_index, bool value) {
+    if (target_index == 1) id(target_1_calibration_reduced_active) = value;
+    if (target_index == 2) id(target_2_calibration_reduced_active) = value;
+    if (target_index == 3) id(target_3_calibration_reduced_active) = value;
+  };
+  
+  auto increment_calibration_filter_zone_hit = [&](int zone_index) {
+    if (zone_index == 1) id(today_calibration_filter_zone_1_hits)++;
+    if (zone_index == 2) id(today_calibration_filter_zone_2_hits)++;
+    if (zone_index == 3) id(today_calibration_filter_zone_3_hits)++;
+    if (zone_index == 4) id(today_calibration_filter_zone_4_hits)++;
+  };
+  
+  auto increment_calibration_reduced_zone_hit = [&](int zone_index) {
+    if (zone_index == 1) id(today_calibration_reduced_zone_1_hits)++;
+    if (zone_index == 2) id(today_calibration_reduced_zone_2_hits)++;
+    if (zone_index == 3) id(today_calibration_reduced_zone_3_hits)++;
+    if (zone_index == 4) id(today_calibration_reduced_zone_4_hits)++;
+  };
+  
+  auto previous_software_zone_mask = [&](int target_index) -> int {
+    if (target_index == 1) return id(target_1_software_zone_mask);
+    if (target_index == 2) return id(target_2_software_zone_mask);
+    if (target_index == 3) return id(target_3_software_zone_mask);
+    return 0;
+  };
+  
+  auto set_previous_software_zone_mask = [&](int target_index, int mask) {
+    if (target_index == 1) id(target_1_software_zone_mask) = mask;
+    if (target_index == 2) id(target_2_software_zone_mask) = mask;
+    if (target_index == 3) id(target_3_software_zone_mask) = mask;
+  };
+  
+  auto increment_software_zone_hit = [&](int zone_index) {
+    if (zone_index == 1) id(today_software_zone_1_hits)++;
+    if (zone_index == 2) id(today_software_zone_2_hits)++;
+    if (zone_index == 3) id(today_software_zone_3_hits)++;
+    if (zone_index == 4) id(today_software_zone_4_hits)++;
+    if (zone_index == 5) id(today_software_zone_5_hits)++;
+    if (zone_index == 6) id(today_software_zone_6_hits)++;
+  };
+  
+  auto record_software_zone_transitions = [&](int target_index, int current_mask) {
+    const int previous_mask = previous_software_zone_mask(target_index);
+    const int entered_mask = current_mask & ~previous_mask;
+    for (int zone_index = 1; zone_index <= 6; zone_index++) {
+      const int bit = 1 << (zone_index - 1);
+      if ((entered_mask & bit) != 0) increment_software_zone_hit(zone_index);
+    }
+    set_previous_software_zone_mask(target_index, current_mask);
+  };
+  
+  auto record_calibration_transition = [&](int target_index, int mode) {
+    const bool calibration_filter_active = mode >= 11 && mode <= 14;
+    const bool calibration_reduced_active = mode >= 21 && mode <= 24;
+    if (calibration_filter_active && !previous_calibration_filter_active(target_index)) {
+      id(today_calibration_filter_hits)++;
+      increment_calibration_filter_zone_hit(mode - 10);
+    }
+    if (calibration_reduced_active && !previous_calibration_reduced_active(target_index)) {
+      id(today_calibration_reduced_hits)++;
+      increment_calibration_reduced_zone_hit(mode - 20);
+    }
+    set_previous_calibration_filter_active(target_index, calibration_filter_active);
+    set_previous_calibration_reduced_active(target_index, calibration_reduced_active);
+  };
+
+  auto record_heatmap_hit = [&](float tx, float ty) {
+    id(radar_api).record_heatmap_hit(tx, ty);
+  };
+  
+  const int target_1_filter_mode =
+    id(target_1_direction_raw).state != "NA" ?
+    target_filter_mode(1, id(target_1_x_raw).state, id(target_1_y_raw).state) : 0;
+  const int target_2_filter_mode =
+    id(target_2_direction_raw).state != "NA" ?
+    target_filter_mode(2, id(target_2_x_raw).state, id(target_2_y_raw).state) : 0;
+  const int target_3_filter_mode =
+    id(target_3_direction_raw).state != "NA" ?
+    target_filter_mode(3, id(target_3_x_raw).state, id(target_3_y_raw).state) : 0;
+  
+  record_calibration_transition(1, target_1_filter_mode);
+  record_calibration_transition(2, target_2_filter_mode);
+  record_calibration_transition(3, target_3_filter_mode);
+  
+  id(target_1_filtered) =
+    id(target_1_direction_raw).state != "NA" &&
+    target_1_filter_mode > 0;
+  id(target_2_filtered) =
+    id(target_2_direction_raw).state != "NA" &&
+    target_2_filter_mode > 0;
+  id(target_3_filtered) =
+    id(target_3_direction_raw).state != "NA" &&
+    target_3_filter_mode > 0;
+  auto is_filter_blocked_mode = [](int mode) -> bool {
+    return mode == 2 || (mode >= 11 && mode <= 14);
+  };
+  id(target_1_filter_blocked) =
+    id(target_1_direction_raw).state != "NA" &&
+    is_filter_blocked_mode(target_1_filter_mode);
+  id(target_2_filter_blocked) =
+    id(target_2_direction_raw).state != "NA" &&
+    is_filter_blocked_mode(target_2_filter_mode);
+  id(target_3_filter_blocked) =
+    id(target_3_direction_raw).state != "NA" &&
+    is_filter_blocked_mode(target_3_filter_mode);
+  if (id(target_1_direction_raw).state == "NA") {
+    id(target_1_reduced_since_ms) = 0;
+    set_previous_calibration_filter_active(1, false);
+    set_previous_calibration_reduced_active(1, false);
+  }
+  if (id(target_2_direction_raw).state == "NA") {
+    id(target_2_reduced_since_ms) = 0;
+    set_previous_calibration_filter_active(2, false);
+    set_previous_calibration_reduced_active(2, false);
+  }
+  if (id(target_3_direction_raw).state == "NA") {
+    id(target_3_reduced_since_ms) = 0;
+    set_previous_calibration_filter_active(3, false);
+    set_previous_calibration_reduced_active(3, false);
+  }
+  
+  const bool target1_valid = id(target_1_direction_raw).state != "NA" && !id(target_1_filtered);
+  const bool target2_valid = id(target_2_direction_raw).state != "NA" && !id(target_2_filtered);
+  const bool target3_valid = id(target_3_direction_raw).state != "NA" && !id(target_3_filtered);
+  const int state_target_count = (target1_valid ? 1 : 0) + (target2_valid ? 1 : 0) + (target3_valid ? 1 : 0);
+  const int state_moving_target_count =
+    (target1_valid && fabsf(id(target_1_speed_raw).state) > id(dir_stationary_speed) ? 1 : 0) +
+    (target2_valid && fabsf(id(target_2_speed_raw).state) > id(dir_stationary_speed) ? 1 : 0) +
+    (target3_valid && fabsf(id(target_3_speed_raw).state) > id(dir_stationary_speed) ? 1 : 0);
+  const int state_still_target_count = state_target_count - state_moving_target_count;
+  const bool state_filter_blocked =
+    id(target_1_filter_blocked) ||
+    id(target_2_filter_blocked) ||
+    id(target_3_filter_blocked);
+  const bool state_presence_raw =
+    state_target_count > 0 ? true :
+    state_filter_blocked ? false :
+    id(pir_motion).state;
+  const bool state_motion_raw =
+    state_moving_target_count > 0 ? true :
+    state_filter_blocked ? false :
+    id(pir_motion).state;
+  if (state_presence_raw) {
+    id(state_presence_stable) = true;
+    id(state_presence_last_on_ms) = now;
+  } else if ((now - id(state_presence_last_on_ms)) >= 3000) {
+    id(state_presence_stable) = false;
+  }
+  if (state_motion_raw) {
+    id(state_motion_stable) = true;
+    id(state_motion_last_on_ms) = now;
+  } else if ((now - id(state_motion_last_on_ms)) >= 500) {
+    id(state_motion_stable) = false;
+  }
+  const bool state_pir_motion_effective = id(pir_motion).state && !state_filter_blocked;
+  auto state_target_json = [](const char *id_name, const char *label, const char *color, float x, float y, bool active) -> std::string {
+    std::string json = "{\"id\":\"";
+    json += id_name;
+    json += "\",\"name\":\"";
+    json += label;
+    json += "\",\"color\":\"";
+    json += color;
+    json += "\",\"x\":";
+    json += std::to_string((int) lroundf(x));
+    json += ",\"y\":";
+    json += std::to_string((int) lroundf(y));
+    json += ",\"active\":";
+    json += active ? "true" : "false";
+    json += "}";
+    return json;
+  };
+  auto json_string_value = [](const std::string &json, const char *key, const char *fallback) -> std::string {
+    const std::string needle = std::string("\"") + key + "\":\"";
+    const size_t value_start = json.find(needle);
+    if (value_start == std::string::npos) return fallback;
+    size_t cursor = value_start + needle.size();
+    bool escaped = false;
+    while (cursor < json.size()) {
+      const char current = json[cursor];
+      if (escaped) {
+        escaped = false;
+      } else if (current == '\\') {
+        escaped = true;
+      } else if (current == '"') {
+        return json.substr(value_start + needle.size(), cursor - (value_start + needle.size()));
+      }
+      cursor++;
+    }
+    return fallback;
+  };
+  auto state_zone_json = [&](int zone_index, int target_count) -> std::string {
+    const std::string zone_config = zone_config_for(zone_index);
+    const std::string zone_id = std::string("zone_") + std::to_string(zone_index);
+    const std::string zone_name = json_string_value(zone_config, "name", "");
+    const std::string zone_type = json_string_value(zone_config, "type", "detection");
+    std::string json = "{\"id\":\"";
+    json += zone_id;
+    json += "\",\"name\":\"";
+    json += zone_name.empty() ? zone_id : zone_name;
+    json += "\",\"type\":\"";
+    json += zone_type;
+    json += "\",\"presence\":";
+    json += target_count > 0 ? "true" : "false";
+    json += ",\"targetCount\":";
+    json += std::to_string(target_count);
+    json += "}";
+    return json;
+  };
+  auto state_target_active = [](const std::string &direction, bool filtered, float x, float y) -> bool {
+    return direction != "NA" && !filtered && sqrtf(x * x + y * y) > 100.0f;
+  };
+  auto append_state_float = [](std::string &json, const char *name, float value, const char *format) {
+    json += ",\"";
+    json += name;
+    json += "\":";
+    if (isnan(value)) {
+      json += "null";
+      return;
+    }
+    char value_buf[24];
+    snprintf(value_buf, sizeof(value_buf), format, value);
+    json += value_buf;
+  };
+  const bool heatmap_record_due = id(heatmap_last_record_ms) == 0 || (now - id(heatmap_last_record_ms)) >= 5000;
+  if (heatmap_record_due && (target1_valid || target2_valid || target3_valid)) {
+    if (target1_valid) record_heatmap_hit(id(target_1_x_raw).state, id(target_1_y_raw).state);
+    if (target2_valid) record_heatmap_hit(id(target_2_x_raw).state, id(target_2_y_raw).state);
+    if (target3_valid) record_heatmap_hit(id(target_3_x_raw).state, id(target_3_y_raw).state);
+    id(heatmap_last_record_ms) = now;
+  }
+  
+  int software_zone_counts[6] = {0, 0, 0, 0, 0, 0};
+  int target_1_software_mask = 0;
+  int target_2_software_mask = 0;
+  int target_3_software_mask = 0;
+  int detection_zone_count = 0;
+  int filter_zone_count = 0;
+  for (int zone_index = 1; zone_index <= 6; zone_index++) {
+    if (software_zone_type_is(zone_index, "detection")) {
+      detection_zone_count++;
+      const int zone_bit = 1 << (zone_index - 1);
+      if (target1_valid && software_zone_contains(zone_index, id(target_1_x_raw).state, id(target_1_y_raw).state)) {
+        software_zone_counts[zone_index - 1]++;
+        target_1_software_mask |= zone_bit;
+      }
+      if (target2_valid && software_zone_contains(zone_index, id(target_2_x_raw).state, id(target_2_y_raw).state)) {
+        software_zone_counts[zone_index - 1]++;
+        target_2_software_mask |= zone_bit;
+      }
+      if (target3_valid && software_zone_contains(zone_index, id(target_3_x_raw).state, id(target_3_y_raw).state)) {
+        software_zone_counts[zone_index - 1]++;
+        target_3_software_mask |= zone_bit;
+      }
+    } else if (software_zone_type_is(zone_index, "filter")) {
+      filter_zone_count++;
+    }
+  }
+  record_software_zone_transitions(1, target1_valid ? target_1_software_mask : 0);
+  record_software_zone_transitions(2, target2_valid ? target_2_software_mask : 0);
+  record_software_zone_transitions(3, target3_valid ? target_3_software_mask : 0);
+  id(software_zone_configured_state) = has_software_config;
+  id(software_detection_zone_count_state) = detection_zone_count;
+  id(software_filter_zone_count_state) = filter_zone_count;
+  id(software_zone_1_target_count_state) = software_zone_counts[0];
+  id(software_zone_2_target_count_state) = software_zone_counts[1];
+  id(software_zone_3_target_count_state) = software_zone_counts[2];
+  id(software_zone_4_target_count_state) = software_zone_counts[3];
+  id(software_zone_5_target_count_state) = software_zone_counts[4];
+  id(software_zone_6_target_count_state) = software_zone_counts[5];
+  id(software_zone_1_presence_state) = software_zone_counts[0] > 0;
+  id(software_zone_2_presence_state) = software_zone_counts[1] > 0;
+  id(software_zone_3_presence_state) = software_zone_counts[2] > 0;
+  id(software_zone_4_presence_state) = software_zone_counts[3] > 0;
+  id(software_zone_5_presence_state) = software_zone_counts[4] > 0;
+  id(software_zone_6_presence_state) = software_zone_counts[5] > 0;
+
+  std::string state_json = "{\"version\":1,\"connected\":true,\"updatedAt\":";
+  state_json += std::to_string((uint32_t) now);
+  state_json += ",\"pirMotion\":";
+  state_json += id(pir_motion).state ? "true" : "false";
+  state_json += ",\"pirMotionEffective\":";
+  state_json += state_pir_motion_effective ? "true" : "false";
+  state_json += ",\"filterBlocked\":";
+  state_json += state_filter_blocked ? "true" : "false";
+  state_json += ",\"presence\":";
+  state_json += id(state_presence_stable) ? "true" : "false";
+  state_json += ",\"motion\":";
+  state_json += id(state_motion_stable) ? "true" : "false";
+  state_json += ",\"targetCount\":";
+  state_json += std::to_string(id(cnt_stable_total));
+  state_json += ",\"movingTargetCount\":";
+  state_json += std::to_string(state_moving_target_count);
+  state_json += ",\"stillTargetCount\":";
+  state_json += std::to_string(state_still_target_count);
+  append_state_float(state_json, "temperatureC", id(temperature_corrected).state, "%.1f");
+  append_state_float(state_json, "humidityPercent", id(humidity_corrected).state, "%.1f");
+  append_state_float(state_json, "illuminanceLux", id(illuminance_lux).state, "%.0f");
+  state_json += ",\"targets\":[";
+  state_json += state_target_json("target_1", "T1", "#ff6b7a", id(target_1_x_display).state, id(target_1_y_display).state,
+                                  state_target_active(id(target_1_direction_raw).state, id(target_1_filtered),
+                                                      id(target_1_x_display).state, id(target_1_y_display).state));
+  state_json += ",";
+  state_json += state_target_json("target_2", "T2", "#ffd166", id(target_2_x_display).state, id(target_2_y_display).state,
+                                  state_target_active(id(target_2_direction_raw).state, id(target_2_filtered),
+                                                      id(target_2_x_display).state, id(target_2_y_display).state));
+  state_json += ",";
+  state_json += state_target_json("target_3", "T3", "#06d6a0", id(target_3_x_display).state, id(target_3_y_display).state,
+                                  state_target_active(id(target_3_direction_raw).state, id(target_3_filtered),
+                                                      id(target_3_x_display).state, id(target_3_y_display).state));
+  state_json += "],\"zones\":[";
+  bool first_state_zone = true;
+  for (int zone_index = 1; zone_index <= 6; zone_index++) {
+    if (!zone_config_valid(zone_config_for(zone_index), zone_index)) continue;
+    if (!first_state_zone) state_json += ",";
+    state_json += state_zone_json(zone_index, software_zone_counts[zone_index - 1]);
+    first_state_zone = false;
+  }
+  state_json += "]}";
+  id(radar_api).update_state_json(state_json);
+  
+  auto reset_today_stats = [&]() {
+    id(today_calibration_filter_hits) = 0;
+    id(today_calibration_reduced_hits) = 0;
+    id(today_calibration_filter_zone_1_hits) = 0;
+    id(today_calibration_filter_zone_2_hits) = 0;
+    id(today_calibration_filter_zone_3_hits) = 0;
+    id(today_calibration_filter_zone_4_hits) = 0;
+    id(today_calibration_reduced_zone_1_hits) = 0;
+    id(today_calibration_reduced_zone_2_hits) = 0;
+    id(today_calibration_reduced_zone_3_hits) = 0;
+    id(today_calibration_reduced_zone_4_hits) = 0;
+    id(today_software_zone_1_hits) = 0;
+    id(today_software_zone_2_hits) = 0;
+    id(today_software_zone_3_hits) = 0;
+    id(today_software_zone_4_hits) = 0;
+    id(today_software_zone_5_hits) = 0;
+    id(today_software_zone_6_hits) = 0;
+    id(target_1_software_zone_mask) = 0;
+    id(target_2_software_zone_mask) = 0;
+    id(target_3_software_zone_mask) = 0;
+  };
+  
+  auto compact_day_stats_json = [&](int day_key) -> std::string {
+    std::string json = "{\"d\":";
+    json += std::to_string(day_key);
+    json += ",\"f\":";
+    json += std::to_string(id(today_calibration_filter_hits));
+    json += ",\"r\":";
+    json += std::to_string(id(today_calibration_reduced_hits));
+    json += ",\"fz\":[";
+    json += std::to_string(id(today_calibration_filter_zone_1_hits)) + ",";
+    json += std::to_string(id(today_calibration_filter_zone_2_hits)) + ",";
+    json += std::to_string(id(today_calibration_filter_zone_3_hits)) + ",";
+    json += std::to_string(id(today_calibration_filter_zone_4_hits));
+    json += "],\"rz\":[";
+    json += std::to_string(id(today_calibration_reduced_zone_1_hits)) + ",";
+    json += std::to_string(id(today_calibration_reduced_zone_2_hits)) + ",";
+    json += std::to_string(id(today_calibration_reduced_zone_3_hits)) + ",";
+    json += std::to_string(id(today_calibration_reduced_zone_4_hits));
+    json += "],\"sz\":[";
+    json += std::to_string(id(today_software_zone_1_hits)) + ",";
+    json += std::to_string(id(today_software_zone_2_hits)) + ",";
+    json += std::to_string(id(today_software_zone_3_hits)) + ",";
+    json += std::to_string(id(today_software_zone_4_hits)) + ",";
+    json += std::to_string(id(today_software_zone_5_hits)) + ",";
+    json += std::to_string(id(today_software_zone_6_hits));
+    json += "]}";
+    return json;
+  };
+  
+  auto time_now = id(sntp_time).now();
+  if (time_now.is_valid()) {
+    const int day_key = time_now.year * 10000 + time_now.month * 100 + time_now.day_of_month;
+    if (id(stats_current_day_key) == 0) {
+      id(stats_current_day_key) = day_key;
+      id(radar_api).update_today_stats_json(compact_day_stats_json(day_key));
+    } else if (day_key != id(stats_current_day_key)) {
+      const std::string finished_day_json = compact_day_stats_json(id(stats_current_day_key));
+      reset_today_stats();
+      id(stats_current_day_key) = day_key;
+      const std::string new_today_json = compact_day_stats_json(day_key);
+      id(radar_api).save_finished_stats_day(finished_day_json, new_today_json);
+    } else {
+      id(radar_api).update_today_stats_json(compact_day_stats_json(day_key));
+    }
+  }
+  
+  const bool has_target = id(ld2450_has_target).state;
+  bool target_valid = false;
+  
+  // Clear counts immediately when the radar has no target.
+  if (!has_target) {
+    id(cnt_stable_total) = 0;
+    id(cnt_last_nonzero_ms) = 0;
+  } else {
+    int raw_total = 0;
+    if (target1_valid) raw_total++;
+    if (target2_valid) raw_total++;
+    if (target3_valid) raw_total++;
+    target_valid = raw_total > 0;
+  
+    // Stable target count: clamp to 0..3 and delay only zero transition.
+    if (raw_total > 0) {
+      id(cnt_stable_total) = raw_total;
+      id(cnt_last_nonzero_ms) = now;
+    } else if ((now - id(cnt_last_nonzero_ms)) >= (uint32_t) id(cnt_zero_hold_ms)) {
+      id(cnt_stable_total) = 0;
+    }
+  
+    if (target1_valid) {
+      id(dir_last_seen_ms) = now;
+    }
+  
+    if ((now - id(dir_last_seen_ms)) > (uint32_t) id(dir_target_lost_timeout_ms)) {
+      id(dir_stable_value) = "정지";
+      id(dir_consecutive_count) = 0;
+      id(dir_last_observed) = "정지";
+    } else if (!isnan(id(target_1_speed_raw).state)) {
+      const float speed_abs = fabsf(id(target_1_speed_raw).state);
+      std::string observed = "정지";
+      const std::string raw = id(target_1_direction_raw).state;
+  
+      if (speed_abs <= id(dir_stationary_speed)) {
+        // Low speed is treated as stationary.
+        observed = "정지";
+      } else {
+        // Use raw direction for medium and high speed targets.
+        if (raw == "Approaching") {
+          observed = "접근";
+        } else if (raw == "Moving away") {
+          observed = "멀어짐";
+        } else {
+          observed = "정지";
+        }
+      }
+  
+      // Change direction only after N consecutive identical samples.
+      if (observed == id(dir_last_observed)) {
+        id(dir_consecutive_count) = id(dir_consecutive_count) + 1;
+        if (id(dir_consecutive_count) >= id(dir_consecutive_need)) {
+          id(dir_stable_value) = observed;
+        }
+      } else {
+        id(dir_last_observed) = observed;
+        id(dir_consecutive_count) = 1;
+      }
+    }
+  
+    // Target-2 direction state machine
+    if (target2_valid) {
+      id(dir2_last_seen_ms) = now;
+    }
+  
+    if ((now - id(dir2_last_seen_ms)) > (uint32_t) id(dir_target_lost_timeout_ms)) {
+      id(dir2_stable_value) = "정지";
+      id(dir2_consecutive_count) = 0;
+      id(dir2_last_observed) = "정지";
+    } else if (!isnan(id(target_2_speed_raw).state)) {
+      const float speed2_abs = fabsf(id(target_2_speed_raw).state);
+      std::string observed2 = "정지";
+      const std::string raw2 = id(target_2_direction_raw).state;
+  
+      if (speed2_abs <= id(dir_stationary_speed)) {
+        observed2 = "정지";
+      } else {
+        if (raw2 == "Approaching") {
+          observed2 = "접근";
+        } else if (raw2 == "Moving away") {
+          observed2 = "멀어짐";
+        } else {
+          observed2 = "정지";
+        }
+      }
+  
+      // Change direction only after enough consecutive samples.
+      if (observed2 == id(dir2_last_observed)) {
+        id(dir2_consecutive_count) = id(dir2_consecutive_count) + 1;
+        if (id(dir2_consecutive_count) >= id(dir_consecutive_need)) {
+          id(dir2_stable_value) = observed2;
+        }
+      } else {
+        id(dir2_last_observed) = observed2;
+        id(dir2_consecutive_count) = 1;
+      }
+    }
+  
+    // Target-3 direction state machine
+    if (target3_valid) {
+      id(dir3_last_seen_ms) = now;
+    }
+  
+    if ((now - id(dir3_last_seen_ms)) > (uint32_t) id(dir_target_lost_timeout_ms)) {
+      id(dir3_stable_value) = "정지";
+      id(dir3_consecutive_count) = 0;
+      id(dir3_last_observed) = "정지";
+    } else if (!isnan(id(target_3_speed_raw).state)) {
+      const float speed3_abs = fabsf(id(target_3_speed_raw).state);
+      std::string observed3 = "정지";
+      const std::string raw3 = id(target_3_direction_raw).state;
+  
+      if (speed3_abs <= id(dir_stationary_speed)) {
+        observed3 = "정지";
+      } else {
+        if (raw3 == "Approaching") {
+          observed3 = "접근";
+        } else if (raw3 == "Moving away") {
+          observed3 = "멀어짐";
+        } else {
+          observed3 = "정지";
+        }
+      }
+  
+      // Change direction only after enough consecutive samples.
+      if (observed3 == id(dir3_last_observed)) {
+        id(dir3_consecutive_count) = id(dir3_consecutive_count) + 1;
+        if (id(dir3_consecutive_count) >= id(dir_consecutive_need)) {
+          id(dir3_stable_value) = observed3;
+        }
+      } else {
+        id(dir3_last_observed) = observed3;
+        id(dir3_consecutive_count) = 1;
+      }
+    }
+  }
+  
+  bool requested_status_led_enabled = false;
+  if (id(radar_api).take_status_led_request(&requested_status_led_enabled)) {
+    if (requested_status_led_enabled) {
+      id(status_led_enable_switch).turn_on();
+    } else {
+      id(status_led_enable_switch).turn_off();
+    }
+  }
+
+  float requested_led_blink_duration = 0.0f;
+  if (id(radar_api).take_led_blink_duration_request(&requested_led_blink_duration)) {
+    auto duration_call = id(led_blink_duration).make_call();
+    duration_call.set_value(requested_led_blink_duration);
+    duration_call.perform();
+  }
+
+  bool requested_environment_correction_enabled = false;
+  if (id(radar_api).take_environment_correction_request(&requested_environment_correction_enabled)) {
+    if (requested_environment_correction_enabled) {
+      id(environment_correction_enable_switch).turn_on();
+    } else {
+      id(environment_correction_enable_switch).turn_off();
+    }
+  }
+
+  float requested_temperature_offset = 0.0f;
+  if (id(radar_api).take_temperature_offset_request(&requested_temperature_offset)) {
+    auto temperature_offset_call = id(temperature_user_offset).make_call();
+    temperature_offset_call.set_value(requested_temperature_offset);
+    temperature_offset_call.perform();
+  }
+
+  float requested_humidity_offset = 0.0f;
+  if (id(radar_api).take_humidity_offset_request(&requested_humidity_offset)) {
+    auto humidity_offset_call = id(humidity_user_offset).make_call();
+    humidity_offset_call.set_value(requested_humidity_offset);
+    humidity_offset_call.perform();
+  }
+
+  id(radar_api).update_control_status(
+      id(led_enabled),
+      id(led_blink_duration).state,
+      id(environment_correction_enable_switch).state,
+      id(temperature_user_offset).state,
+      id(humidity_user_offset).state);
+
+  // LED auto control logic
+  const bool presence = id(presence_combined).state;
+  const bool led_is_enabled = id(led_enabled);
+  const float duration_s = id(led_blink_duration).state;
+  const bool presence_started = presence && !id(led_last_presence);
+  
+  if (presence && led_is_enabled) {
+    if (duration_s < 1.0f && id(led_auto_finished)) {
+      id(led_auto_finished) = false;
+    }
+  
+    if (!id(led_auto_finished) && (presence_started || id(led_blink_end_ms) == 0)) {
+      if (duration_s < 1.0f) {
+        id(led_blink_end_ms) = UINT32_MAX;
+      } else {
+        id(led_blink_end_ms) = now + ((uint32_t)(duration_s * 1000.0f));
+      }
+      id(led_last_toggle_ms) = now;
+      id(led_blink_state) = true;
+      id(status_led).turn_on().perform();
+    }
+  
+    if (id(led_blink_end_ms) == UINT32_MAX || now < id(led_blink_end_ms)) {
+      if ((now - id(led_last_toggle_ms)) >= 3000) {
+        id(led_blink_state) = !id(led_blink_state);
+        id(led_last_toggle_ms) = now;
+        if (id(led_blink_state)) {
+          id(status_led).turn_on().perform();
+        } else {
+          id(status_led).turn_off().perform();
+        }
+      }
+    } else if (id(led_blink_end_ms) != 0) {
+      id(led_blink_end_ms) = 0;
+      id(led_blink_state) = false;
+      id(led_auto_finished) = true;
+      id(status_led).turn_off().perform();
+    }
+  } else {
+    id(led_blink_end_ms) = 0;
+    id(led_blink_state) = false;
+    id(led_auto_finished) = false;
+    id(status_led).turn_off().perform();
+  }
+  
+  id(led_last_presence) = presence;
+  

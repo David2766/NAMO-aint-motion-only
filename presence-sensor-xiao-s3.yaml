@@ -1,0 +1,23 @@
+substitutions:
+  device_name: presence-sensor
+  friendly_name: Presence Sensor
+  name_add_mac_suffix: "true"
+  project_name: truststorm.presence-sensor
+  project_version: "0.5.0"
+
+packages:
+  base: !include packages/presence-sensor-xiao-s3/base.yaml
+  radar: !include packages/presence-sensor-xiao-s3/radar.yaml
+  primary_entities: !include packages/presence-sensor-xiao-s3/primary-entities.yaml
+  zones: !include packages/presence-sensor-xiao-s3/zones.yaml
+  stats: !include packages/presence-sensor-xiao-s3/stats.yaml
+  globals: !include packages/presence-sensor-xiao-s3/globals.yaml
+  binary_sensors: !include packages/presence-sensor-xiao-s3/binary-sensors.yaml
+  sensors: !include packages/presence-sensor-xiao-s3/sensors.yaml
+  switches: !include packages/presence-sensor-xiao-s3/switches.yaml
+  numbers: !include packages/presence-sensor-xiao-s3/numbers.yaml
+  selects: !include packages/presence-sensor-xiao-s3/selects.yaml
+  buttons: !include packages/presence-sensor-xiao-s3/buttons.yaml
+  text_sensors: !include packages/presence-sensor-xiao-s3/text-sensors.yaml
+  intervals: !include packages/presence-sensor-xiao-s3/intervals.yaml
+  web: !include packages/presence-sensor-xiao-s3/web.yaml

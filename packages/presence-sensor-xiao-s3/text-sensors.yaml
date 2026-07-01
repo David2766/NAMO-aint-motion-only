@@ -1,0 +1,69 @@
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "Device IP Address"
+      id: device_ip_address
+      entity_category: diagnostic
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    version:
+      name: "LD2450 Firmware"
+      entity_category: diagnostic
+    mac_address:
+      name: "LD2450 BT MAC"
+      entity_category: diagnostic
+    target_1:
+      direction:
+        id: target_1_direction_raw
+        name: "Target-1 Direction Raw"
+        entity_category: diagnostic
+        disabled_by_default: true
+    target_2:
+      direction:
+        id: target_2_direction_raw
+        name: "Target-2 Direction Raw"
+        entity_category: diagnostic
+        disabled_by_default: true
+    target_3:
+      direction:
+        id: target_3_direction_raw
+        name: "Target-3 Direction Raw"
+        entity_category: diagnostic
+        disabled_by_default: true
+  - platform: template
+    name: "타겟1 Direction"
+    id: target_1_direction_stable
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: |-
+      if (id(target_1_direction_raw).state == "NA" || id(target_1_filtered)) {
+        return {"미감지"};
+      }
+      return id(dir_stable_value);
+  - platform: template
+    name: "타겟2 Direction"
+    id: target_2_direction_stable
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: |-
+      if (id(target_2_direction_raw).state == "NA" || id(target_2_filtered)) {
+        return {"미감지"};
+      }
+      return id(dir2_stable_value);
+  - platform: template
+    name: "타겟3 Direction"
+    id: target_3_direction_stable
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: |-
+      if (id(target_3_direction_raw).state == "NA" || id(target_3_filtered)) {
+        return {"미감지"};
+      }
+      return id(dir3_stable_value);
+  - platform: template
+    name: "Direction Preset Active"
+    id: direction_preset_active
+    entity_category: diagnostic
+    update_interval: 3s
+    lambda: |-
+      return id(dir_preset_name);
