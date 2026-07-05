@@ -1,5 +1,5 @@
 import type { WebDeviceConfig, WebDeviceState, WebDeviceStats, WebStatsEntry } from "../../core/types";
-import { saveMockFloorplan } from "../floorplan/mock-floorplan-storage";
+import { hasMockFloorplanStorage, saveMockFloorplan } from "../floorplan/mock-floorplan-storage";
 import type { DeviceApi, WebSystemStatus } from "../types";
 
 const startTime = Date.now();
@@ -9,6 +9,10 @@ const HEATMAP_CELL_COUNT = HEATMAP_COLS * HEATMAP_ROWS;
 
 function plainClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function waveValue(base: number, spread: number, elapsed: number, speed: number, phase = 0): number {
+  return Math.round((base + Math.sin(elapsed / speed + phase) * spread) * 10) / 10;
 }
 
 function dayKeyFromDate(date: Date): number {
@@ -152,40 +156,57 @@ let stats: WebDeviceStats = createDemoStats();
 export const mockApi: DeviceApi = {
   async getState(): Promise<WebDeviceState> {
     const elapsed = (Date.now() - startTime) / 1000;
+    const targetCount = 1 + (Math.floor(elapsed / 12) % 3);
+    const targets = [
+      {
+        id: "target_1",
+        name: "T1",
+        color: "#ff6b7a",
+        x: Math.round(Math.sin(elapsed / 2) * 1100),
+        y: Math.round(1800 + Math.cos(elapsed / 2.8) * 700),
+        active: targetCount >= 1
+      },
+      {
+        id: "target_2",
+        name: "T2",
+        color: "#ffd166",
+        x: Math.round(1250 + Math.sin(elapsed / 2.7 + 1.8) * 650),
+        y: Math.round(2600 + Math.cos(elapsed / 3.4 + 0.6) * 850),
+        active: targetCount >= 2
+      },
+      {
+        id: "target_3",
+        name: "T3",
+        color: "#06d6a0",
+        x: Math.round(-1350 + Math.sin(elapsed / 3.1 + 2.4) * 720),
+        y: Math.round(3300 + Math.cos(elapsed / 3.8 + 1.2) * 900),
+        active: targetCount >= 3
+      }
+    ];
     return {
       connected: true,
       updatedAt: Date.now(),
-      pirMotion: false,
-      targets: [
-        {
-          id: "target_1",
-          name: "T1",
-          color: "#ff6b7a",
-          x: Math.round(Math.sin(elapsed / 2) * 1100),
-          y: Math.round(1800 + Math.cos(elapsed / 2.8) * 700),
-          active: true
-        },
-        {
-          id: "target_2",
-          name: "T2",
-          color: "#ffd166",
-          x: 0,
-          y: 0,
-          active: false
-        },
-        {
-          id: "target_3",
-          name: "T3",
-          color: "#06d6a0",
-          x: 0,
-          y: 0,
-          active: false
-        }
-      ]
+      presence: true,
+      motion: true,
+      pirMotion: true,
+      temperatureC: waveValue(25.4, 0.25, elapsed, 17),
+      humidityPercent: waveValue(45, 0.45, elapsed, 19, 1.1),
+      illuminanceLux: Math.round(waveValue(180, 1.8, elapsed, 23, 2.2)),
+      targets
     };
   },
 
   async getConfig(): Promise<WebDeviceConfig> {
+    if (hasMockFloorplanStorage()) {
+      config = {
+        ...config,
+        floorplan: {
+          ...(config.floorplan ?? {}),
+          enabled: true,
+          hasImage: true
+        }
+      };
+    }
     return plainClone(config);
   },
 

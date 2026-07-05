@@ -30,6 +30,10 @@ export function resetMockFloorplanStorage(): void {
   uploadBuffer = null;
 }
 
+export function hasMockFloorplanStorage(): boolean {
+  return Boolean(sessionStorage.getItem(CONFIG_KEY) && sessionStorage.getItem(IMAGE_KEY));
+}
+
 export async function saveMockFloorplan(document: FloorplanStorageDocument, image: Blob): Promise<void> {
   const plainDocument = plainClone(document);
   sessionStorage.setItem(CONFIG_KEY, floorplanStorageJson(plainDocument));
