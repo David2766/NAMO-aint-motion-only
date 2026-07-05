@@ -8,7 +8,7 @@
   let { onComplete = () => {} } = $props<{ onComplete?: () => void }>();
 
   const networks: MockNetwork[] = [
-    { ssid: "RoundNational", rssi: -31, locked: true },
+    { ssid: "TEST_SSID", rssi: -31, locked: true },
     { ssid: "LivingRoom_5G", rssi: -44, locked: true },
     { ssid: "Kitchen-IoT", rssi: -58, locked: true },
     { ssid: "Galaxy Hotspot", rssi: -63, locked: true },

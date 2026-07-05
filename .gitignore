@@ -24,4 +24,3 @@ secrets.yaml
 *.bak
 .DS_Store
 Thumbs.db
-!release-assets/**/*.bin
