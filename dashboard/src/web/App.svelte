@@ -630,6 +630,28 @@
     await configSave.saveConfigNow();
   }
 
+  async function saveFloorplanFromPanel(
+    ...[document, image]: Parameters<NonNullable<DeviceApi["saveFloorplan"]>>
+  ): Promise<void> {
+    if (!api.saveFloorplan) throw new Error("평면도 저장 API가 준비되지 않았습니다.");
+    await configSave.saveConfigNow();
+    await api.saveFloorplan(document, image);
+    await markFloorplanAvailable(true);
+  }
+
+  async function markFloorplanAvailable(hasImage: boolean): Promise<void> {
+    if (!config) return;
+    config = normalizeSoftwareConfig({
+      ...config,
+      floorplan: {
+        ...(config.floorplan ?? {}),
+        enabled: hasImage,
+        hasImage
+      }
+    });
+    await configSave.saveConfigNow();
+  }
+
   async function loadStatsBackup(): Promise<WebDeviceStats | null> {
     try {
       return stats ?? await api.getStats();
@@ -1108,7 +1130,8 @@
         floorplanStorageBaseUrl={deviceBaseUrl}
         {floorplanStorageFetcher}
         onUpdateDeviceConfig={(mutator) => updateConfig(mutator)}
-        onSaveFloorplan={(document, image) => api.saveFloorplan?.(document, image) ?? Promise.reject(new Error("평면도 저장 API가 준비되지 않았습니다."))}
+        onSaveFloorplan={saveFloorplanFromPanel}
+        onFloorplanDeleted={() => void markFloorplanAvailable(false)}
       />
     </section>
   {:else if activeTab === "stats"}

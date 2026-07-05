@@ -3,7 +3,7 @@ substitutions:
   friendly_name: Presence Sensor
   name_add_mac_suffix: "true"
   project_name: truststorm.presence-sensor
-  project_version: "0.5.2"
+  project_version: "0.5.2-c"
 
 packages:
   base: !include packages/presence-sensor-xiao-s3/base.yaml

@@ -13,6 +13,7 @@ export function createConfigSave({ api, getConfig, setStatus, errorMessage }: Co
   let saveTimer = 0;
   let saveInFlight = false;
   let saveQueued = false;
+  let saveInFlightPromise: Promise<void> | null = null;
   let saveState = $state<SaveState>("idle");
 
   function scheduleSave(): void {
@@ -29,27 +30,35 @@ export function createConfigSave({ api, getConfig, setStatus, errorMessage }: Co
   }
 
   async function saveConfigNow(): Promise<void> {
-    const config = getConfig();
-    if (!config) return;
-    if (saveInFlight) {
+    window.clearTimeout(saveTimer);
+    if (saveInFlightPromise) {
       saveQueued = true;
       saveState = "queued";
+      await saveInFlightPromise;
+      if (saveQueued) await saveConfigNow();
       return;
     }
+
+    const config = getConfig();
+    if (!config) return;
     saveInFlight = true;
     saveQueued = false;
     saveState = "saving";
-    try {
-      await api.saveConfig(stripPlaceholders(config));
-      saveState = "saved";
-      setStatus("설정 저장 완료", "ok");
-    } catch (error) {
-      saveState = "error";
-      setStatus(`설정을 저장하지 못했습니다. ${errorMessage(error)}`, "error");
-    } finally {
-      saveInFlight = false;
-      if (saveQueued) scheduleSave();
-    }
+    saveInFlightPromise = (async () => {
+      try {
+        await api.saveConfig(stripPlaceholders(config));
+        saveState = "saved";
+        setStatus("설정 저장 완료", "ok");
+      } catch (error) {
+        saveState = "error";
+        setStatus(`설정을 저장하지 못했습니다. ${errorMessage(error)}`, "error");
+      } finally {
+        saveInFlight = false;
+        saveInFlightPromise = null;
+      }
+    })();
+    await saveInFlightPromise;
+    if (saveQueued) await saveConfigNow();
   }
 
   function destroy(): void {

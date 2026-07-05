@@ -67,7 +67,8 @@
     floorplanStorageBaseUrl = "",
     floorplanStorageFetcher,
     onUpdateDeviceConfig,
-    onSaveFloorplan
+    onSaveFloorplan,
+    onFloorplanDeleted
   } = $props();
 
   let imageUrl = $state("");
@@ -811,6 +812,10 @@
     floorplanSaveStatus = "ESP32에 평면도 이미지와 설정을 저장하는 중입니다.";
     try {
       await onSaveFloorplan(document, imageBlob);
+      await loadStoredFloorplan();
+      storedFloorplanDetected = true;
+      storedFloorplanMode = "edit";
+      storedFloorplanEditTool = "rooms";
       floorplanSaveTone = "ok";
       floorplanSaveStatus = "평면도 이미지와 설정을 저장했습니다.";
     } catch (error) {
@@ -2327,6 +2332,7 @@
       storedFloorplanSaveTone = "idle";
       selectedFurnitureObjectId = "";
       roomCandidates.clear();
+      onFloorplanDeleted?.();
     } catch (error) {
       storedFloorplanDeleteError = error instanceof Error ? error.message : String(error);
     } finally {

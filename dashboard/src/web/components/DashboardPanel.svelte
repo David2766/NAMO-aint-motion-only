@@ -163,6 +163,15 @@
     void loadDashboardFloorplan();
   });
 
+  $effect(() => {
+    if (hasFloorplan) return;
+    floorplanDocument = null;
+    floorplanLoading = false;
+    floorplanError = "";
+    if (floorplanImageUrl) URL.revokeObjectURL(floorplanImageUrl);
+    floorplanImageUrl = "";
+  });
+
   onDestroy(() => {
     if (floorplanImageUrl) URL.revokeObjectURL(floorplanImageUrl);
   });
