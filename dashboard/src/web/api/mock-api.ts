@@ -306,6 +306,14 @@ export const mockApi: DeviceApi = {
 
   async saveFloorplan(document, image): Promise<void> {
     await saveMockFloorplan(document, image);
+    config = {
+      ...config,
+      floorplan: {
+        ...(config.floorplan ?? {}),
+        enabled: true,
+        hasImage: true
+      }
+    };
   },
 
   async uploadFirmware(file, onProgress): Promise<void> {

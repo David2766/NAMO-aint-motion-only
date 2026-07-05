@@ -54,6 +54,7 @@
   const requiresHaSetupHandoff = searchParams.get("setup") === "1" && !useMockApi;
   const api: DeviceApi = useMockApi ? mockApi : deviceApi;
   const floorplanStorageFetcher = useMockApi ? mockFloorplanStorageFetch : undefined;
+  const DEMO_SETUP_COMPLETE_KEY = "presence-sensor-demo-setup-complete";
   type IntegrationMode = "unknown" | "edge" | "ha";
   type HaSetupGateMode = "select" | "edge" | "ha-setup" | "api-warmup" | "api-warning";
 
@@ -76,7 +77,7 @@
   let statsLoading = $state(false);
   let statsError = $state("");
   let systemStatus = $state<WebSystemStatus | null>(null);
-  let setupMockCompleted = $state(false);
+  let setupMockCompleted = $state(useSetupMock && localStorage.getItem(DEMO_SETUP_COMPLETE_KEY) === "1");
   let systemStatusLoading = $state(false);
   let systemStatusLoaded = $state(false);
   let systemStatusError = $state("");
@@ -665,7 +666,13 @@
 
   function resetDemoStorage(): void {
     resetMockFloorplanStorage();
+    localStorage.removeItem(DEMO_SETUP_COMPLETE_KEY);
     window.location.reload();
+  }
+
+  function completeSetupMock(): void {
+    localStorage.setItem(DEMO_SETUP_COMPLETE_KEY, "1");
+    setupMockCompleted = true;
   }
 
   function integrationMode(): IntegrationMode {
@@ -881,7 +888,7 @@
 </script>
 
 {#if useSetupMock && !setupMockCompleted}
-  <SetupMockPanel onComplete={() => (setupMockCompleted = true)} />
+  <SetupMockPanel onComplete={completeSetupMock} />
 {:else}
 <main class="app-shell">
   <header class="top-bar">
