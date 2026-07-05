@@ -188,6 +188,8 @@
 
   const updatedText = $derived(state ? new Date(state.updatedAt).toLocaleTimeString() : "-");
   const activeTargetCount = $derived(state?.targets.filter((target) => target.active).length ?? 0);
+  let appRuntimeStarted = false;
+
   const selectedLabel = $derived(
     selectedZone
       ? `${zoneDisplayName(selectedZone)} · ${zoneTypeLabels[selectedZone.type]}`
@@ -196,11 +198,9 @@
         : "선택 없음"
   );
 
-onMount(() => {
-    if (useSetupMock) {
-      return;
-    }
-
+  function startAppRuntime(): void {
+    if (appRuntimeStarted) return;
+    appRuntimeStarted = true;
     radarPolling.start();
 
     window.addEventListener("pointermove", radarInteraction.handlePointerMove);
@@ -208,16 +208,29 @@ onMount(() => {
     window.addEventListener("pointercancel", radarInteraction.handlePointerUp);
     window.addEventListener("keydown", handleKeyDown);
     document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+  }
 
-    return () => {
-      radarPolling.destroy();
-      configSave.destroy();
-      window.removeEventListener("pointermove", radarInteraction.handlePointerMove);
-      window.removeEventListener("pointerup", radarInteraction.handlePointerUp);
-      window.removeEventListener("pointercancel", radarInteraction.handlePointerUp);
-      window.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
-    };
+  function stopAppRuntime(): void {
+    if (!appRuntimeStarted) return;
+    appRuntimeStarted = false;
+    radarPolling.destroy();
+    configSave.destroy();
+    window.removeEventListener("pointermove", radarInteraction.handlePointerMove);
+    window.removeEventListener("pointerup", radarInteraction.handlePointerUp);
+    window.removeEventListener("pointercancel", radarInteraction.handlePointerUp);
+    window.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+  }
+
+  onMount(() => {
+    if (!useSetupMock) startAppRuntime();
+    return stopAppRuntime;
+  });
+
+  $effect(() => {
+    if (useSetupMock && setupMockCompleted) {
+      startAppRuntime();
+    }
   });
 
   $effect(() => {
