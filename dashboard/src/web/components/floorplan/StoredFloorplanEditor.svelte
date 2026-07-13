@@ -110,16 +110,8 @@
             onReject={actions.rejectRoom}
             onRemove={actions.removeRoom}
             onStartSnapEdit={actions.startSnapEdit}
-            onFinishSnapEdit={actions.finishSnapEdit}
-            onCancelSnapEdit={actions.cancelSnapEdit}
             onStartSplitDraft={actions.startSplitDraft}
-            onFinishSplitDraft={actions.finishSplitDraft}
-            onCancelSplitDraft={actions.cancelSplitDraft}
-            canFinishSplitDraft={actions.canFinishSplitDraft}
             onStartMergeDraft={actions.startMergeDraft}
-            onFinishMergeDraft={actions.finishMergeDraft}
-            onCancelMergeDraft={actions.cancelMergeDraft}
-            canFinishMergeDraft={actions.canFinishMergeDraft}
           />
         {:else if state.editTool === "scale"}
           <StoredFloorplanScaleTool
@@ -133,6 +125,7 @@
           />
         {:else if state.editTool === "zones" || state.editTool === "exit" || state.editTool === "calibration"}
           <StoredFloorplanZoneTool
+            {messages}
             {text}
             source={state.editTool === "exit" ? "exit" : tools.zone.source}
             zones={tools.zone.zones}

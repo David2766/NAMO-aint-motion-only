@@ -166,7 +166,11 @@ export function createCalibrationRun({
   function apply(currentMetrics: CalibrationMetrics): void {
     const config = getConfig();
     if (!config || !run) return;
-    const zone = calibrationZoneFromSamples(run.samples, config.calibrationZones || []);
+    const zone = calibrationZoneFromSamples(
+      run.samples,
+      config.calibrationZones || [],
+      getMessages().zones.calibrationZoneLabel
+    );
     run = null;
     if (!zone) {
       addLog(statusMessages().candidateCreateFailedLog);

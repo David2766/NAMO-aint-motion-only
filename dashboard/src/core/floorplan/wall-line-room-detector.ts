@@ -1359,7 +1359,6 @@ function collectComponents(mask: Uint8Array, width: number, height: number): Gri
   const visited = new Uint8Array(mask.length);
   const components: GridComponent[] = [];
   const queue: number[] = [];
-  let head = 0;
 
   for (let index = 0; index < mask.length; index += 1) {
     if (!mask[index] || visited[index]) continue;
@@ -1378,7 +1377,7 @@ function collectComponents(mask: Uint8Array, width: number, height: number): Gri
     visited[index] = 1;
     queue.length = 0;
     queue.push(index);
-    head = 0;
+    let head = 0;
 
     while (head < queue.length) {
       const current = queue[head];

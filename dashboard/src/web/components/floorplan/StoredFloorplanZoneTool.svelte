@@ -1,7 +1,8 @@
 <script>
-  import { zoneDisplayName } from "../../../core/zones";
+  import { localizedZoneDisplayName } from "../../../core/zones";
 
   let {
+    messages,
     text,
     source = "zones",
     zones = [],
@@ -61,7 +62,7 @@
           data-active={selectedZoneId === zone.id ? "true" : "false"}
           onclick={() => actions.selectZone?.(zone.id, -1)}
         >
-          <span>{zoneDisplayName(zone)}</span>
+          <span>{localizedZoneDisplayName(zone, messages.zones)}</span>
           <small>{zoneShapeText(zone)} &middot; {zone.type}</small>
         </button>
       {/each}

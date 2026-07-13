@@ -5,7 +5,6 @@
   import StoredFloorplanDeleteDialog from "./floorplan/StoredFloorplanDeleteDialog.svelte";
   import StoredFloorplanEditor from "./floorplan/StoredFloorplanEditor.svelte";
   import { FLOORPLAN_FURNITURE_ASSETS } from "../floorplan/furniture-assets";
-  import { roomCandidatePoints } from "../floorplan/room-candidate-points";
   import {
     sanitizeStoredFloorplanDocument,
     storedRoomToCandidate
@@ -622,7 +621,7 @@
     });
   }
 
-  function applyLoadedStoredFloorplan(document, image, imageUrl) {
+  function applyLoadedStoredFloorplan(document, image, _imageUrl) {
     loadStoredFloorplanDocumentState(document);
     storedEdit.resetAfterLoad();
     floorplanImage.setDebugInfo({

@@ -199,7 +199,7 @@
     } catch {
       // Ignore selection range errors on older browsers.
     }
-    let copied = false;
+    let copied: boolean;
     try {
       copied = document.execCommand("copy");
     } catch {

@@ -15,6 +15,7 @@
     "test:native": "python ../tools/presence-replay/native/test.py",
     "test:watch": "vitest",
     "typecheck": "npm run check:setup-i18n && tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
     "format": "prettier --write \"src/**/*.{ts,css}\" \"*.{json,ts}\""
   },
   "keywords": [
@@ -26,12 +27,16 @@
   "author": "",
   "license": "AGPL-3.0-or-later",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "eslint": "^10.5.0",
+    "eslint-plugin-svelte": "^3.20.0",
+    "globals": "^17.7.0",
     "playwright": "^1.61.0",
     "prettier": "^3.8.4",
     "svelte": "^5.56.3",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.63.0",
     "vite": "^8.0.16",
     "vitest": "^4.1.9"
   }

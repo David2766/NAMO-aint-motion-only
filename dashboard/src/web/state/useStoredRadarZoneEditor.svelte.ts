@@ -171,7 +171,7 @@ export function createStoredRadarZoneEditor({
   function addZone(type: WebZoneType | unknown = "detection"): void {
     const zoneType = normalizeZoneType(type);
     editSession.pushHistory();
-    const result = updateConfigWithResult((current) => addSoftwareZone(current, zoneType));
+    const result = updateConfigWithResult((current) => addSoftwareZone(current, zoneType, getMessages().zones));
     if (!result) return;
     const text = getText();
     if (!result.changed) {

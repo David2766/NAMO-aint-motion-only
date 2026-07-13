@@ -1,5 +1,6 @@
 <script lang="ts">
   import { MAX_SOFTWARE_ZONES, MAX_ZONE_NAME_LENGTH } from "../../core/constants";
+  import { localizedZoneDisplayName } from "../../core/zones";
   import type { Messages } from "../i18n/types";
   import type { WebZone, WebZoneType } from "../types";
 
@@ -33,28 +34,17 @@
 
   const text = $derived(messages.zones);
 
-  function zoneFallbackName(zoneId: string): string {
+  function displayZoneName(zone: WebZone): string {
+    return localizedZoneDisplayName(zone, text);
+  }
+
+  function zoneSlotName(zoneId: string): string {
     const match = /^zone_(\d+)$/.exec(zoneId);
     return match ? text.zoneLabel(match[1]) : zoneId;
   }
 
-  function defaultZoneNameIndex(name: string): string | null {
-    const match = /^(?:구역|Zone)\s*(\d+)$/.exec(name.trim());
-    return match?.[1] ?? null;
-  }
-
-  function displayZoneName(zone: WebZone): string {
-    const name = zone.name?.trim() ?? "";
-    const defaultIndex = name ? defaultZoneNameIndex(name) : null;
-    if (defaultIndex) return text.zoneLabel(defaultIndex);
-    return name || zoneFallbackName(zone.id);
-  }
-
   function zoneNameInputValue(zone: WebZone): string {
-    const name = zone.name?.trim() ?? "";
-    const defaultIndex = name ? defaultZoneNameIndex(name) : null;
-    if (defaultIndex) return text.zoneLabel(defaultIndex);
-    return zone.name || "";
+    return localizedZoneDisplayName(zone, text);
   }
 </script>
 
@@ -74,7 +64,7 @@
         >
           <div>
             <strong>{displayZoneName(zone)}</strong>
-            <span>{zoneFallbackName(zone.id)}</span>
+            <span>{zoneSlotName(zone.id)}</span>
           </div>
           <em>{zoneTypeLabels[zone.type]}</em>
         </button>

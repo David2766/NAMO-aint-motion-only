@@ -78,23 +78,8 @@
     });
   }
 
-  function candidateIsManual(candidate) {
-    return candidate?.debug?.reason === "manual" || candidate?.id?.startsWith("manual_room_");
-  }
-
   function pointList(points) {
     return points.map(([x, y]) => `${x},${y}`).join(" ");
-  }
-
-  function boundsFromPoints(points, hoverPoint = null) {
-    const first = points[0];
-    const second = points[1] ?? (hoverPoint ? [hoverPoint.x, hoverPoint.y] : null);
-    if (!first || !second) return null;
-    const x = Math.min(first[0], second[0]);
-    const y = Math.min(first[1], second[1]);
-    const maxX = Math.max(first[0], second[0]);
-    const maxY = Math.max(first[1], second[1]);
-    return { x, y, width: maxX - x, height: maxY - y };
   }
 
   function labelX(candidate) {
@@ -297,7 +282,7 @@
     onCandidateVertexMove?.(draggedVertex.id, draggedVertex.index, point);
   }
 
-  function handleVertexPointerUp(event) {
+  function handleVertexPointerUp(_event) {
     if (draggedSplitPoint) {
       draggedSplitPoint.target?.releasePointerCapture?.(draggedSplitPoint.pointerId);
       draggedSplitPoint = null;

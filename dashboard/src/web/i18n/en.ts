@@ -334,6 +334,7 @@ export const en: Messages = {
     sceneLoadingTitle: "Preparing radar view",
     sceneLoadingDescription: "Waiting for state data.",
     zoneLabel: (index) => `Zone ${index}`,
+    exitPointLabel: (index) => `Exit Point ${index}`,
     mapStatus: (count) => `${count} targets detected`,
     calibrationUnavailableNoDevice: "Available after the device is connected.",
     calibrationPirActiveCannotStart: "Cannot start while PIR motion is detected.",

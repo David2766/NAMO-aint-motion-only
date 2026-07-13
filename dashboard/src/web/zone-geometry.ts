@@ -4,8 +4,10 @@ export { clamp, rectPoints } from "../core/geometry";
 import {
   defaultZonePoints,
   limitZoneName,
+  localizedDefaultZoneName,
   nextZoneId,
-  upsertZone
+  upsertZone,
+  type ZoneNameLabels
 } from "../core/zones";
 import type { WebDeviceConfig, WebZoneType } from "../core/types";
 import type { RadarScreenPoint, WebZone } from "../core/types";
@@ -163,7 +165,11 @@ export function movePolygonObjectPoint<T extends { points: PolygonPoint[] }>(
   };
 }
 
-export function addSoftwareZone(config: WebDeviceConfig, type: WebZoneType = "detection"): ZoneMutationResult {
+export function addSoftwareZone(
+  config: WebDeviceConfig,
+  type: WebZoneType,
+  labels: Pick<ZoneNameLabels, "zoneLabel" | "exitPointLabel">
+): ZoneMutationResult {
   if (config.zones.length >= MAX_SOFTWARE_ZONES) {
     return {
       config,
@@ -175,7 +181,7 @@ export function addSoftwareZone(config: WebDeviceConfig, type: WebZoneType = "de
   const id = nextZoneId(config.zones);
   const zone: WebZone = {
     id,
-    name: defaultSoftwareZoneName(id, type),
+    name: localizedDefaultZoneName(id, type, labels),
     type,
     shape: type === "exit" ? "polygon" : "rect",
     points: type === "exit" ? defaultExitLineStripPoints(config.zones.length) : defaultZonePoints(config.zones.length)
@@ -186,11 +192,6 @@ export function addSoftwareZone(config: WebDeviceConfig, type: WebZoneType = "de
     selectedPointIndex: -1,
     changed: true
   };
-}
-
-function defaultSoftwareZoneName(id: string, type: WebZoneType): string {
-  const index = id.replace("zone_", "");
-  return type === "exit" ? `퇴실지점 ${index}` : `구역 ${index}`;
 }
 
 export function exitLineFromZone(zone: Pick<WebZone, "points">): ExitLine {

@@ -10,6 +10,12 @@ export interface AdvancedZoneDisplayModel {
   calibration: boolean;
 }
 
+export interface ZoneNameLabels {
+  zoneLabel: (index: string) => string;
+  exitPointLabel: (index: string) => string;
+  calibrationZoneLabel: (index: string) => string;
+}
+
 export function isEmptyZone(zone: Pick<WebZone, "points">): boolean {
   return zone.points.length === 0 || zone.points.every(([x, y]) => x === 0 && y === 0);
 }
@@ -29,13 +35,46 @@ export function isCalibrationZoneId(zoneId: string): boolean {
   return /^calibration_\d+$/.test(zoneId);
 }
 
-export function zoneSlotLabel(zoneId: string): string {
-  const match = /^zone_(\d+)$/.exec(zoneId);
-  return match ? `구역 ${match[1]}` : zoneId;
+export function localizedZoneDisplayName(
+  zone: Pick<WebZone, "id" | "name" | "type">,
+  labels: ZoneNameLabels
+): string {
+  const name = zone.name?.trim() ?? "";
+  const defaultName = parseDefaultZoneName(name);
+  if (defaultName?.kind === "zone") return labels.zoneLabel(defaultName.index);
+  if (defaultName?.kind === "exit") return labels.exitPointLabel(defaultName.index);
+  if (defaultName?.kind === "calibration") return labels.calibrationZoneLabel(defaultName.index);
+  if (name) return name;
+
+  const calibrationMatch = /^calibration_(\d+)$/.exec(zone.id);
+  if (calibrationMatch) return labels.calibrationZoneLabel(calibrationMatch[1]);
+  const zoneMatch = /^zone_(\d+)$/.exec(zone.id);
+  if (zoneMatch) {
+    return zone.type === "exit"
+      ? labels.exitPointLabel(zoneMatch[1])
+      : labels.zoneLabel(zoneMatch[1]);
+  }
+  return zone.id;
 }
 
-export function zoneDisplayName(zone: Pick<WebZone, "id" | "name">): string {
-  return zone.name || zoneSlotLabel(zone.id);
+export function localizedDefaultZoneName(
+  zoneId: string,
+  type: WebZoneType,
+  labels: Pick<ZoneNameLabels, "zoneLabel" | "exitPointLabel">
+): string {
+  const index = /^zone_(\d+)$/.exec(zoneId)?.[1] ?? zoneId;
+  return type === "exit" ? labels.exitPointLabel(index) : labels.zoneLabel(index);
+}
+
+function parseDefaultZoneName(
+  name: string
+): { kind: "zone" | "exit" | "calibration"; index: string } | null {
+  let match = /^(?:구역|Zone)\s*(\d+)$/i.exec(name);
+  if (match) return { kind: "zone", index: match[1] };
+  match = /^(?:퇴실지점|Exit point)\s*(\d+)$/i.exec(name);
+  if (match) return { kind: "exit", index: match[1] };
+  match = /^(?:보정(?: 구역)?|Correction zone)\s*(\d+)$/i.exec(name);
+  return match ? { kind: "calibration", index: match[1] } : null;
 }
 
 export function limitZoneName(name: string): string {

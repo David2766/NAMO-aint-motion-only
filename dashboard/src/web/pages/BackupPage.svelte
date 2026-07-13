@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BackupIssue, BackupSummary, BackupValidationResult } from "../../core/config-backup";
+  import type { BackupIssue, BackupSummary } from "../../core/config-backup";
   import BackupPanel from "../components/BackupPanel.svelte";
   import type { Messages } from "../i18n/types";
   import type { FirmwareUploadProgress, ResetSettings, WebSystemStatus } from "../types";

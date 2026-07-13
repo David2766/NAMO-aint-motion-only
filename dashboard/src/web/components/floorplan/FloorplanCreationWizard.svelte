@@ -107,16 +107,8 @@
           onReject={actions.rejectRoom}
           onRemove={actions.removeRoom}
           onStartSnapEdit={actions.startSnapEdit}
-          onFinishSnapEdit={actions.finishSnapEdit}
-          onCancelSnapEdit={actions.cancelSnapEdit}
           onStartSplitDraft={actions.startSplitDraft}
-          onFinishSplitDraft={actions.finishSplitDraft}
-          onCancelSplitDraft={actions.cancelSplitDraft}
-          canFinishSplitDraft={actions.canFinishSplitDraft}
           onStartMergeDraft={actions.startMergeDraft}
-          onFinishMergeDraft={actions.finishMergeDraft}
-          onCancelMergeDraft={actions.cancelMergeDraft}
-          canFinishMergeDraft={actions.canFinishMergeDraft}
         />
       {:else}
         <FloorplanCandidateList

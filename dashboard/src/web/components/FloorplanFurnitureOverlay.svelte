@@ -103,7 +103,6 @@
     event.stopPropagation();
     onSelect?.(object.id);
     if (!editable) return;
-    const point = pointerPoint(event);
     drag = {
       mode: "resize",
       id: object.id,

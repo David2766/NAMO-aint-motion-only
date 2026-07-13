@@ -48,7 +48,7 @@ export function createZoneEditor({
   function addZone(type: WebZoneType = "detection"): void {
     const config = getConfig();
     if (!config) return;
-    const result = addSoftwareZone(config, type);
+    const result = addSoftwareZone(config, type, getMessages().zones);
     if (!result.changed) {
       const message = zoneGeometryMessage(getMessages(), result.messageCode, result.messageParams);
       if (message) setStatus(message, "warn");

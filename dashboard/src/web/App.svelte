@@ -17,7 +17,12 @@
   import { MAX_SOFTWARE_ZONES } from "../core/constants";
   import type { BackupFloorplanData } from "../core/config-backup";
   import type { FloorplanStorageDocument } from "../core/floorplan/floorplan-storage";
-  import { calibrationType, isEmptyZone, normalizeSoftwareConfig } from "../core/zones";
+  import {
+    calibrationType,
+    isEmptyZone,
+    localizedZoneDisplayName,
+    normalizeSoftwareConfig
+  } from "../core/zones";
   import { createBackupRestore } from "./state/useBackupRestore.svelte";
   import { createCalibrationRun } from "./state/useCalibrationRun.svelte";
   import { createConfigHistory } from "./state/useConfigHistory.svelte";
@@ -223,16 +228,6 @@
   const activeTargetCount = $derived(state?.targets.filter((target) => target.active).length ?? 0);
   let appRuntimeStarted = false;
 
-  function defaultZoneNameIndex(name: string): string | null {
-    const match = /^(?:구역|Zone)\s*(\d+)$/.exec(name.trim());
-    return match?.[1] ?? null;
-  }
-
-  function defaultCalibrationNameIndex(name: string): string | null {
-    const match = /^(?:보정 구역|Correction zone)\s*(\d+)$/.exec(name.trim());
-    return match?.[1] ?? null;
-  }
-
   function formatClock(timestamp: number): string {
     return new Intl.DateTimeFormat(i18n.msg.language.code === "ko" ? "ko-KR" : "en-US", {
       hour: "2-digit",
@@ -243,19 +238,7 @@
   }
 
   function displayZoneName(zone: WebZone): string {
-    const name = zone.name?.trim() ?? "";
-    if (name) {
-      const defaultZoneIndex = defaultZoneNameIndex(name);
-      if (defaultZoneIndex) return i18n.msg.zones.zoneLabel(defaultZoneIndex);
-      const defaultCalibrationIndex = defaultCalibrationNameIndex(name);
-      if (defaultCalibrationIndex) return i18n.msg.zones.calibrationZoneLabel(defaultCalibrationIndex);
-      return name;
-    }
-    const zoneMatch = /^zone_(\d+)$/.exec(zone.id);
-    if (zoneMatch) return i18n.msg.zones.zoneLabel(zoneMatch[1]);
-    const calibrationMatch = /^calibration_(\d+)$/.exec(zone.id);
-    if (calibrationMatch) return i18n.msg.zones.calibrationZoneLabel(calibrationMatch[1]);
-    return zone.id;
+    return localizedZoneDisplayName(zone, i18n.msg.zones);
   }
 
   const selectedLabel = $derived(

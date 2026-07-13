@@ -1,6 +1,6 @@
 <script lang="ts">
   import { MAX_CALIBRATION_ZONES } from "../../core/constants";
-  import { calibrationType } from "../../core/zones";
+  import { calibrationType, localizedZoneDisplayName } from "../../core/zones";
   import type { Messages } from "../i18n/types";
   import type { WebZone, WebZoneType } from "../types";
 
@@ -42,27 +42,8 @@
 
   const text = $derived(messages.zones);
 
-  function defaultZoneNameIndex(name: string): string | null {
-    const match = /^(?:구역|Zone)\s*(\d+)$/.exec(name.trim());
-    return match?.[1] ?? null;
-  }
-
-  function defaultCalibrationNameIndex(name: string): string | null {
-    const match = /^(?:보정 구역|Correction zone)\s*(\d+)$/.exec(name.trim());
-    return match?.[1] ?? null;
-  }
-
   function displayZoneName(zone: WebZone): string {
-    const name = zone.name?.trim() ?? "";
-    if (name) {
-      const defaultCalibrationIndex = defaultCalibrationNameIndex(name);
-      if (defaultCalibrationIndex) return text.calibrationZoneLabel(defaultCalibrationIndex);
-      const defaultZoneIndex = defaultZoneNameIndex(name);
-      if (defaultZoneIndex) return text.zoneLabel(defaultZoneIndex);
-      return name;
-    }
-    const match = /^calibration_(\d+)$/.exec(zone.id);
-    return match ? text.calibrationZoneLabel(match[1]) : zone.id;
+    return localizedZoneDisplayName(zone, text);
   }
 </script>
 

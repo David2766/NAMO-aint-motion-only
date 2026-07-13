@@ -326,6 +326,7 @@ export type Messages = {
     sceneLoadingTitle: string;
     sceneLoadingDescription: string;
     zoneLabel: (index: string) => string;
+    exitPointLabel: (index: string) => string;
     mapStatus: (count: number) => string;
     calibrationUnavailableNoDevice: string;
     calibrationPirActiveCannotStart: string;

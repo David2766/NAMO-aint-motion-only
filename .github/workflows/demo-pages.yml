@@ -29,6 +29,17 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ESPHome
+        run: python -m pip install esphome==2026.5.1
+
+      - name: Validate ESPHome configuration
+        run: python -m esphome config presence-sensor-xiao-s3.yaml
+
       - name: Install dependencies
         run: npm ci
         working-directory: dashboard
@@ -39,6 +50,10 @@ jobs:
 
       - name: Type check
         run: npm run typecheck
+        working-directory: dashboard
+
+      - name: Lint
+        run: npm run lint
         working-directory: dashboard
 
       - name: Build demo

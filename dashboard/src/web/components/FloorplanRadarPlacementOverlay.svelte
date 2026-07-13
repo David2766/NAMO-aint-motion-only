@@ -461,7 +461,6 @@
   }
 
   function sensorPoints() {
-    const current = effectivePlacement();
     const left = rotatedPoint(-110, 0);
     const right = rotatedPoint(110, 0);
     const front = rotatedPoint(0, 220);

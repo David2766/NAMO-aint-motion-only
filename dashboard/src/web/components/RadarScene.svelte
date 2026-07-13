@@ -1,6 +1,7 @@
 <script lang="ts">
   import { toScreenPoint } from "../../core/radar-math";
   import { renderGrid } from "../../core/radar-svg";
+  import { localizedZoneDisplayName } from "../../core/zones";
   import type { RadarViewport } from "../../core/types";
   import {
     RADAR_SCENE_HEIGHT,
@@ -93,24 +94,8 @@
     return match ? text.zoneLabel(match[1]) : zoneId;
   }
 
-  function defaultZoneNameIndex(name: string): string | null {
-    const match = /^(?:구역|Zone)\s*(\d+)$/.exec(name.trim());
-    return match?.[1] ?? null;
-  }
-
-  function defaultCalibrationNameIndex(name: string): string | null {
-    const match = /^(?:보정 구역|Correction zone)\s*(\d+)$/.exec(name.trim());
-    return match?.[1] ?? null;
-  }
-
   function displayZoneName(zone: WebZone): string {
-    const name = zone.name?.trim() ?? "";
-    if (!name) return "";
-    const defaultZoneIndex = defaultZoneNameIndex(name);
-    if (defaultZoneIndex) return text.zoneLabel(defaultZoneIndex);
-    const defaultCalibrationIndex = defaultCalibrationNameIndex(name);
-    if (defaultCalibrationIndex) return text.calibrationZoneLabel(defaultCalibrationIndex);
-    return name;
+    return localizedZoneDisplayName(zone, text);
   }
 
   function targetScreenPoint(target: WebTarget) {

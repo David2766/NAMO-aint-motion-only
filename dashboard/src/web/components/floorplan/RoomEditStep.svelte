@@ -14,16 +14,8 @@
     onReject,
     onRemove,
     onStartSnapEdit,
-    onFinishSnapEdit,
-    onCancelSnapEdit,
     onStartSplitDraft,
-    onFinishSplitDraft,
-    onCancelSplitDraft,
-    canFinishSplitDraft,
-    onStartMergeDraft,
-    onFinishMergeDraft,
-    onCancelMergeDraft,
-    canFinishMergeDraft
+    onStartMergeDraft
   } = $props();
 </script>
 
@@ -45,14 +37,6 @@
   mergeDraftCandidateIds={roomMergeDraft.candidateIds}
   selectionLocked={snapEdit.active || roomSplitDraft.active}
   onStartSnapEdit={onStartSnapEdit}
-  onFinishSnapEdit={onFinishSnapEdit}
-  onCancelSnapEdit={onCancelSnapEdit}
   onStartSplitDraft={onStartSplitDraft}
-  onFinishSplitDraft={onFinishSplitDraft}
-  onCancelSplitDraft={onCancelSplitDraft}
-  canFinishSplitDraft={canFinishSplitDraft}
   onStartMergeDraft={onStartMergeDraft}
-  onFinishMergeDraft={onFinishMergeDraft}
-  onCancelMergeDraft={onCancelMergeDraft}
-  canFinishMergeDraft={canFinishMergeDraft}
 />

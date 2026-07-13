@@ -11,7 +11,7 @@ import {
   type FloorplanRadarTransformOptions
 } from "../../core/floorplan/radar-floorplan-transform";
 import { pointInPolygon, type ZonePoint } from "../../core/geometry";
-import type { RadarScreenPoint, WebDeviceConfig } from "../../core/types";
+import type { WebDeviceConfig } from "../../core/types";
 
 export type FloorplanRoomContext = NonNullable<NonNullable<WebDeviceConfig["floorplan"]>["room"]>;
 

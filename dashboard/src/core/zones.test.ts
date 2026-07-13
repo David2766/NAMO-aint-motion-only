@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSoftwareConfig, normalizeZoneType } from "./zones";
+import { localizedZoneDisplayName, normalizeSoftwareConfig, normalizeZoneType } from "./zones";
 import type { WebDeviceConfig, WebZone } from "./types";
 
 const zoneBase = {
@@ -13,6 +13,12 @@ const zoneBase = {
     [-500, 2000]
   ]
 } satisfies Omit<WebZone, "type">;
+
+const englishLabels = {
+  zoneLabel: (index: string) => `Zone ${index}`,
+  exitPointLabel: (index: string) => `Exit Point ${index}`,
+  calibrationZoneLabel: (index: string) => `Correction zone ${index}`
+};
 
 function configWithZone(zone: Partial<Omit<WebZone, "type">> & { type?: unknown }): WebDeviceConfig {
   return {
@@ -56,5 +62,21 @@ describe("normalizeSoftwareConfig", () => {
     const normalized = normalizeSoftwareConfig(configWithZone({ type: "filter" }));
 
     expect(normalized.zones[0]?.type).toBe("filter");
+  });
+});
+
+describe("localizedZoneDisplayName", () => {
+  it("localizes legacy Korean default names", () => {
+    expect(localizedZoneDisplayName({ ...zoneBase, type: "detection", name: "구역 1" }, englishLabels)).toBe("Zone 1");
+    expect(localizedZoneDisplayName({ ...zoneBase, type: "exit", name: "퇴실지점 1" }, englishLabels)).toBe("Exit Point 1");
+    expect(localizedZoneDisplayName({ ...zoneBase, id: "calibration_1", type: "filter", name: "보정 1" }, englishLabels)).toBe("Correction zone 1");
+  });
+
+  it("preserves user-defined names", () => {
+    expect(localizedZoneDisplayName({ ...zoneBase, type: "detection", name: "Living room" }, englishLabels)).toBe("Living room");
+  });
+
+  it("uses the zone type when an unnamed zone needs a fallback label", () => {
+    expect(localizedZoneDisplayName({ ...zoneBase, type: "exit", name: "" }, englishLabels)).toBe("Exit Point 1");
   });
 });

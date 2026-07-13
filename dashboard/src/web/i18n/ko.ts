@@ -334,6 +334,7 @@ export const ko: Messages = {
     sceneLoadingTitle: "레이더 화면 준비 중",
     sceneLoadingDescription: "상태 데이터를 기다리는 중입니다.",
     zoneLabel: (index) => `구역 ${index}`,
+    exitPointLabel: (index) => `퇴실지점 ${index}`,
     mapStatus: (count) => `타깃 ${count}개 감지 중`,
     calibrationUnavailableNoDevice: "기기 연결 후 사용할 수 있습니다.",
     calibrationPirActiveCannotStart: "PIR 움직임이 감지되어 시작할 수 없습니다.",

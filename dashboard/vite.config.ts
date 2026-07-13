@@ -37,7 +37,7 @@ function dashboardBuildConfig(mode: string, base: string, outDir: string) {
 
 export default defineConfig(({ mode }) => {
   if (mode === "demo") {
-    return dashboardBuildConfig(mode, "/presence-sensor-xiao-s3/", "dist-demo");
+    return dashboardBuildConfig(mode, "/NAMO-aint-motion-only/", "dist-demo");
   }
 
   if (mode === "web") {

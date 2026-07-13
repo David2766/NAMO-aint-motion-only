@@ -97,7 +97,11 @@ export function calibrationMetrics(samples: CalibrationSample[]): CalibrationMet
   };
 }
 
-export function calibrationZoneFromSamples(samples: CalibrationSample[], existingZones: WebZone[]): WebZone | null {
+export function calibrationZoneFromSamples(
+  samples: CalibrationSample[],
+  existingZones: WebZone[],
+  defaultName: (index: string) => string
+): WebZone | null {
   if (samples.length < CALIBRATION_MIN_SAMPLES) return null;
   const prepared = prepareCalibrationSamples(samples);
   if (prepared.usedSamples.length < CALIBRATION_MIN_SAMPLES) return null;
@@ -112,7 +116,7 @@ export function calibrationZoneFromSamples(samples: CalibrationSample[], existin
   const points = rectPoints(center.x - width / 2, center.y - height / 2, center.x + width / 2, center.y + height / 2);
   const zone = clampZoneToHardwareBounds({
     id,
-    name: `보정 ${id.replace("calibration_", "")}`,
+    name: defaultName(id.replace("calibration_", "")),
     type: "filter" as const,
     shape: "rect" as const,
     points

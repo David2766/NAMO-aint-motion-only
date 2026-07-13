@@ -21,16 +21,8 @@
     mergeDraftCandidateIds = [],
     selectionLocked = false,
     onStartSnapEdit,
-    onFinishSnapEdit,
-    onCancelSnapEdit,
     onStartSplitDraft,
-    onFinishSplitDraft,
-    onCancelSplitDraft,
-    canFinishSplitDraft,
     onStartMergeDraft,
-    onFinishMergeDraft,
-    onCancelMergeDraft,
-    canFinishMergeDraft,
     showCandidateTools = false
   } = $props();
 
