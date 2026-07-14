@@ -1,0 +1,60 @@
+{
+  "esphome": {
+    "version": "2026.5.1",
+    "url": "https://github.com/esphome/esphome",
+    "license": "GPL-3.0 and MIT"
+  },
+  "espIdf": {
+    "version": "5.5.4",
+    "platformioVersion": "3.50504",
+    "url": "https://github.com/espressif/esp-idf",
+    "license": "Apache-2.0 with component-specific exceptions"
+  },
+  "managedFirmwareComponents": [
+    {
+      "id": "bblanchon/arduinojson",
+      "buildDirectory": "bblanchon__arduinojson",
+      "name": "ArduinoJson",
+      "version": "7.4.2",
+      "url": "https://github.com/bblanchon/ArduinoJson",
+      "license": "MIT",
+      "licenseFile": "LICENSE.txt",
+      "licenseSource": "scripts/third-party-license-sources/ArduinoJson-MIT.txt"
+    },
+    {
+      "id": "espressif/mdns",
+      "buildDirectory": "espressif__mdns",
+      "name": "Espressif mDNS",
+      "version": "1.11.0",
+      "url": "https://github.com/espressif/esp-protocols/tree/master/components/mdns",
+      "license": "Apache-2.0",
+      "licenseFile": "LICENSE",
+      "licenseSource": "scripts/third-party-license-sources/Apache-2.0.txt"
+    },
+    {
+      "id": "zorxx/multipart-parser",
+      "buildDirectory": "zorxx__multipart-parser",
+      "name": "multipart-parser",
+      "version": "1.0.1",
+      "url": "https://github.com/zorxx/multipart-parser",
+      "license": "MIT",
+      "licenseFile": "LICENSE",
+      "licenseSource": "scripts/third-party-license-sources/Multipart-Parser-MIT.txt"
+    }
+  ],
+  "tesseractJs": {
+    "version": "6.0.1",
+    "url": "https://github.com/naptha/tesseract.js",
+    "license": "Apache-2.0"
+  },
+  "tesseractJsCore": {
+    "version": "6.0.0",
+    "url": "https://github.com/naptha/tesseract.js-core",
+    "license": "Apache-2.0"
+  },
+  "tessdata": {
+    "version": "4.0.0",
+    "url": "https://github.com/naptha/tessdata",
+    "license": "Apache-2.0"
+  }
+}

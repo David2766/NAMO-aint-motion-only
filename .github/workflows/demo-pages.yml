@@ -29,6 +29,9 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
+      - name: Validate third-party notices
+        run: node scripts/generate-third-party-notices.mjs --check
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:

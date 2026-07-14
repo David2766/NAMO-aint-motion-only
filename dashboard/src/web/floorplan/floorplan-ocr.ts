@@ -2,9 +2,9 @@ import { detectFloorplanTextBoxes, type FloorplanTextRegion } from "../../core/f
 import type { RoomCandidate } from "../../core/floorplan/floorplan-types";
 import { normalizeExactRoomLabel, normalizeLabelComparableText } from "./room-labels";
 
-const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js";
-const TESSERACT_WORKER_PATH = "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/worker.min.js";
-const TESSERACT_CORE_PATH = "https://cdn.jsdelivr.net/npm/tesseract.js-core@6";
+const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.min.js";
+const TESSERACT_WORKER_PATH = "https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/worker.min.js";
+const TESSERACT_CORE_PATH = "https://cdn.jsdelivr.net/npm/tesseract.js-core@6.0.0";
 const TESSERACT_LANG_PATH = "https://tessdata.projectnaptha.com/4.0.0";
 const MAX_OCR_REGIONS = 48;
 const OCR_CROP_SCALE = 3;
