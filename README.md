@@ -5,7 +5,8 @@
 
 A fully local mmWave spatial presence platform with live floorplan tracking, visual zones, and Home Assistant integration.
 
-![NAMO live floorplan tracking](docs/img/0.webp)
+![NAMO zone-based lighting automation demo](docs/img/0.webp)
+*As I move between detection zones, NAMO automatically switches the corresponding room lights using fully local presence detection.*
 
 ## English
 
