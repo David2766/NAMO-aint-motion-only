@@ -9,17 +9,17 @@
 
 ## 제작 사진
 
-| 1. PCB | 2. BH1750FVI 조도 센서 |
+| 1. 구형 단일 레이더 PCB | 1-1. 현재 듀얼 레이더 PCB |
 | --- | --- |
-| ![NAMO PCB](../docs/img/hardware/1.jpg) | ![NAMO BH1750FVI 조도 센서](../docs/img/hardware/2.jpg) |
-| 3. FPC-SHT40 온습도 센서 | 4. LD2450 레이더 |
-| ![NAMO FPC-SHT40 온습도 센서](../docs/img/hardware/3.jpg) | ![NAMO LD2450 레이더](../docs/img/hardware/4.jpg) |
-| 4-1. LD2410C 정적 재실 레이더 | 5. 조립 완료 후 후면을 닫기 전 상태 |
-| ![NAMO LD2410C 정적 재실 레이더](../docs/img/hardware/4-1.jpg) | ![NAMO 조립 완료 후 후면을 닫기 전 상태](../docs/img/hardware/5.jpg) |
-| 6. 최종 조립 상태 | |
-| ![NAMO 최종 조립 상태](../docs/img/hardware/6.jpg) | |
+| ![NAMO 구형 단일 레이더 PCB](../docs/img/hardware/1.jpg) | ![NAMO 현재 듀얼 레이더 PCB](../docs/img/hardware/1-1.jpg) |
+| 2. BH1750FVI 조도 센서 | 3. FPC-SHT40 온습도 센서 |
+| ![NAMO BH1750FVI 조도 센서](../docs/img/hardware/2.jpg) | ![NAMO FPC-SHT40 온습도 센서](../docs/img/hardware/3.jpg) |
+| 4. LD2450 레이더 | 4-1. LD2410C 정적 재실 레이더 |
+| ![NAMO LD2450 레이더](../docs/img/hardware/4.jpg) | ![NAMO LD2410C 정적 재실 레이더](../docs/img/hardware/4-1.jpg) |
+| 5. 조립 완료 후 후면을 닫기 전 상태 | 6. 최종 조립 상태 |
+| ![NAMO 조립 완료 후 후면을 닫기 전 상태](../docs/img/hardware/5.jpg) | ![NAMO 최종 조립 상태](../docs/img/hardware/6.jpg) |
 
-1-6번 사진은 구형 단일 레이더 조립 구성을 보여줍니다. 4-1번은 현재 듀얼 레이더 설계에서 선택적으로 사용하는 LD2410C입니다. 듀얼 레이더용 케이스와 최종 조립 사진은 케이스 설계가 확정된 뒤 추가할 예정입니다.
+1번은 구형 단일 레이더 PCB, 1-1번은 현재 듀얼 레이더 PCB입니다. 2-6번은 구형 구성의 부품과 조립 상태를 보여주며, 4-1번은 현재 설계에서 선택적으로 사용하는 LD2410C입니다. 듀얼 레이더용 케이스와 최종 조립 사진은 케이스 설계가 확정된 뒤 추가할 예정입니다.
 
 ## 지원 하드웨어
 

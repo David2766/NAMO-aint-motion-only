@@ -9,17 +9,17 @@ This directory contains the reference hardware information and manufacturing fil
 
 ## Build Gallery
 
-| 1. PCB | 2. BH1750FVI light sensor |
+| 1. Legacy single-radar PCB | 1-1. Current dual-radar PCB |
 | --- | --- |
-| ![NAMO PCB](../docs/img/hardware/1.jpg) | ![NAMO BH1750FVI light sensor](../docs/img/hardware/2.jpg) |
-| 3. FPC-SHT40 temperature and humidity sensor | 4. LD2450 radar |
-| ![NAMO FPC-SHT40 sensor](../docs/img/hardware/3.jpg) | ![NAMO LD2450 radar](../docs/img/hardware/4.jpg) |
-| 4-1. LD2410C static-presence radar | 5. Rear view before closing the enclosure |
-| ![NAMO LD2410C static-presence radar](../docs/img/hardware/4-1.jpg) | ![NAMO assembled hardware before closing the rear enclosure](../docs/img/hardware/5.jpg) |
-| 6. Final assembly | |
-| ![NAMO final assembly](../docs/img/hardware/6.jpg) | |
+| ![NAMO legacy single-radar PCB](../docs/img/hardware/1.jpg) | ![NAMO current dual-radar PCB](../docs/img/hardware/1-1.jpg) |
+| 2. BH1750FVI light sensor | 3. FPC-SHT40 temperature and humidity sensor |
+| ![NAMO BH1750FVI light sensor](../docs/img/hardware/2.jpg) | ![NAMO FPC-SHT40 sensor](../docs/img/hardware/3.jpg) |
+| 4. LD2450 radar | 4-1. LD2410C static-presence radar |
+| ![NAMO LD2450 radar](../docs/img/hardware/4.jpg) | ![NAMO LD2410C static-presence radar](../docs/img/hardware/4-1.jpg) |
+| 5. Rear view before closing the enclosure | 6. Final assembly |
+| ![NAMO assembled hardware before closing the rear enclosure](../docs/img/hardware/5.jpg) | ![NAMO final assembly](../docs/img/hardware/6.jpg) |
 
-Photos 1-6 document the earlier single-radar build. Photo 4-1 shows the optional LD2410C used by the current dual-radar design. Updated dual-radar enclosure and final-assembly photos will be added after the enclosure is finalized.
+Photo 1 shows the earlier single-radar PCB, while photo 1-1 shows the current dual-radar PCB. Photos 2-6 document components and assembly from the earlier build, and photo 4-1 shows the optional LD2410C used by the current design. Updated dual-radar enclosure and final-assembly photos will be added after the enclosure is finalized.
 
 ## Supported Hardware
 
