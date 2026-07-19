@@ -94,6 +94,8 @@ NAMO requires a Seeed Studio XIAO ESP32S3 with 8MB Flash / 8MB PSRAM and an LD24
 
 See the [hardware guide](hardware/README.md) for the complete parts list, pinout, wiring notes, PCB manufacturing files, enclosure models, and DIY build instructions.
 
+The current dual-radar Gerber files and schematic are published. The matching dual-radar enclosure is still being refined; the enclosure files currently available in the repository are for the earlier single-radar build.
+
 ### Device Name
 
 The firmware uses ESPHome's `name_add_mac_suffix`.
@@ -359,6 +361,8 @@ psensor7777
 NAMO에는 8MB Flash / 8MB PSRAM 사양의 Seeed Studio XIAO ESP32S3와 LD2450 계열 레이더가 필요합니다. LD2410C 재실 보조 레이더, PIR, 조도 및 온습도 센서는 선택 사항입니다.
 
 전체 부품 목록, 핀맵, 배선 주의사항, PCB 제작 파일, 케이스 모델 및 자작 안내는 [하드웨어 가이드](hardware/README.ko.md)를 참고하세요.
+
+현재 듀얼 레이더 Gerber 파일과 회로도는 공개되어 있습니다. 듀얼 레이더용 케이스는 계속 다듬는 중이며, 저장소에 현재 공개된 케이스 파일은 구형 단일 레이더 구성용입니다.
 
 ### 기기 이름
 

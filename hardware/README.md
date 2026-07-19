@@ -5,7 +5,7 @@
 This directory contains the reference hardware information and manufacturing files for NAMO.
 
 > [!IMPORTANT]
-> The updated dual-radar PCB and enclosure are still being validated and are not yet included here. The current Gerber, schematic, enclosure, and build photos belong to the earlier single-radar hardware generation and do not match the LD2410C reference pinout documented below. Do not order or print these legacy files for the current dual-radar build. They will be replaced after the new hardware is ready for public release.
+> The current dual-radar PCB manufacturing package and schematic are now published under [`pcb/dual_sensor/`](pcb/dual_sensor/). The enclosure files and assembled-device photos still belong to the earlier single-radar generation. A dual-radar enclosure is being refined and is not yet published; do not print the legacy enclosure for the current dual-radar board.
 
 ## Build Gallery
 
@@ -14,8 +14,12 @@ This directory contains the reference hardware information and manufacturing fil
 | ![NAMO PCB](../docs/img/hardware/1.jpg) | ![NAMO BH1750FVI light sensor](../docs/img/hardware/2.jpg) |
 | 3. FPC-SHT40 temperature and humidity sensor | 4. LD2450 radar |
 | ![NAMO FPC-SHT40 sensor](../docs/img/hardware/3.jpg) | ![NAMO LD2450 radar](../docs/img/hardware/4.jpg) |
-| 5. Rear view before closing the enclosure | 6. Final assembly |
-| ![NAMO assembled hardware before closing the rear enclosure](../docs/img/hardware/5.jpg) | ![NAMO final assembly](../docs/img/hardware/6.jpg) |
+| 4-1. LD2410C static-presence radar | 5. Rear view before closing the enclosure |
+| ![NAMO LD2410C static-presence radar](../docs/img/hardware/4-1.jpg) | ![NAMO assembled hardware before closing the rear enclosure](../docs/img/hardware/5.jpg) |
+| 6. Final assembly | |
+| ![NAMO final assembly](../docs/img/hardware/6.jpg) | |
+
+Photos 1-6 document the earlier single-radar build. Photo 4-1 shows the optional LD2410C used by the current dual-radar design. Updated dual-radar enclosure and final-assembly photos will be added after the enclosure is finalized.
 
 ## Supported Hardware
 
@@ -64,21 +68,23 @@ The BH1750, SHT4x, and PIR sensors may be omitted. Their values will not be avai
 
 ## PCB Manufacturing Files
 
-The following PCB files are retained only as legacy single-radar references. The updated dual-radar manufacturing package is not yet published.
+The current dual-radar design adds the optional LD2410C UART connection documented in the pinout above. The previous single-radar board remains available as a legacy reference.
 
-- [Gerber archive](pcb/Gerber.zip)
-- [Schematic](pcb/schematic.png)
+- Current dual-radar board: [Gerber archive](pcb/dual_sensor/Gerber.zip) · [Schematic](pcb/dual_sensor/schematic.png)
+- Legacy single-radar board: [Gerber archive](pcb/single_sensor/Gerber.zip) · [Schematic](pcb/single_sensor/schematic.png)
 
-Review the manufacturing archive and board requirements before ordering. The Gerber files are provided as reference manufacturing outputs for the documented pinout.
+Review the selected manufacturing archive, schematic, supply voltages, connector orientation, and board requirements before ordering. Use the dual-radar package when building the current LD2450 + LD2410C reference hardware.
 
 ## Enclosure Models
 
-The following enclosure files fit the earlier hardware generation. Updated enclosure files for the dual-radar layout are not yet published.
+The following enclosure files fit the earlier single-radar hardware generation. The updated enclosure for the dual-radar layout is still being refined and is not yet published.
 
 - [Top enclosure](enclosure/top.3mf)
 - [Bottom enclosure](enclosure/bottom.3mf)
 
 Open the 3MF files in your slicer and verify scale, orientation, supports, and material settings before printing. Printer calibration and material shrinkage can affect the final fit.
+
+These legacy models are not expected to fit the current dual-radar PCB and sensor arrangement without modification.
 
 ## DIY Build Notes
 
