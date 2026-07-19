@@ -8,6 +8,12 @@ button:
       name: "LD2450 Restart"
       entity_category: config
 
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    query_params:
+      id: ld2410_query_params
+      internal: true
+
   - platform: restart
     name: "Restart Device"
     id: restart_device

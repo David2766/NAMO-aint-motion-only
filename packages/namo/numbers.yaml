@@ -56,6 +56,36 @@ number:
         id: zone_3_y2
         entity_category: config
 
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    g0:
+      move_threshold: { id: ld2410_g0_move_threshold, internal: true }
+      still_threshold: { id: ld2410_g0_still_threshold, internal: true }
+    g1:
+      move_threshold: { id: ld2410_g1_move_threshold, internal: true }
+      still_threshold: { id: ld2410_g1_still_threshold, internal: true }
+    g2:
+      move_threshold: { id: ld2410_g2_move_threshold, internal: true }
+      still_threshold: { id: ld2410_g2_still_threshold, internal: true }
+    g3:
+      move_threshold: { id: ld2410_g3_move_threshold, internal: true }
+      still_threshold: { id: ld2410_g3_still_threshold, internal: true }
+    g4:
+      move_threshold: { id: ld2410_g4_move_threshold, internal: true }
+      still_threshold: { id: ld2410_g4_still_threshold, internal: true }
+    g5:
+      move_threshold: { id: ld2410_g5_move_threshold, internal: true }
+      still_threshold: { id: ld2410_g5_still_threshold, internal: true }
+    g6:
+      move_threshold: { id: ld2410_g6_move_threshold, internal: true }
+      still_threshold: { id: ld2410_g6_still_threshold, internal: true }
+    g7:
+      move_threshold: { id: ld2410_g7_move_threshold, internal: true }
+      still_threshold: { id: ld2410_g7_still_threshold, internal: true }
+    g8:
+      move_threshold: { id: ld2410_g8_move_threshold, internal: true }
+      still_threshold: { id: ld2410_g8_still_threshold, internal: true }
+
   - platform: template
     name: "LED Blink Duration"
     id: led_blink_duration

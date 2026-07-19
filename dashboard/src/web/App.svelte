@@ -119,7 +119,7 @@
   let activeTab = $state<AppTab>("dashboard");
   let floorplanHasUnsavedChanges = $state(false);
   let languageMenuOpen = $state(false);
-  let activeZoneTool = $state<"" | "zones" | "calibration">("");
+  let activeZoneTool = $state<"" | "zones" | "calibration" | "staticRadar">("");
   let haSetupGateVisible = $state(requiresHaSetupHandoff());
   let haSetupGateMode = $state<HaSetupGateMode>(requiresHaSetupHandoff() ? "select" : "api-warmup");
   let haSetupGateBusy = $state(false);
@@ -1140,6 +1140,7 @@
     />
   {:else if activeTab === "zones"}
     <ZonesPage
+      {api}
       messages={i18n.msg}
       {activeZoneTool}
       {activeTargetCount}

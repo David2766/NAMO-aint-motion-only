@@ -1,9 +1,24 @@
 # 재실 트래커 향후 작업
 
-[presence-tracker.ko.md](presence-tracker.ko.md)에서 분리한 향후 tracker 작업 메모다.
+향후 작업도 현재 획득 경계를 유지해야 한다. PIR과 LD2450은 재실을 시작할 수
+있지만 선택적인 LD2410C 보조는 이미 시작된 세션만 유지할 수 있다.
 
-## 1. 다음 안전한 단계
+## 다음 검증 단계
 
-1. 실제 진단 로그에서 기존 presence와 tracker presence를 비교한다.
-2. shadow 데이터가 안정적이면 direction/moving/still 표시 로직부터 tracker 출력으로 옮긴다.
-3. 실제 설치 데이터로 tracker 경로가 안정적이라는 것이 확인될 때까지 기존 경로를 fallback으로 유지한다.
+1. 여러 설치 환경에서 수면, 책상 작업, 빈방, 선풍기, 냉난방 및 확인된 퇴실
+   리플레이를 수집한다.
+2. 개별 사례가 아니라 해당 로그를 기준으로 Kalman noise, association 범위와
+   coasting 한도를 조정한다.
+3. 짧은 알 수 없음 값을 견디는 현재 동작은 유지하면서, LD2410C 거리값이 장시간
+   유효하지 않을 때 expiry가 필요한지 측정한다.
+4. held-target 거리 허용치 750mm를 방 크기, 설치 방향과 근접한 다중 레이더
+   환경에서 검증한다.
+5. production 기본값을 바꾸기 전에 false-off 시간, false-on 시간, fragmentation과
+   재획득 지연을 비교한다.
+
+## 별도 기능
+
+- BLE nearby 근거는 선택 사항이어야 하며 조용히 필수 획득 근거가 되어서는 안 된다.
+- 수면 시간 설정은 암묵적인 트래커 휴리스틱이 아니라 명시적인 제품 모드로 다룬다.
+- 다중 기기 조정은 이 트래커가 아니라
+  [multi-sensor-contract.ko.md](multi-sensor-contract.ko.md)에서 다룬다.

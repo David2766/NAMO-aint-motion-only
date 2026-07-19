@@ -836,7 +836,10 @@
       ></polygon>
       {#each renderableTargets() as target (target.id)}
         {@const targetPoint = rotatedPoint(target.x, target.y)}
-        <g class="floorplan-radar-target" style={`--target-color:${target.color || "#ff6b7a"}`}>
+        <g
+          class={`floorplan-radar-target${target.displayMode ? ` ${target.displayMode}` : ""}`}
+          style={`--target-color:${target.color || "#ff6b7a"}`}
+        >
           <circle cx={targetPoint.x} cy={targetPoint.y} r="8"></circle>
           <text x={targetPoint.x + 10} y={targetPoint.y - 10}>{target.name}</text>
         </g>

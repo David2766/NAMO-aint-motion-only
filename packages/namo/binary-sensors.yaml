@@ -27,6 +27,24 @@ binary_sensor:
       disabled_by_default: true
       device_class: occupancy
 
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    has_target:
+      name: "Static Radar Presence Raw"
+      id: ld2410_has_target
+      entity_category: diagnostic
+      disabled_by_default: true
+    has_moving_target:
+      name: "Static Radar Moving Raw"
+      id: ld2410_has_moving_target
+      entity_category: diagnostic
+      disabled_by_default: true
+    has_still_target:
+      name: "Static Radar Still Raw"
+      id: ld2410_has_still_target
+      entity_category: diagnostic
+      disabled_by_default: true
+
   # Software zone presence for automation
   - platform: gpio
     pin:

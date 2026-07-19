@@ -41,7 +41,7 @@ jobs:
         run: python -m pip install esphome==2026.5.1
 
       - name: Validate ESPHome configuration
-        run: python -m esphome config presence-sensor-xiao-s3.yaml
+        run: python -m esphome config namo.yaml
 
       - name: Install dependencies
         run: npm ci

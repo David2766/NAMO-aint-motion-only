@@ -17,6 +17,10 @@ NATIVE_DIR = Path(__file__).resolve().parent
 TEST_CPP = NATIVE_DIR / "tracker_tests.cpp"
 DEVICE_CONFIG_CPP = ROOT / "components" / "radar_api_server" / "device_config_cache.cpp"
 SOFTWARE_ZONE_EVIDENCE_CPP = ROOT / "components" / "radar_api_server" / "software_zone_evidence.cpp"
+PRESENCE_FUSION_CPP = ROOT / "components" / "radar_api_server" / "presence_fusion.cpp"
+PRESENCE_REPLAY_LOG_CPP = ROOT / "components" / "radar_api_server" / "presence_replay_log.cpp"
+STATE_JSON_BUILDER_CPP = ROOT / "components" / "radar_api_server" / "state_json_builder.cpp"
+TEST_INCLUDE_DIR = NATIVE_DIR / "include"
 OUT_EXE = NATIVE_DIR / ("tracker_tests.exe" if os.name == "nt" else "tracker_tests")
 
 
@@ -27,9 +31,13 @@ def test_command(compiler: str, kind: str) -> list[str]:
         "/std:c++17",
         "/EHsc",
         "/O2",
+        f"/I{TEST_INCLUDE_DIR}",
         f"/I{build.INCLUDE_DIR}",
         str(TEST_CPP),
         str(build.TRACKER_CPP),
+        str(PRESENCE_FUSION_CPP),
+        str(PRESENCE_REPLAY_LOG_CPP),
+        str(STATE_JSON_BUILDER_CPP),
         str(DEVICE_CONFIG_CPP),
         str(SOFTWARE_ZONE_EVIDENCE_CPP),
         f"/Fe:{OUT_EXE}",
@@ -60,9 +68,13 @@ def test_command(compiler: str, kind: str) -> list[str]:
         compiler,
         "-std=c++17",
         "-O2",
+        f"-I{TEST_INCLUDE_DIR}",
         f"-I{build.INCLUDE_DIR}",
         str(TEST_CPP),
         str(build.TRACKER_CPP),
+        str(PRESENCE_FUSION_CPP),
+        str(PRESENCE_REPLAY_LOG_CPP),
+        str(STATE_JSON_BUILDER_CPP),
         str(DEVICE_CONFIG_CPP),
         str(SOFTWARE_ZONE_EVIDENCE_CPP),
         "-o",

@@ -73,6 +73,22 @@ void PresenceReplayLog::update(const PresenceTrackerInput &input, const Presence
   sample.tracker_coasting_track_count = snapshot.tracker_coasting_track_count;
   sample.tracker_moving_track_count = snapshot.tracker_moving_track_count;
   sample.tracker_still_track_count = snapshot.tracker_still_track_count;
+  sample.static_radar_available = snapshot.static_radar.available;
+  sample.static_radar_presence = snapshot.static_radar.presence;
+  sample.static_radar_moving = snapshot.static_radar.moving;
+  sample.static_radar_still = snapshot.static_radar.still;
+  sample.static_radar_moving_distance_mm = clamp_u16_(snapshot.static_radar.moving_distance_mm);
+  sample.static_radar_still_distance_mm = clamp_u16_(snapshot.static_radar.still_distance_mm);
+  sample.static_radar_moving_energy = clamp_u16_(snapshot.static_radar.moving_energy);
+  sample.static_radar_still_energy = clamp_u16_(snapshot.static_radar.still_energy);
+  sample.static_radar_detection_distance_mm = clamp_u16_(snapshot.static_radar.detection_distance_mm);
+  sample.pir_evidence = snapshot.pir_evidence;
+  sample.tracker_evidence = snapshot.tracker_evidence;
+  sample.static_assist_armed = snapshot.static_assist_armed;
+  sample.static_assist_active = snapshot.static_assist_active;
+  sample.static_assist_arm_pending = snapshot.static_assist_arm_pending;
+  sample.static_assist_exit_veto = snapshot.static_assist_exit_veto;
+  sample.static_assist_arm_elapsed_ms = clamp_u16_(snapshot.static_assist_arm_elapsed_ms);
   sample.presence_reason_code = presence_reason_code_(snapshot.presence_reason);
   sample.presence_off_reason_code = presence_reason_code_(snapshot.presence_off_reason);
   sample.motion_reason_code = motion_reason_code_(snapshot.motion_reason);
@@ -102,6 +118,8 @@ bool PresenceReplayLog::format_ndjson_sample(size_t offset, char *out, size_t ou
       "{\"q\":%u,\"t\":%u,\"p\":%u,\"lx\":%.1f,"
       "\"r\":[[%u,%d,%d,%d,%u,%d,%u,%u],[%u,%d,%d,%d,%u,%d,%u,%u],[%u,%d,%d,%d,%u,%d,%u,%u]],"
       "\"tg\":[[%u,%d,%d,%d,%u],[%u,%d,%d,%d,%u],[%u,%d,%d,%d,%u]],"
+      "\"sr\":[%u,%u,%u,%u,%u,%u,%u,%u,%u],"
+      "\"sf\":[%u,%u,%u,%u,%u,%u,%u],"
       "\"f\":[%u,%u,%d,%d,%d],"
       "\"ex\":[%u,%d,%d,%d],"
       "\"l\":[%u,%u,%u,%d,%d,%d,%d,%d,%u,%u,%u,%u,%u],"
@@ -121,7 +139,17 @@ bool PresenceReplayLog::format_ndjson_sample(size_t offset, char *out, size_t ou
       sample.targets[1].valid ? 1 : 0, sample.targets[1].x_mm, sample.targets[1].y_mm,
       sample.targets[1].speed_cm_s, sample.targets[1].distance_mm,
       sample.targets[2].valid ? 1 : 0, sample.targets[2].x_mm, sample.targets[2].y_mm,
-      sample.targets[2].speed_cm_s, sample.targets[2].distance_mm, sample.filter_blocked ? 1 : 0,
+      sample.targets[2].speed_cm_s, sample.targets[2].distance_mm,
+      sample.static_radar_available ? 1 : 0, sample.static_radar_presence ? 1 : 0,
+      sample.static_radar_moving ? 1 : 0, sample.static_radar_still ? 1 : 0,
+      sample.static_radar_moving_distance_mm, sample.static_radar_still_distance_mm,
+      sample.static_radar_moving_energy, sample.static_radar_still_energy,
+      sample.static_radar_detection_distance_mm,
+      sample.pir_evidence ? 1 : 0, sample.tracker_evidence ? 1 : 0,
+      sample.static_assist_armed ? 1 : 0, sample.static_assist_active ? 1 : 0,
+      sample.static_assist_arm_pending ? 1 : 0, sample.static_assist_exit_veto ? 1 : 0,
+      sample.static_assist_arm_elapsed_ms,
+      sample.filter_blocked ? 1 : 0,
       sample.range_reason_code,
       sample.range_suspect_count, sample.range_out_of_range_count, sample.range_remote_candidate_count,
       sample.exit_zone_active ? 1 : 0, sample.exit_zone_mask, sample.exit_target_count,
@@ -191,6 +219,12 @@ uint8_t PresenceReplayLog::presence_reason_code_(const char *value) {
   if (std::strcmp(reason, "target_lost_hold_expired") == 0) return 6;
   if (std::strcmp(reason, "tracker_primary") == 0) return 7;
   if (std::strcmp(reason, "tracker_lost_hold_expired") == 0) return 8;
+  if (std::strcmp(reason, "static_radar_assist") == 0) return 9;
+  if (std::strcmp(reason, "static_radar_clear") == 0) return 10;
+  if (std::strcmp(reason, "static_radar_unavailable") == 0) return 11;
+  if (std::strcmp(reason, "lost_after_exit") == 0) return 12;
+  if (std::strcmp(reason, "lost_without_exit") == 0) return 13;
+  if (std::strcmp(reason, "lost_after_room_exit") == 0) return 14;
   return 255;
 }
 

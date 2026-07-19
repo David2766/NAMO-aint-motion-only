@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 
+#include "presence_fusion.h"
+
 namespace esphome {
 namespace radar_api_server {
 
@@ -44,6 +46,14 @@ struct DiagnosticSnapshot {
   int tracker_still_track_count{0};
   const char *tracker_state{nullptr};
   const char *tracker_reason{nullptr};
+  StaticRadarEvidence static_radar{};
+  bool pir_evidence{false};
+  bool tracker_evidence{false};
+  bool static_assist_armed{false};
+  bool static_assist_active{false};
+  bool static_assist_arm_pending{false};
+  bool static_assist_exit_veto{false};
+  uint32_t static_assist_arm_elapsed_ms{0};
 };
 
 class DiagnosticLog {

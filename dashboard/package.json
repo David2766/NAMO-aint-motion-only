@@ -1,7 +1,7 @@
 {
-  "name": "presence-sensor-dashboard",
+  "name": "namo-dashboard",
   "version": "0.1.0",
-  "description": "Embedded dashboard source for Presence Sensor XIAO S3 firmware",
+  "description": "Embedded dashboard source for NAMO firmware",
   "type": "module",
   "private": true,
   "scripts": {
@@ -11,8 +11,9 @@
     "generate:setup-i18n": "node scripts/generate-setup-page-i18n.mjs",
     "check:setup-i18n": "node scripts/generate-setup-page-i18n.mjs --check",
     "dev:web": "npm run generate:setup-i18n && vite --mode web",
-    "test": "npm run check:setup-i18n && vitest run",
+    "test": "npm run check:setup-i18n && npm run test:replay && vitest run",
     "test:native": "python ../tools/presence-replay/native/test.py",
+    "test:replay": "python ../tools/presence-replay/test_replay.py",
     "test:watch": "vitest",
     "typecheck": "npm run check:setup-i18n && tsc --noEmit",
     "lint": "eslint . --max-warnings 0",

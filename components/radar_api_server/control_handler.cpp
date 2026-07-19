@@ -2,7 +2,10 @@
 
 #include "http_response.h"
 #include "timezone_catalog.h"
+#include "esphome/core/hal.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <string>
 
@@ -54,6 +57,23 @@ bool read_float_field(const std::string &body, const char *field, float *out) {
   if (end == start)
     return false;
   *out = value;
+  return true;
+}
+
+bool read_int_field(const std::string &body, const char *field, int *out) {
+  const std::string key = std::string("\"") + field + "\"";
+  const size_t key_pos = body.find(key);
+  if (key_pos == std::string::npos)
+    return false;
+  const size_t colon = body.find(':', key_pos + key.size());
+  if (colon == std::string::npos)
+    return false;
+  const char *start = body.c_str() + colon + 1;
+  char *end = nullptr;
+  const long value = strtol(start, &end, 10);
+  if (end == start)
+    return false;
+  *out = static_cast<int>(value);
   return true;
 }
 
@@ -109,11 +129,13 @@ bool ControlHandler::can_handle(AsyncWebServerRequest *request) const {
   auto url = request->url_to(url_buf);
 
   if (request->method() == HTTP_GET)
-    return url == "/api/control/status";
+    return url == "/api/control/status" || url == "/api/control/static-radar-tuning";
   if (request->method() == HTTP_POST)
     return url == "/api/control/status-led" || url == "/api/control/led-duration" ||
            url == "/api/control/environment-correction" || url == "/api/control/temperature-offset" ||
-           url == "/api/control/humidity-offset" || url == "/api/control/timezone";
+           url == "/api/control/humidity-offset" || url == "/api/control/timezone" ||
+           url == "/api/control/static-radar-tuning/session" ||
+           url == "/api/control/static-radar-tuning/gate";
   return false;
 }
 
@@ -126,6 +148,11 @@ bool ControlHandler::handle(AsyncWebServerRequest *request) {
 
   if (request->method() == HTTP_GET && url == "/api/control/status") {
     this->handle_status_(request);
+    return true;
+  }
+
+  if (request->method() == HTTP_GET && url == "/api/control/static-radar-tuning") {
+    this->handle_static_radar_tuning_status_(request);
     return true;
   }
 
@@ -156,6 +183,17 @@ bool ControlHandler::handle(AsyncWebServerRequest *request) {
 
   if (request->method() == HTTP_POST && url == "/api/control/timezone") {
     this->handle_timezone_(request);
+    return true;
+  }
+
+
+  if (request->method() == HTTP_POST && url == "/api/control/static-radar-tuning/session") {
+    this->handle_static_radar_tuning_session_(request);
+    return true;
+  }
+
+  if (request->method() == HTTP_POST && url == "/api/control/static-radar-tuning/gate") {
+    this->handle_static_radar_tuning_gate_(request);
     return true;
   }
 
@@ -282,6 +320,76 @@ void ControlHandler::handle_timezone_(AsyncWebServerRequest *request) {
   // ESPHome's IDF web adapter maps unsupported response codes, including 202,
   // to 500. The pending state remains observable through the status endpoint.
   http_response::send_json(request, 200, R"({"ok":true,"changed":true,"todayStatsReset":true})");
+}
+
+void ControlHandler::handle_static_radar_tuning_status_(AsyncWebServerRequest *request) {
+  auto *stream = request->beginResponseStream("application/json");
+  stream->printf(R"({"ok":true,"available":%s,"active":%s,"resolutionMm":%u,"gates":[)",
+                 this->control_state_->static_radar_available ? "true" : "false",
+                 this->control_state_->static_radar_tuning_active ? "true" : "false",
+                 static_cast<unsigned>(this->control_state_->static_radar_gate_resolution_mm));
+
+  if (this->control_state_->static_radar_tuning_active) {
+    for (size_t gate = 0; gate < ControlState::STATIC_RADAR_GATE_COUNT; gate++) {
+      const auto &value = this->control_state_->static_radar_gates[gate];
+      const float effective_threshold = std::min(value.move_threshold, value.still_threshold);
+      const int sensitivity = static_cast<int>(std::round(100.0f - effective_threshold));
+      stream->printf(
+          R"(%s{"gate":%u,"startMm":%u,"endMm":%u,"sensitivity":%d,"moveEnergy":%.0f,"stillEnergy":%.0f})",
+          gate == 0 ? "" : ",", static_cast<unsigned>(gate),
+          static_cast<unsigned>(gate * this->control_state_->static_radar_gate_resolution_mm),
+          static_cast<unsigned>((gate + 1) * this->control_state_->static_radar_gate_resolution_mm),
+          std::max(0, std::min(100, sensitivity)), value.move_energy, value.still_energy);
+    }
+  }
+
+  stream->print("]}");
+  request->send(stream);
+}
+
+void ControlHandler::handle_static_radar_tuning_session_(AsyncWebServerRequest *request) {
+  std::string body;
+  bool active = false;
+  if (!body_arg(request, &body) || !read_bool_field(body, "active", &active)) {
+    http_response::send_error_info(request, 400, "invalid_active", "invalid_request", "error",
+                                   R"({"field":"active","target":"static_radar_tuning"})");
+    return;
+  }
+  if (active && !this->control_state_->static_radar_available) {
+    http_response::send_error_info(request, 409, "static_radar_unavailable", "static_radar_unavailable", "warning",
+                                   R"({"target":"ld2410c"})");
+    return;
+  }
+
+  const bool changed = this->control_state_->static_radar_tuning_requested_active != active;
+  this->control_state_->static_radar_tuning_requested_active = active;
+  this->control_state_->static_radar_tuning_keepalive_ms = active ? millis() : 0;
+  this->control_state_->pending_static_radar_tuning_session =
+      this->control_state_->pending_static_radar_tuning_session || changed;
+  http_response::send_json(request, 200, R"({"ok":true})");
+}
+
+void ControlHandler::handle_static_radar_tuning_gate_(AsyncWebServerRequest *request) {
+  std::string body;
+  int gate = -1;
+  int sensitivity = -1;
+  if (!body_arg(request, &body) || !read_int_field(body, "gate", &gate) ||
+      !read_int_field(body, "sensitivity", &sensitivity) || gate < 0 || gate >= 9 || sensitivity < 0 ||
+      sensitivity > 100) {
+    http_response::send_error_info(request, 400, "invalid_static_radar_gate", "invalid_request", "error",
+                                   R"({"field":"gate,sensitivity","target":"static_radar_tuning"})");
+    return;
+  }
+  if (!this->control_state_->static_radar_tuning_active) {
+    http_response::send_error_info(request, 409, "static_radar_tuning_inactive", "static_radar_tuning_inactive",
+                                   "warning", R"({"target":"ld2410c"})");
+    return;
+  }
+
+  this->control_state_->requested_static_radar_gate = static_cast<uint8_t>(gate);
+  this->control_state_->requested_static_radar_sensitivity = static_cast<uint8_t>(sensitivity);
+  this->control_state_->pending_static_radar_gate = true;
+  http_response::send_json(request, 200, R"({"ok":true})");
 }
 
 }  // namespace radar_api_server

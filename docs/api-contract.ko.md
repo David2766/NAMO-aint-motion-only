@@ -18,6 +18,9 @@
 
 - `/api/system/status`
 - `/api/setup/*`
+- `/api/state`의 `debug.staticRadar`는 제한된 크기의 LD2410C 입력과 재실 보조 상태를 제공한다.
+  `available`, `presence`, `moving`, `still`, 거리, 에너지 및 짧은 `reason`은 센서 입력이며,
+  `assist`는 이미 시작된 재실을 유지하는 융합 상태를 제공한다.
 - 평면도 업로드 API
 - 통계 업로드 및 백업/복원 API
 - 보정 관련 API
@@ -320,6 +323,9 @@ Endpoints:
 
 - `GET /api/control/status`
 - `POST /api/control/timezone`
+- `GET /api/control/static-radar-tuning`
+- `POST /api/control/static-radar-tuning/session`
+- `POST /api/control/static-radar-tuning/gate`
 
 Rules:
 
@@ -335,6 +341,28 @@ Rules:
   `timezone`, `timezoneKnown`, `timezoneApplyPending`을 제공한다.
 - 지원하지 않는 시간대 식별자는 `field: timezone`, `target: timezone`을
   담은 표준 `invalid_request` envelope으로 응답한다.
+
+LD2410C 튜닝은 평상시 거리별 계측을 실행하지 않도록 수명이 짧은
+engineering 세션을 사용한다.
+
+- `GET /api/control/static-radar-tuning`은 항상 `available`과 `active`를
+  반환한다. 비활성 상태에서는 `gates`가 비어 있고, 활성 상태에서는
+  G0부터 G8까지의 `startMm`, `endMm`, `sensitivity`, `moveEnergy`,
+  `stillEnergy`를 반환한다. 게이트 에너지는 튜닝용 계측값이며 감지된
+  타깃 위치로 해석하면 안 된다.
+- `POST /api/control/static-radar-tuning/session`은 boolean `active`가
+  필요하다. 활성 요청은 keepalive 역할도 하며, 15초 동안 활성
+  keepalive가 없으면 펌웨어가 engineering mode를 자동으로 종료해야 한다.
+- LD2410C가 없을 때 세션을 시작하면 HTTP `409`와
+  `static_radar_unavailable` 코드를 반환한다.
+- `POST /api/control/static-radar-tuning/gate`는 `[0, 8]` 범위의 정수
+  `gate`와 `[0, 100]` 범위의 정수 `sensitivity`가 필요하다. 제품 UI의
+  민감도는 `threshold = 100 - sensitivity`로 변환하여 LD2410C의 이동 및
+  정지 threshold에 함께 적용한다.
+- gate 변경은 engineering 세션이 활성 상태일 때만 허용한다. 그렇지
+  않으면 HTTP `409`와 `static_radar_tuning_inactive` 코드를 반환한다.
+- Engineering 계측은 진단 용도일 뿐이며 재실, 움직임, 타깃 좌표와 수,
+  구역, 방 또는 히트맵을 변경하면 안 된다.
 
 ### 7.3 업로드 코드
 
@@ -565,3 +593,64 @@ Calibration zone type:
 ```
 
 기존 문자열 필드는 남겨도 되지만, 새 UI 작업은 `code`를 우선 사용한다.
+
+---
+
+## 15. LD2410C 재실 보조 규약
+
+`GET /api/state`의 `debug.staticRadar`는 LD2410C 입력과 재실 보조 상태를 제공한다.
+`detectionDistanceMm`은 LD2410C가 보고한 단일 최종 감지 거리에 최근
+3개 중앙값 필터를 적용한 값이다. 1초에 최대 한 개의 거리만 중앙값 이력에
+넣으며, 짧은 유효하지 않은 거리값은 마지막 안정값을 덮어쓰지 않는다.
+보조 레이더 재실이 해제되거나 센서가 없어지면 필터 상태를 초기화한다.
+`movingDistanceMm`과 `stillDistanceMm`은 진단용 원시값이며 클라이언트가
+두 값을 조합해 타깃 위치를 추론하면 안 된다.
+`assist` 객체는 `armed`, `active`, `armPending`, `armElapsedMs`, `exitVeto`와 선택적인
+`heldTarget` 스냅샷을 포함한다.
+LD2410C 타깃 위치를 표시하는 클라이언트는 `presence`와 단일
+`detectionDistanceMm`만 사용해야 한다.
+`debug.presenceEvidence`는 PIR, LD2450 트래커, LD2410C 보조 증거를 각각 표시한다.
+
+LD2410C는 PIR 또는 확정된 LD2450 트랙으로 이미 시작된 재실 세션만 유지할 수 있다.
+LD2410C 단독으로 재실을 새로 켜면 안 되며 움직임, 활성 타깃 좌표와 개수, 방 상태,
+구역 재실 또는 히트맵 샘플을 만들면 안 된다.
+현재 drop 이벤트가 `lost_after_exit` 또는 `lost_after_room_exit`이면 해당 소실에 대해 새로운 정적 레이더 hold를 시작하지 않는다.
+LD2410C가 없거나 통신할 수 없으면 `available: false`로 처리하고 기존 PIR 및 LD2450 동작을 그대로 유지한다.
+
+보조 유지가 활성화된 동안 `assist.heldTarget`은 정확히 하나였던 마지막 확정 또는 코스팅
+LD2450 트랙의 좌표를 표시 목적으로만 보존할 수 있다. 명확한 이전 공간 타깃이 없으면
+`null`이다. 이 스냅샷은 활성 타깃이 아니며 타깃 수, 구역, 방, 보정 또는 히트맵 계산에
+포함하면 안 된다.
+
+```json
+{
+  "heldTarget": {
+    "id": "target_1",
+    "x": 600,
+    "y": 1800,
+    "lastDistanceMm": 1897,
+    "staticDistanceMm": 1950,
+    "distanceDeltaMm": 53,
+    "distanceMatched": true
+  }
+}
+```
+
+안정화된 `detectionDistanceMm`을 사용할 수 없거나 값이 유효하지 않으면
+`staticDistanceMm`과 `distanceDeltaMm`은 `null`이고 `distanceMatched`는 `false`다. 대시보드는 거리 일치
+스냅샷을 기존 타깃 모습으로, 불일치 스냅샷을 위치 불확실 상태로 표시할 수 있다.
+
+리플레이의 선택적 `sr` 튜플은 다음 순서로 정적 레이더 근거를 기록한다.
+
+```text
+[available, presence, moving, still, movingDistanceMm, stillDistanceMm, movingEnergy, stillEnergy, detectionDistanceMm]
+```
+
+리더는 기존 8개짜리 튜플도 받아야 하며 빠진 `detectionDistanceMm`은 `0`으로
+처리한다.
+
+리플레이의 선택적 `sf` 튜플은 다음 순서로 융합 상태를 기록한다.
+
+```text
+[pirEvidence, trackerEvidence, assistArmed, assistActive, armPending, exitVeto, armElapsedMs]
+```

@@ -8,6 +8,12 @@ switch:
       name: "Multi Target Tracking"
       entity_category: config
 
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    engineering_mode:
+      id: ld2410_engineering_mode
+      internal: true
+
   - platform: template
     name: "Status LED Enable"
     id: status_led_enable_switch

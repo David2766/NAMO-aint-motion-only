@@ -14,11 +14,11 @@
 
 ## 재실 추적
 
-- [presence-exit-zone.md](presence-exit-zone.md): 정지 인체 false-off를 줄이기 위한 향후 exit-zone evidence layer.
-- [presence-exit-zone.ko.md](presence-exit-zone.ko.md): exit-zone 메모의 한국어 버전.
+- [presence-exit-zone.md](presence-exit-zone.md): production 트래커가 사용하는 현재 퇴실 지점 및 방 경계 근거.
+- [presence-exit-zone.ko.md](presence-exit-zone.ko.md): 현재 퇴실 근거 동작의 한국어 문서.
 - [presence-tracker.md](presence-tracker.md): 현재 tracker의 책임, 경계, 구현 메모.
 - [presence-tracker.ko.md](presence-tracker.ko.md): 현재 tracker 메모의 한국어 버전.
-- [presence-tracker-future.md](presence-tracker-future.md): 향후 tracker 작업 및 전환 메모.
+- [presence-tracker-future.md](presence-tracker-future.md): 현재 획득 경계를 유지하는 향후 검증 및 튜닝 작업.
 - [presence-tracker-future.ko.md](presence-tracker-future.ko.md): 향후 tracker 메모의 한국어 버전.
 
 ## 리플레이 및 시뮬레이션

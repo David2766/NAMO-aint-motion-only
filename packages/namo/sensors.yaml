@@ -8,6 +8,62 @@ sensor:
       internal: true
     address: 0x44
     update_interval: 30s
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    detection_distance:
+      name: "Static Radar Detection Distance Raw"
+      id: ld2410_detection_distance_cm
+      entity_category: diagnostic
+      disabled_by_default: true
+      filters:
+        - throttle_with_priority: 1s
+    moving_distance:
+      name: "Static Radar Moving Distance Raw"
+      id: ld2410_moving_distance_cm
+      entity_category: diagnostic
+      disabled_by_default: true
+    still_distance:
+      name: "Static Radar Still Distance Raw"
+      id: ld2410_still_distance_cm
+      entity_category: diagnostic
+      disabled_by_default: true
+    moving_energy:
+      name: "Static Radar Moving Energy Raw"
+      id: ld2410_moving_energy
+      entity_category: diagnostic
+      disabled_by_default: true
+    still_energy:
+      name: "Static Radar Still Energy Raw"
+      id: ld2410_still_energy
+      entity_category: diagnostic
+      disabled_by_default: true
+    g0:
+      move_energy: { id: ld2410_g0_move_energy, internal: true }
+      still_energy: { id: ld2410_g0_still_energy, internal: true }
+    g1:
+      move_energy: { id: ld2410_g1_move_energy, internal: true }
+      still_energy: { id: ld2410_g1_still_energy, internal: true }
+    g2:
+      move_energy: { id: ld2410_g2_move_energy, internal: true }
+      still_energy: { id: ld2410_g2_still_energy, internal: true }
+    g3:
+      move_energy: { id: ld2410_g3_move_energy, internal: true }
+      still_energy: { id: ld2410_g3_still_energy, internal: true }
+    g4:
+      move_energy: { id: ld2410_g4_move_energy, internal: true }
+      still_energy: { id: ld2410_g4_still_energy, internal: true }
+    g5:
+      move_energy: { id: ld2410_g5_move_energy, internal: true }
+      still_energy: { id: ld2410_g5_still_energy, internal: true }
+    g6:
+      move_energy: { id: ld2410_g6_move_energy, internal: true }
+      still_energy: { id: ld2410_g6_still_energy, internal: true }
+    g7:
+      move_energy: { id: ld2410_g7_move_energy, internal: true }
+      still_energy: { id: ld2410_g7_still_energy, internal: true }
+    g8:
+      move_energy: { id: ld2410_g8_move_energy, internal: true }
+      still_energy: { id: ld2410_g8_still_energy, internal: true }
   - platform: ld2450
     ld2450_id: ld2450_radar
     target_count:

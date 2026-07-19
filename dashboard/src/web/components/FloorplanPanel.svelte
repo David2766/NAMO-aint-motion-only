@@ -14,6 +14,7 @@
   import {
     buildFloorplanStorageDocument,
   } from "../../core/floorplan/floorplan-storage";
+  import { presenceDisplayTargets } from "../../core/presence-target-display";
   import { useDeviceStorageStatus } from "../state/useDeviceStorageStatus.svelte";
   import { createStoredFloorplanEditor } from "../state/useStoredFloorplanEditor.svelte";
   import { createStoredFloorplanEditSession } from "../state/useStoredFloorplanEditSession.svelte";
@@ -771,7 +772,7 @@
         radarScalePercent: floorplanRadar.scalePercent,
         zones: deviceConfig?.zones ?? [],
         calibrationZones: deviceConfig?.calibrationZones ?? [],
-        targets: deviceState?.targets ?? [],
+        targets: presenceDisplayTargets(deviceState),
         wallSegments: floorplanRadar.boundarySegments(),
         occlusionSegments: floorplanRadar.occlusionSegments(),
         ignoredOcclusionSegmentIds: floorplanRadar.ignoredOcclusionEdges,
@@ -950,7 +951,7 @@
           radarScalePercent: storedWorkspace.radarScalePercent(),
           zones: storedRadarZones.overlayZones(),
           calibrationZones: deviceConfig?.calibrationZones ?? [],
-          targets: deviceState?.targets ?? [],
+          targets: presenceDisplayTargets(deviceState),
           wallSegments: storedWorkspace.roomBoundarySegments(),
           occlusionSegments: storedWorkspace.radarOcclusionSegments(),
           ignoredOcclusionSegmentIds: storedWorkspace.ignoredOcclusionSegmentIds(),

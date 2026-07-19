@@ -29,6 +29,12 @@ PRESENCE_REASON = {
     6: "target_lost_hold_expired",
     7: "tracker_primary",
     8: "tracker_lost_hold_expired",
+    9: "static_radar_assist",
+    10: "static_radar_clear",
+    11: "static_radar_unavailable",
+    12: "lost_after_exit",
+    13: "lost_without_exit",
+    14: "lost_after_room_exit",
     255: "unknown",
 }
 
@@ -126,6 +132,22 @@ class ReplaySample:
     illuminance_lux: float
     raw_targets: tuple[RawTarget, RawTarget, RawTarget]
     targets: tuple[Target, Target, Target]
+    static_radar_available: bool
+    static_radar_presence: bool
+    static_radar_moving: bool
+    static_radar_still: bool
+    static_radar_moving_distance_mm: int
+    static_radar_still_distance_mm: int
+    static_radar_moving_energy: int
+    static_radar_still_energy: int
+    static_radar_detection_distance_mm: int
+    pir_evidence: bool
+    tracker_evidence: bool
+    static_assist_armed: bool
+    static_assist_active: bool
+    static_assist_arm_pending: bool
+    static_assist_exit_veto: bool
+    static_assist_arm_elapsed_ms: int
     filter_blocked: bool
     range_reason_code: int
     range_suspect_count: int
@@ -291,6 +313,8 @@ def parse_sample(row: dict[str, object], line_number: int) -> ReplaySample:
     try:
         raw_targets = tuple(parse_raw_target(value) for value in row["r"])
         targets = tuple(parse_target(value) for value in row["tg"])
+        static_radar_tuple = row.get("sr", [0, 0, 0, 0, 0, 0, 0, 0])
+        static_fusion_tuple = row.get("sf", [0, 0, 0, 0, 0, 0, 0])
         filter_tuple = row["f"]
         exit_tuple = row.get("ex", [0, 0, 0, -1])
         legacy_tuple = row["l"]
@@ -302,6 +326,10 @@ def parse_sample(row: dict[str, object], line_number: int) -> ReplaySample:
         raise ValueError(f"line {line_number}: expected exactly 3 targets")
     if len(filter_tuple) != 5:
         raise ValueError(f"line {line_number}: filter tuple must have 5 items")
+    if len(static_radar_tuple) not in (8, 9):
+        raise ValueError(f"line {line_number}: static radar tuple must have 8 or 9 items")
+    if len(static_fusion_tuple) != 7:
+        raise ValueError(f"line {line_number}: static fusion tuple must have 7 items")
     if len(exit_tuple) != 4:
         raise ValueError(f"line {line_number}: exit tuple must have 4 items")
     if len(legacy_tuple) != 13:
@@ -316,6 +344,22 @@ def parse_sample(row: dict[str, object], line_number: int) -> ReplaySample:
         illuminance_lux=float(row["lx"]),
         raw_targets=raw_targets,  # type: ignore[arg-type]
         targets=targets,  # type: ignore[arg-type]
+        static_radar_available=parse_bool_int(static_radar_tuple[0]),
+        static_radar_presence=parse_bool_int(static_radar_tuple[1]),
+        static_radar_moving=parse_bool_int(static_radar_tuple[2]),
+        static_radar_still=parse_bool_int(static_radar_tuple[3]),
+        static_radar_moving_distance_mm=int(static_radar_tuple[4]),
+        static_radar_still_distance_mm=int(static_radar_tuple[5]),
+        static_radar_moving_energy=int(static_radar_tuple[6]),
+        static_radar_still_energy=int(static_radar_tuple[7]),
+        static_radar_detection_distance_mm=int(static_radar_tuple[8]) if len(static_radar_tuple) == 9 else 0,
+        pir_evidence=parse_bool_int(static_fusion_tuple[0]),
+        tracker_evidence=parse_bool_int(static_fusion_tuple[1]),
+        static_assist_armed=parse_bool_int(static_fusion_tuple[2]),
+        static_assist_active=parse_bool_int(static_fusion_tuple[3]),
+        static_assist_arm_pending=parse_bool_int(static_fusion_tuple[4]),
+        static_assist_exit_veto=parse_bool_int(static_fusion_tuple[5]),
+        static_assist_arm_elapsed_ms=int(static_fusion_tuple[6]),
         filter_blocked=parse_bool_int(filter_tuple[0]),
         range_reason_code=int(filter_tuple[1]),
         range_suspect_count=int(filter_tuple[2]),

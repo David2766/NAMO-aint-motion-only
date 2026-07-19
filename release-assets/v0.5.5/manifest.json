@@ -1,0 +1,14 @@
+{
+  "name": "NAMO",
+  "version": "0.5.5",
+  "channel": "release",
+  "firmware": [
+    "namo-v0.5.5-factory.bin",
+    "namo-v0.5.5-ota.bin"
+  ],
+  "thirdPartyNotices": [
+    "THIRD_PARTY_NOTICES.md",
+    "THIRD_PARTY_LICENSES.txt"
+  ],
+  "checksums": "checksums.txt"
+}

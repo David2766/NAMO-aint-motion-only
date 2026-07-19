@@ -421,9 +421,33 @@
     target1_valid, id(target_1_x_raw).state, id(target_1_y_raw).state,
     target2_valid, id(target_2_x_raw).state, id(target_2_y_raw).state,
     target3_valid, id(target_3_x_raw).state, id(target_3_y_raw).state);
+  esphome::radar_api_server::StaticRadarEvidence static_radar;
+  // LD2410 distance sensors suppress duplicate values, so freshness is not a
+  // transport heartbeat. A valid target-state frame establishes availability
+  // for this boot; distance values remain optional supporting evidence.
+  static_radar.available = id(ld2410_has_target).has_state();
+  static_radar.presence = static_radar.available && id(ld2410_has_target).state;
+  static_radar.moving = static_radar.available && id(ld2410_has_moving_target).state;
+  static_radar.still = static_radar.available && id(ld2410_has_still_target).state;
+  static_radar.detection_distance_mm =
+    id(ld2410_detection_distance_cm).has_state() && !isnan(id(ld2410_detection_distance_cm).state)
+      ? id(ld2410_detection_distance_cm).state * 10.0f : 0.0f;
+  static_radar.moving_distance_mm =
+    id(ld2410_moving_distance_cm).has_state() && !isnan(id(ld2410_moving_distance_cm).state)
+      ? id(ld2410_moving_distance_cm).state * 10.0f : 0.0f;
+  static_radar.still_distance_mm =
+    id(ld2410_still_distance_cm).has_state() && !isnan(id(ld2410_still_distance_cm).state)
+      ? id(ld2410_still_distance_cm).state * 10.0f : 0.0f;
+  static_radar.moving_energy =
+    id(ld2410_moving_energy).has_state() && !isnan(id(ld2410_moving_energy).state)
+      ? id(ld2410_moving_energy).state : 0.0f;
+  static_radar.still_energy =
+    id(ld2410_still_energy).has_state() && !isnan(id(ld2410_still_energy).state)
+      ? id(ld2410_still_energy).state : 0.0f;
   id(radar_api).update_presence_tracker(
-    now, id(pir_motion).state, state_filter_blocked, tracker_zone_evidence.room_context_configured,
-    id(illuminance_lux).state, id(dir_stationary_speed),
+    now, id(pir_motion).state, state_filter_blocked, id(state_presence_stable),
+    tracker_zone_evidence.room_context_configured,
+    static_radar, id(illuminance_lux).state, id(dir_stationary_speed),
     target1_valid, id(target_1_x_raw).state, id(target_1_y_raw).state,
     id(target_1_speed_raw).state, id(target_1_distance_raw).state, tracker_zone_evidence.target_exit_masks[0],
     tracker_zone_evidence.target_room_inside[0], tracker_zone_evidence.target_room_outside[0],
@@ -471,36 +495,18 @@
     id(radar_api).disable_legacy_presence();
   }
   const auto &legacy_presence = id(radar_api).legacy_presence_output();
+  const auto &presence_fusion = id(radar_api).presence_fusion_output();
   const bool state_still_hold_active = legacy_presence_fallback_enabled ? legacy_presence.still_hold_active : false;
-  const bool state_presence_tracker_raw =
-    id(pir_motion).state ? true :
-    state_filter_blocked ? false :
-    tracker_output.presence;
   const bool state_presence_raw =
-    tracker_primary_enabled ? state_presence_tracker_raw : legacy_presence.presence;
+    tracker_primary_enabled ? presence_fusion.presence : legacy_presence.presence;
   const bool state_motion_raw =
-    tracker_primary_enabled ? (state_filter_blocked ? false : tracker_output.motion) :
-    legacy_presence.motion;
-  const char *state_presence_tracker_reason =
-    id(pir_motion).state ? "pir" :
-    state_filter_blocked ? "filter_blocked" :
-    tracker_output.presence ? "tracker_primary" :
-    "none";
+    tracker_primary_enabled ? presence_fusion.motion : legacy_presence.motion;
   const char *state_presence_raw_reason =
-    tracker_primary_enabled ? state_presence_tracker_reason : legacy_presence.presence_reason;
-  const auto tracker_drop_reason_available = [](const char *value) -> bool {
-    if (value == nullptr || value[0] == '\0') return false;
-    return !(value[0] == 'n' && value[1] == 'o' && value[2] == 'n' && value[3] == 'e' && value[4] == '\0');
-  };
+    tracker_primary_enabled ? presence_fusion.presence_reason : legacy_presence.presence_reason;
   const char *state_tracker_off_reason =
-    tracker_drop_reason_available(tracker_output.drop_reason) ? tracker_output.drop_reason : "tracker_lost_hold_expired";
-  const char *state_motion_tracker_reason =
-    state_filter_blocked ? "filter_blocked" :
-    id(pir_motion).state ? "pir" :
-    tracker_output.motion ? "tracker_motion" :
-    "none";
+    presence_fusion.presence_off_reason;
   const char *state_motion_raw_reason =
-    tracker_primary_enabled ? state_motion_tracker_reason : legacy_presence.motion_reason;
+    tracker_primary_enabled ? presence_fusion.motion_reason : legacy_presence.motion_reason;
   if (legacy_presence_fallback_enabled) {
     id(diag_still_confidence) = legacy_presence.still_confidence;
     id(diag_still_anchor_valid) = legacy_presence.still_anchor_valid;
@@ -643,6 +649,16 @@
   state_json_input.range_suspect_count = id(diag_range_suspect_count);
   state_json_input.range_out_of_range_count = id(diag_range_out_of_range_count);
   state_json_input.range_remote_candidate_count = id(diag_range_remote_candidate_count);
+  state_json_input.static_radar = presence_fusion.static_radar;
+  state_json_input.static_radar_reason = presence_fusion.static_radar_reason;
+  state_json_input.pir_evidence = presence_fusion.pir_evidence;
+  state_json_input.tracker_evidence = presence_fusion.tracker_evidence;
+  state_json_input.static_assist_armed = presence_fusion.static_assist_armed;
+  state_json_input.static_assist_active = presence_fusion.static_assist_active;
+  state_json_input.static_assist_arm_pending = presence_fusion.static_assist_arm_pending;
+  state_json_input.static_assist_exit_veto = presence_fusion.static_assist_exit_veto;
+  state_json_input.static_assist_arm_elapsed_ms = presence_fusion.static_assist_arm_elapsed_ms;
+  state_json_input.static_assist_held_target = presence_fusion.static_assist_held_target;
   state_json_input.targets[0] = {"target_1", "T1", "#ff6b7a", effective_target1_x, effective_target1_y, effective_target1_valid};
   state_json_input.targets[1] = {"target_2", "T2", "#ffd166", effective_target2_x, effective_target2_y, effective_target2_valid};
   state_json_input.targets[2] = {"target_3", "T3", "#06d6a0", effective_target3_x, effective_target3_y, effective_target3_valid};
@@ -944,6 +960,77 @@
     humidity_offset_call.set_value(requested_humidity_offset);
     humidity_offset_call.perform();
   }
+
+  bool requested_static_radar_tuning_active = false;
+  if (id(radar_api).take_static_radar_tuning_session_request(now, &requested_static_radar_tuning_active)) {
+    if (requested_static_radar_tuning_active && static_radar.available) {
+      id(ld2410_engineering_mode).turn_on();
+      id(ld2410_query_params).press();
+    } else {
+      id(ld2410_engineering_mode).turn_off();
+    }
+  }
+
+  uint8_t requested_static_radar_gate = 0;
+  uint8_t requested_static_radar_sensitivity = 0;
+  if (id(radar_api).take_static_radar_gate_request(
+          &requested_static_radar_gate, &requested_static_radar_sensitivity)) {
+    std::array<esphome::number::Number *, 9> move_threshold_numbers = {
+        id(ld2410_g0_move_threshold), id(ld2410_g1_move_threshold), id(ld2410_g2_move_threshold),
+        id(ld2410_g3_move_threshold), id(ld2410_g4_move_threshold), id(ld2410_g5_move_threshold),
+        id(ld2410_g6_move_threshold), id(ld2410_g7_move_threshold), id(ld2410_g8_move_threshold)};
+    std::array<esphome::number::Number *, 9> still_threshold_numbers = {
+        id(ld2410_g0_still_threshold), id(ld2410_g1_still_threshold), id(ld2410_g2_still_threshold),
+        id(ld2410_g3_still_threshold), id(ld2410_g4_still_threshold), id(ld2410_g5_still_threshold),
+        id(ld2410_g6_still_threshold), id(ld2410_g7_still_threshold), id(ld2410_g8_still_threshold)};
+    const float threshold = 100.0f - requested_static_radar_sensitivity;
+    move_threshold_numbers[requested_static_radar_gate]->publish_state(threshold);
+    auto threshold_call = still_threshold_numbers[requested_static_radar_gate]->make_call();
+    threshold_call.set_value(threshold);
+    threshold_call.perform();
+  }
+
+  std::array<float, 9> static_move_energy{};
+  std::array<float, 9> static_still_energy{};
+  std::array<float, 9> static_move_threshold{};
+  std::array<float, 9> static_still_threshold{};
+  static_move_threshold.fill(100.0f);
+  static_still_threshold.fill(100.0f);
+  if (id(ld2410_engineering_mode).state) {
+    const auto sensor_value = [](auto *entity) -> float {
+      return entity != nullptr && entity->has_state() && !isnan(entity->state) ? entity->state : 0.0f;
+    };
+    const auto threshold_value = [](auto *entity) -> float {
+      return entity != nullptr && entity->has_state() && !isnan(entity->state) ? entity->state : 100.0f;
+    };
+    static_move_energy = {
+        sensor_value(id(ld2410_g0_move_energy)), sensor_value(id(ld2410_g1_move_energy)),
+        sensor_value(id(ld2410_g2_move_energy)), sensor_value(id(ld2410_g3_move_energy)),
+        sensor_value(id(ld2410_g4_move_energy)), sensor_value(id(ld2410_g5_move_energy)),
+        sensor_value(id(ld2410_g6_move_energy)), sensor_value(id(ld2410_g7_move_energy)),
+        sensor_value(id(ld2410_g8_move_energy))};
+    static_still_energy = {
+        sensor_value(id(ld2410_g0_still_energy)), sensor_value(id(ld2410_g1_still_energy)),
+        sensor_value(id(ld2410_g2_still_energy)), sensor_value(id(ld2410_g3_still_energy)),
+        sensor_value(id(ld2410_g4_still_energy)), sensor_value(id(ld2410_g5_still_energy)),
+        sensor_value(id(ld2410_g6_still_energy)), sensor_value(id(ld2410_g7_still_energy)),
+        sensor_value(id(ld2410_g8_still_energy))};
+    static_move_threshold = {
+        threshold_value(id(ld2410_g0_move_threshold)), threshold_value(id(ld2410_g1_move_threshold)),
+        threshold_value(id(ld2410_g2_move_threshold)), threshold_value(id(ld2410_g3_move_threshold)),
+        threshold_value(id(ld2410_g4_move_threshold)), threshold_value(id(ld2410_g5_move_threshold)),
+        threshold_value(id(ld2410_g6_move_threshold)), threshold_value(id(ld2410_g7_move_threshold)),
+        threshold_value(id(ld2410_g8_move_threshold))};
+    static_still_threshold = {
+        threshold_value(id(ld2410_g0_still_threshold)), threshold_value(id(ld2410_g1_still_threshold)),
+        threshold_value(id(ld2410_g2_still_threshold)), threshold_value(id(ld2410_g3_still_threshold)),
+        threshold_value(id(ld2410_g4_still_threshold)), threshold_value(id(ld2410_g5_still_threshold)),
+        threshold_value(id(ld2410_g6_still_threshold)), threshold_value(id(ld2410_g7_still_threshold)),
+        threshold_value(id(ld2410_g8_still_threshold))};
+  }
+  id(radar_api).update_static_radar_tuning_status(
+      static_radar.available, id(ld2410_engineering_mode).state, 750,
+      static_move_energy, static_still_energy, static_move_threshold, static_still_threshold);
 
   id(radar_api).update_control_status(
       id(led_enabled),

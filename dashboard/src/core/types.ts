@@ -92,6 +92,7 @@ export interface WebTarget {
   filtered?: boolean;
   reduced?: boolean;
   filterReason?: string;
+  displayMode?: "static-matched" | "static-uncertain";
 }
 
 export interface WebZone {
@@ -132,6 +133,11 @@ export interface WebDeviceDebug {
   emptySamplesConsecutive?: number;
   shortPresenceDropCount?: number;
   longPresenceDropCount?: number;
+  presenceEvidence?: {
+    pir?: boolean;
+    tracker?: boolean;
+    staticAssist?: boolean;
+  };
   still?: {
     state?: string;
     reason?: string;
@@ -148,6 +154,34 @@ export interface WebDeviceDebug {
     suspectTargetCount?: number;
     outOfRangeTargetCount?: number;
     remoteCandidateCount?: number;
+  };
+  staticRadar?: {
+    available?: boolean;
+    presence?: boolean;
+    moving?: boolean;
+    still?: boolean;
+    detectionDistanceMm?: number;
+    movingDistanceMm?: number;
+    stillDistanceMm?: number;
+    movingEnergy?: number;
+    stillEnergy?: number;
+    reason?: "unavailable" | "moving" | "still" | "target" | "clear" | string;
+    assist?: {
+      armed?: boolean;
+      active?: boolean;
+      armPending?: boolean;
+      armElapsedMs?: number;
+      exitVeto?: boolean;
+      heldTarget?: {
+        id?: string;
+        x?: number;
+        y?: number;
+        lastDistanceMm?: number;
+        staticDistanceMm?: number | null;
+        distanceDeltaMm?: number | null;
+        distanceMatched?: boolean;
+      } | null;
+    };
   };
   room?: {
     configured?: boolean;

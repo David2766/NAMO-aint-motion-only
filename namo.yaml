@@ -1,0 +1,23 @@
+substitutions:
+  device_name: presence-sensor
+  friendly_name: Presence Sensor
+  name_add_mac_suffix: "true"
+  project_name: truststorm.presence-sensor
+  project_version: "0.5.5"
+
+packages:
+  base: !include packages/namo/base.yaml
+  radar: !include packages/namo/radar.yaml
+  primary_entities: !include packages/namo/primary-entities.yaml
+  zones: !include packages/namo/zones.yaml
+  stats: !include packages/namo/stats.yaml
+  globals: !include packages/namo/globals.yaml
+  binary_sensors: !include packages/namo/binary-sensors.yaml
+  sensors: !include packages/namo/sensors.yaml
+  switches: !include packages/namo/switches.yaml
+  numbers: !include packages/namo/numbers.yaml
+  selects: !include packages/namo/selects.yaml
+  buttons: !include packages/namo/buttons.yaml
+  text_sensors: !include packages/namo/text-sensors.yaml
+  intervals: !include packages/namo/intervals.yaml
+  web: !include packages/namo/web.yaml

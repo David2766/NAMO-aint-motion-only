@@ -12,7 +12,8 @@ import type {
   WebSystemRebootResult,
   WebSystemResetOptions,
   WebSystemResetResult,
-  WebSystemStatus
+  WebSystemStatus,
+  WebStaticRadarTuningStatus
 } from "../types";
 
 const deviceBaseUrl = normalizeDeviceBaseUrl(new URLSearchParams(window.location.search).get("device") || "");
@@ -209,6 +210,10 @@ export const deviceApi: DeviceApi = {
     return requestJson<WebControlStatus>("/api/control/status");
   },
 
+  async getStaticRadarTuningStatus(): Promise<WebStaticRadarTuningStatus> {
+    return requestJson<WebStaticRadarTuningStatus>("/api/control/static-radar-tuning", { cache: "no-store" });
+  },
+
   async saveConfig(config: WebDeviceConfig): Promise<void> {
     await deviceStorageQueue.run("config", () =>
       uploadJsonPayload(
@@ -258,6 +263,14 @@ export const deviceApi: DeviceApi = {
 
   async setTimezone(timezone: string): Promise<void> {
     await postJsonData("/api/control/timezone", { timezone });
+  },
+
+  async setStaticRadarTuningSession(active: boolean): Promise<void> {
+    await postJsonData("/api/control/static-radar-tuning/session", { active });
+  },
+
+  async setStaticRadarGateSensitivity(gate: number, sensitivity: number): Promise<void> {
+    await postJsonData("/api/control/static-radar-tuning/gate", { gate, sensitivity });
   },
 
   async saveFloorplan(document, image): Promise<void> {

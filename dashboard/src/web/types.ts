@@ -12,6 +12,7 @@ export interface DeviceApi {
   getApiKey?(): Promise<WebApiKeyResult>;
   completeHaSetupHandoff?(): Promise<WebHaSetupHandoffResult>;
   getControlStatus?(): Promise<WebControlStatus>;
+  getStaticRadarTuningStatus?(): Promise<WebStaticRadarTuningStatus>;
   rebootSystem?(): Promise<WebSystemRebootResult>;
   saveConfig(config: WebDeviceConfig): Promise<void>;
   saveStats(stats: WebDeviceStats, onProgress?: (progress: FirmwareUploadProgress) => void): Promise<void>;
@@ -21,6 +22,8 @@ export interface DeviceApi {
   setTemperatureOffset?(value: number): Promise<void>;
   setHumidityOffset?(value: number): Promise<void>;
   setTimezone?(timezone: string): Promise<void>;
+  setStaticRadarTuningSession?(active: boolean): Promise<void>;
+  setStaticRadarGateSensitivity?(gate: number, sensitivity: number): Promise<void>;
   saveFloorplan?(document: FloorplanStorageDocument, image: Blob): Promise<void>;
   uploadFirmware?(file: File, onProgress: (progress: FirmwareUploadProgress) => void): Promise<void>;
   resetSystem?(options: WebSystemResetOptions): Promise<WebSystemResetResult>;
@@ -66,6 +69,23 @@ export interface WebControlStatus {
   timezone?: string;
   timezoneKnown?: boolean;
   timezoneApplyPending?: boolean;
+}
+
+export interface WebStaticRadarGateTuning {
+  gate: number;
+  startMm: number;
+  endMm: number;
+  sensitivity: number;
+  moveEnergy: number;
+  stillEnergy: number;
+}
+
+export interface WebStaticRadarTuningStatus {
+  ok: boolean;
+  available: boolean;
+  active: boolean;
+  resolutionMm: number;
+  gates: WebStaticRadarGateTuning[];
 }
 
 export interface WebSystemStatus {

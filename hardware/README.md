@@ -4,6 +4,9 @@
 
 This directory contains the reference hardware information and manufacturing files for NAMO.
 
+> [!IMPORTANT]
+> The updated dual-radar PCB and enclosure are still being validated and are not yet included here. The current Gerber, schematic, enclosure, and build photos belong to the earlier single-radar hardware generation and do not match the LD2410C reference pinout documented below. Do not order or print these legacy files for the current dual-radar build. They will be replaced after the new hardware is ready for public release.
+
 ## Build Gallery
 
 | 1. PCB | 2. BH1750FVI light sensor |
@@ -19,7 +22,8 @@ This directory contains the reference hardware information and manufacturing fil
 | Hardware | Required | Notes |
 | --- | ---: | --- |
 | Seeed Studio XIAO ESP32S3, 8MB Flash / 8MB PSRAM | Yes | Required by the current partition and memory configuration |
-| LD2450-series mmWave radar | Yes | Primary presence and spatial tracking sensor |
+| LD2450-series mmWave radar | Yes | Presence acquisition and spatial tracking sensor |
+| LD2410C static-presence radar | Optional | Maintains an already established presence session when available |
 | Panasonic EKMC1603111 PIR sensor | Optional | Uses GPIO1; an omitted input must remain electrically stable |
 | BH1750 light sensor | Optional | Shares the I2C bus |
 | SHT4x temperature and humidity sensor | Optional | Shares the I2C bus |
@@ -35,6 +39,8 @@ The reference firmware and PCB use the following Seeed Studio XIAO ESP32S3 pin l
 | PIR input | D0 | GPIO1 | PIR sensor OUT |
 | I2C SDA | D4 | GPIO5 | BH1750 SDA, SHT4x SDA |
 | I2C SCL | D5 | GPIO6 | BH1750 SCL, SHT4x SCL |
+| LD2410C UART TX | D1 | GPIO2 | LD2410C RX |
+| LD2410C UART RX | D2 | GPIO3 | LD2410C TX |
 | LD2450 UART TX | D6 | GPIO43 | LD2450 RX |
 | LD2450 UART RX | D7 | GPIO44 | LD2450 TX |
 | Status LED | Built-in LED | GPIO21 | XIAO built-in user LED |
@@ -42,15 +48,23 @@ The reference firmware and PCB use the following Seeed Studio XIAO ESP32S3 pin l
 
 ## Wiring Notes
 
-The LD2450 TX/RX pins must be crossed with the XIAO UART pins: XIAO TX goes to LD2450 RX, and XIAO RX goes to LD2450 TX.
+The LD2450 and LD2410C TX/RX pins must be crossed with the corresponding XIAO UART pins: XIAO TX goes to radar RX, and XIAO RX goes to radar TX.
+
+GPIO3 is an ESP32-S3 strapping pin. The reference board routes it to LD2410C TX; avoid adding external pull-up or pull-down resistors that can force an invalid boot strap level.
 
 BH1750 and SHT4x share the same I2C bus. Check the operating voltage of each module before wiring power, and connect all module grounds to the XIAO GND.
 
 The LD2450 is required for presence, target tracking, and zone detection. The firmware may boot without it, but those features will not work correctly.
 
+LD2410C support is optional at runtime. When present, it may maintain a presence session that PIR or confirmed LD2450 tracking already started. It cannot start presence by itself and does not create motion, target coordinates, target counts, room state, or zone presence. Raw presence, moving/still distances and energy remain available for diagnostics; replay also records the stabilized canonical detection distance and assist state.
+
+Assistance arms only after LD2410C detection overlaps PIR or confirmed LD2450 presence for 2 seconds. Confirmed exit evidence and filter blocking veto the assistance. Without either veto, an armed LD2410C has a 30-second reentry window for the same recently ended session. Its canonical detection distance uses a three-sample median. Missing hardware is ignored, and the dashboard tuning session enables per-gate engineering telemetry only while the tuning panel is open.
+
 The BH1750, SHT4x, and PIR sensors may be omitted. Their values will not be available and warnings may appear in the logs. If the PIR sensor is omitted, keep GPIO1 electrically stable or remove the PIR-related YAML configuration to prevent false triggers.
 
 ## PCB Manufacturing Files
+
+The following PCB files are retained only as legacy single-radar references. The updated dual-radar manufacturing package is not yet published.
 
 - [Gerber archive](pcb/Gerber.zip)
 - [Schematic](pcb/schematic.png)
@@ -58,6 +72,8 @@ The BH1750, SHT4x, and PIR sensors may be omitted. Their values will not be avai
 Review the manufacturing archive and board requirements before ordering. The Gerber files are provided as reference manufacturing outputs for the documented pinout.
 
 ## Enclosure Models
+
+The following enclosure files fit the earlier hardware generation. Updated enclosure files for the dual-radar layout are not yet published.
 
 - [Top enclosure](enclosure/top.3mf)
 - [Bottom enclosure](enclosure/bottom.3mf)

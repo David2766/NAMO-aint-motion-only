@@ -2,19 +2,31 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 
 #include "../../../components/radar_api_server/device_config_cache.h"
+#include "../../../components/radar_api_server/presence_fusion.h"
+#include "../../../components/radar_api_server/presence_replay_log.h"
 #include "../../../components/radar_api_server/presence_tracker.h"
 #include "../../../components/radar_api_server/software_zone_evidence.h"
+#include "../../../components/radar_api_server/state_json_builder.h"
 #include "../../../components/radar_api_server/timezone_catalog.h"
 
 namespace {
 
 using esphome::radar_api_server::DeviceConfigCache;
+using esphome::radar_api_server::PresenceFusion;
+using esphome::radar_api_server::PresenceFusionInput;
+using esphome::radar_api_server::PresenceReplayLog;
+using esphome::radar_api_server::PresenceReplayRawInput;
 using esphome::radar_api_server::PresenceTracker;
 using esphome::radar_api_server::PresenceTrackerInput;
 using esphome::radar_api_server::PresenceTrackerOutput;
 using esphome::radar_api_server::SoftwareZoneTarget;
+using esphome::radar_api_server::DeviceStateJsonInput;
+using esphome::radar_api_server::DiagnosticSnapshot;
+using esphome::radar_api_server::SoftwareZoneEvidence;
+using esphome::radar_api_server::build_device_state_json;
 using esphome::radar_api_server::compute_software_zone_evidence;
 using esphome::radar_api_server::find_timezone;
 using esphome::radar_api_server::is_supported_timezone;
@@ -140,6 +152,619 @@ void pir_hint_confirms_on_second_hit() {
   require(tracker.output().confirmed_track_count == 1, "second PIR-assisted hit should confirm the track");
   require(std::strcmp(tracker.output().reason, "confirmed_by_pir_hint") == 0,
           "PIR-assisted confirmation should expose its reason");
+}
+
+void pir_without_target_is_fusion_evidence_not_tracker_evidence() {
+  PresenceTracker tracker;
+  PresenceTrackerInput tracker_input = make_input(500);
+  tracker_input.pir_motion = true;
+  tracker.update(tracker_input);
+
+  require(!tracker.output().presence, "PIR alone must not create spatial tracker presence");
+  require(!tracker.output().motion, "PIR alone must not create spatial tracker motion");
+
+  PresenceFusion fusion;
+  PresenceFusionInput fusion_input;
+  fusion_input.pir_motion = true;
+  fusion.update(fusion_input, tracker.output());
+
+  require(fusion.output().presence, "PIR should remain instant final presence evidence");
+  require(fusion.output().motion, "PIR should remain instant final motion evidence when filters allow it");
+  require(std::strcmp(fusion.output().presence_reason, "pir") == 0,
+          "PIR final presence should expose its reason");
+}
+
+void fusion_preserves_filter_and_pir_precedence() {
+  PresenceTrackerOutput tracker_output;
+  tracker_output.presence = true;
+  tracker_output.motion = true;
+
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  input.filter_blocked = true;
+  fusion.update(input, tracker_output);
+
+  require(!fusion.output().presence, "filter block should suppress tracker presence");
+  require(!fusion.output().motion, "filter block should suppress tracker motion");
+  require(std::strcmp(fusion.output().presence_reason, "filter_blocked") == 0,
+          "filtered tracker presence should expose filter_blocked");
+
+  input.pir_motion = true;
+  fusion.update(input, tracker_output);
+  require(fusion.output().presence, "PIR should override filter block for presence");
+  require(!fusion.output().motion, "filter block should still suppress PIR motion");
+  require(std::strcmp(fusion.output().presence_reason, "pir") == 0,
+          "PIR presence should keep precedence over filter reason");
+  require(std::strcmp(fusion.output().motion_reason, "filter_blocked") == 0,
+          "filtered PIR motion should expose filter_blocked");
+}
+
+void fusion_uses_tracker_evidence_and_drop_reason() {
+  PresenceTrackerOutput tracker_output;
+  tracker_output.presence = true;
+  tracker_output.motion = true;
+  tracker_output.drop_reason = "lost_after_exit";
+
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  fusion.update(input, tracker_output);
+
+  require(fusion.output().presence, "tracker presence should flow through fusion");
+  require(fusion.output().motion, "tracker motion should flow through fusion");
+  require(std::strcmp(fusion.output().presence_reason, "tracker_primary") == 0,
+          "tracker presence should expose tracker_primary");
+  require(std::strcmp(fusion.output().motion_reason, "tracker_motion") == 0,
+          "tracker motion should expose tracker_motion");
+  require(std::strcmp(fusion.output().presence_off_reason, "lost_after_exit") == 0,
+          "fusion should preserve a concrete tracker drop reason");
+
+  tracker_output.presence = false;
+  tracker_output.motion = false;
+  tracker_output.drop_reason = "none";
+  fusion.update(input, tracker_output);
+  require(std::strcmp(fusion.output().presence_off_reason, "tracker_lost_hold_expired") == 0,
+          "fusion should preserve the existing missing drop-reason fallback");
+}
+
+void static_radar_cannot_acquire_presence_by_itself() {
+  PresenceTrackerOutput tracker_output;
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  input.static_radar.available = true;
+  input.static_radar.presence = true;
+  input.static_radar.still = true;
+  input.static_radar.detection_distance_mm = 1850.0f;
+  input.static_radar.still_distance_mm = 1850.0f;
+  input.static_radar.still_energy = 67.0f;
+
+  fusion.update(input, tracker_output);
+
+  require(!fusion.output().presence, "static radar alone must not acquire production presence");
+  require(!fusion.output().motion, "static radar alone must not create production motion");
+  require(fusion.output().static_radar.available, "static radar availability should reach diagnostic output");
+  require(fusion.output().static_radar.still, "static radar still evidence should reach diagnostic output");
+  require(fusion.output().static_radar.detection_distance_mm == 1850.0f,
+          "static radar detection distance should reach diagnostic output");
+  require(fusion.output().static_radar.still_distance_mm == 1850.0f,
+          "static radar distance should reach diagnostic output");
+  require(std::strcmp(fusion.output().static_radar_reason, "still") == 0,
+          "static radar diagnostic output should expose a stable reason");
+
+  input.static_radar = {};
+  fusion.update(input, tracker_output);
+  require(std::strcmp(fusion.output().static_radar_reason, "unavailable") == 0,
+          "missing static radar heartbeat should be reported as unavailable");
+}
+
+void static_radar_detection_distance_rejects_single_sample_spikes() {
+  PresenceTrackerOutput tracker_output;
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  input.static_radar.available = true;
+  input.static_radar.presence = true;
+
+  input.now_ms = 1000;
+  input.static_radar.detection_distance_mm = 1000.0f;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 1000.0f,
+          "the first valid static distance should be available immediately");
+
+  input.now_ms = 2000;
+  input.static_radar.detection_distance_mm = 3500.0f;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 1000.0f,
+          "one new distance sample should not replace the stable distance");
+
+  input.now_ms = 3000;
+  input.static_radar.detection_distance_mm = 1050.0f;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 1050.0f,
+          "the three-sample median should reject a single distance spike");
+}
+
+void static_radar_detection_distance_accepts_persistent_changes_and_resets() {
+  PresenceTrackerOutput tracker_output;
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  input.static_radar.available = true;
+  input.static_radar.presence = true;
+
+  input.now_ms = 1000;
+  input.static_radar.detection_distance_mm = 1000.0f;
+  fusion.update(input, tracker_output);
+  input.now_ms = 2000;
+  input.static_radar.detection_distance_mm = 3500.0f;
+  fusion.update(input, tracker_output);
+  input.now_ms = 3000;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 3500.0f,
+          "two consecutive new samples should move the stable distance");
+
+  input.now_ms = 3500;
+  input.static_radar.presence = false;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 0.0f,
+          "cleared static presence should reset the stable distance");
+
+  input.now_ms = 4000;
+  input.static_radar.presence = true;
+  input.static_radar.detection_distance_mm = 2200.0f;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 2200.0f,
+          "the first distance after reset should not mix with the previous session");
+}
+
+void static_radar_detection_distance_ignores_duplicate_ticks_and_unavailable_resets() {
+  PresenceTrackerOutput tracker_output;
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  input.static_radar.available = true;
+  input.static_radar.presence = true;
+
+  input.now_ms = 1000;
+  input.static_radar.detection_distance_mm = 1000.0f;
+  fusion.update(input, tracker_output);
+
+  input.now_ms = 1500;
+  input.static_radar.detection_distance_mm = 3500.0f;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 1000.0f,
+          "a duplicate 500 ms tick must not enter the one-second distance window");
+
+  input.now_ms = 2000;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 1000.0f,
+          "one accepted replacement sample should not move the stable distance");
+
+  input.now_ms = 3000;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 3500.0f,
+          "two accepted replacement samples should move the stable distance");
+
+  input.now_ms = 3500;
+  input.static_radar.available = false;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 0.0f,
+          "unavailable static radar should reset the stable distance");
+
+  input.now_ms = 4000;
+  input.static_radar.available = true;
+  input.static_radar.detection_distance_mm = 2200.0f;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_radar.detection_distance_mm == 2200.0f,
+          "the first sample after availability returns should start a new window");
+}
+
+void static_radar_detection_distance_keeps_stable_value_during_invalid_samples() {
+  PresenceTrackerOutput tracker_output;
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  input.static_radar.available = true;
+  input.static_radar.presence = true;
+
+  input.now_ms = 1000;
+  input.static_radar.detection_distance_mm = 1800.0f;
+  fusion.update(input, tracker_output);
+
+  input.now_ms = 2000;
+  input.static_radar.detection_distance_mm = std::numeric_limits<float>::quiet_NaN();
+  fusion.update(input, tracker_output);
+  input.now_ms = 3000;
+  input.static_radar.detection_distance_mm = 0.0f;
+  fusion.update(input, tracker_output);
+
+  require(fusion.output().static_radar.detection_distance_mm == 1800.0f,
+          "brief invalid distance samples should not erase a stable distance while presence remains active");
+}
+
+void replay_log_serializes_canonical_static_distance() {
+  PresenceReplayLog replay_log;
+  PresenceTrackerInput tracker_input = make_input(1000);
+  PresenceReplayRawInput raw_input;
+  DiagnosticSnapshot snapshot;
+  snapshot.ms = 1000;
+  snapshot.static_radar.available = true;
+  snapshot.static_radar.presence = true;
+  snapshot.static_radar.still = true;
+  snapshot.static_radar.moving_distance_mm = 0.0f;
+  snapshot.static_radar.still_distance_mm = 1900.0f;
+  snapshot.static_radar.moving_energy = 0.0f;
+  snapshot.static_radar.still_energy = 67.0f;
+  snapshot.static_radar.detection_distance_mm = 1850.0f;
+
+  replay_log.update(tracker_input, raw_input, snapshot);
+
+  char line[2048]{};
+  require(replay_log.format_ndjson_sample(0, line, sizeof(line)),
+          "replay sample should fit in the diagnostics line buffer");
+  require(std::string(line).find("\"sr\":[1,1,0,1,0,1900,0,67,1850]") != std::string::npos,
+          "replay sr tuple should append the stabilized canonical distance");
+}
+
+void arm_static_assist(PresenceFusion &fusion, PresenceFusionInput &input,
+                       PresenceTrackerOutput &tracker_output) {
+  input.static_radar.available = true;
+  input.static_radar.presence = true;
+  input.static_radar.still = true;
+  input.pir_motion = true;
+  input.stable_presence = false;
+  input.now_ms = 500;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_assist_arm_pending,
+          "static assist should begin arming while primary and static evidence overlap");
+
+  input.stable_presence = true;
+  for (input.now_ms = 1000; input.now_ms <= 2000; input.now_ms += 500)
+    fusion.update(input, tracker_output);
+  require(!fusion.output().static_assist_armed && fusion.output().static_assist_arm_pending,
+          "static assist should not arm before the full two-second overlap");
+
+  input.now_ms = 2500;
+  fusion.update(input, tracker_output);
+
+  require(fusion.output().static_assist_armed,
+          "static assist should arm after two seconds of overlapping evidence");
+  require(!fusion.output().static_assist_active,
+          "static assist should not be active while PIR evidence remains present");
+}
+
+void static_assist_maintains_presence_after_unconfirmed_loss() {
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  PresenceTrackerOutput tracker_output;
+  arm_static_assist(fusion, input, tracker_output);
+
+  input.now_ms = 3000;
+  input.pir_motion = false;
+  tracker_output.drop_reason = "lost_without_exit";
+  tracker_output.drop_ms = input.now_ms;
+  fusion.update(input, tracker_output);
+
+  require(fusion.output().presence, "armed static evidence should maintain presence after unconfirmed loss");
+  require(fusion.output().static_assist_active, "static assist should report active while it maintains presence");
+  require(std::strcmp(fusion.output().presence_reason, "static_radar_assist") == 0,
+          "static-only maintenance should expose its own presence reason");
+  require(!fusion.output().motion, "static assist must not synthesize motion");
+}
+
+void static_assist_preserves_one_spatial_target_with_distance_confidence() {
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  PresenceTrackerOutput tracker_output;
+  tracker_output.presence = true;
+  tracker_output.confirmed_track_count = 1;
+  tracker_output.tracks[0].valid = true;
+  tracker_output.tracks[0].x_mm = 600.0f;
+  tracker_output.tracks[0].y_mm = 1800.0f;
+  input.static_radar.detection_distance_mm = 1950.0f;
+  arm_static_assist(fusion, input, tracker_output);
+
+  input.now_ms = 3000;
+  input.pir_motion = false;
+  tracker_output = {};
+  tracker_output.drop_reason = "lost_without_exit";
+  tracker_output.drop_ms = input.now_ms;
+  fusion.update(input, tracker_output);
+
+  const auto matched = fusion.output().static_assist_held_target;
+  require(fusion.output().static_assist_active, "test setup should enter static assist");
+  require(matched.valid, "static assist should preserve one unambiguous spatial target");
+  require(matched.distance_comparable && matched.distance_matched,
+          "nearby static distance should keep the held target spatially credible");
+  require(std::fabs(matched.x_mm - 600.0f) < 0.1f && std::fabs(matched.y_mm - 1800.0f) < 0.1f,
+          "held target should retain the final tracker coordinate");
+
+  input.now_ms = 3500;
+  input.static_radar.detection_distance_mm = 3200.0f;
+  fusion.update(input, tracker_output);
+  input.now_ms = 4500;
+  fusion.update(input, tracker_output);
+  const auto uncertain = fusion.output().static_assist_held_target;
+  require(uncertain.valid && uncertain.distance_comparable && !uncertain.distance_matched,
+          "a distant static reading should retain the marker but mark its position uncertain");
+}
+
+void static_assist_does_not_guess_between_multiple_spatial_targets() {
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  PresenceTrackerOutput tracker_output;
+  tracker_output.presence = true;
+  tracker_output.confirmed_track_count = 2;
+  tracker_output.tracks[0].valid = true;
+  tracker_output.tracks[0].y_mm = 1800.0f;
+  tracker_output.tracks[1].valid = true;
+  tracker_output.tracks[1].x_mm = 900.0f;
+  tracker_output.tracks[1].y_mm = 2400.0f;
+  input.static_radar.detection_distance_mm = 1800.0f;
+  arm_static_assist(fusion, input, tracker_output);
+
+  input.now_ms = 3000;
+  input.pir_motion = false;
+  tracker_output = {};
+  tracker_output.drop_reason = "lost_without_exit";
+  tracker_output.drop_ms = input.now_ms;
+  fusion.update(input, tracker_output);
+
+  require(fusion.output().static_assist_active, "static evidence may still maintain presence after multiple tracks");
+  require(!fusion.output().static_assist_held_target.valid,
+          "static radar distance must not be assigned to one of multiple prior spatial targets");
+}
+
+void static_assist_combines_pir_and_tracker_reacquisition() {
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  PresenceTrackerOutput tracker_output;
+  arm_static_assist(fusion, input, tracker_output);
+
+  input.now_ms = 3000;
+  input.pir_motion = false;
+  tracker_output.drop_reason = "lost_without_exit";
+  tracker_output.drop_ms = input.now_ms;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_assist_active, "test setup should enter static assist");
+
+  input.now_ms = 3500;
+  input.pir_motion = true;
+  fusion.update(input, tracker_output);
+  require(fusion.output().presence && fusion.output().motion,
+          "PIR evidence should add presence and motion while static evidence remains available");
+  require(fusion.output().pir_evidence, "fusion should expose concurrent PIR evidence");
+  require(!fusion.output().static_assist_active,
+          "static maintenance should be unnecessary while PIR directly supplies presence");
+
+  input.now_ms = 4000;
+  input.pir_motion = false;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_assist_active,
+          "static maintenance should resume after PIR clears in the same occupied session");
+
+  input.now_ms = 4500;
+  tracker_output.presence = true;
+  tracker_output.confirmed_track_count = 1;
+  tracker_output.drop_reason = "none";
+  tracker_output.drop_ms = 0;
+  fusion.update(input, tracker_output);
+  require(fusion.output().presence && fusion.output().tracker_evidence,
+          "confirmed tracker evidence should coexist with armed static evidence");
+  require(!fusion.output().static_assist_active,
+          "static maintenance should be unnecessary while tracker presence is available");
+
+  input.now_ms = 5000;
+  input.pir_motion = true;
+  tracker_output.motion = true;
+  fusion.update(input, tracker_output);
+  require(fusion.output().pir_evidence && fusion.output().tracker_evidence,
+          "PIR and tracker evidence should remain independently visible when both are present");
+  require(fusion.output().motion, "PIR and tracker motion evidence should keep the existing combined motion result");
+}
+
+void static_assist_respects_exit_veto_and_ignores_stale_drop_events() {
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  PresenceTrackerOutput tracker_output;
+  arm_static_assist(fusion, input, tracker_output);
+
+  input.now_ms = 3000;
+  input.pir_motion = false;
+  tracker_output.drop_reason = "lost_after_exit";
+  tracker_output.drop_ms = input.now_ms;
+  fusion.update(input, tracker_output);
+  require(!fusion.output().presence, "confirmed exit should prevent a new static hold");
+  require(fusion.output().static_assist_exit_veto, "confirmed exit should expose its assist veto");
+  require(std::strcmp(fusion.output().presence_off_reason, "lost_after_exit") == 0,
+          "confirmed exit should preserve its off reason while the veto is active");
+
+  input.now_ms = 3500;
+  tracker_output.presence = true;
+  tracker_output.confirmed_track_count = 1;
+  fusion.update(input, tracker_output);
+  require(fusion.output().presence && !fusion.output().static_assist_exit_veto,
+          "confirmed tracker reacquisition should clear the exit veto");
+
+  input.now_ms = 4000;
+  tracker_output.presence = false;
+  tracker_output.confirmed_track_count = 0;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_assist_active,
+          "an already consumed exit drop must not be reapplied after reacquisition");
+}
+
+void static_assist_allows_one_reentry_window_after_stable_presence_ends() {
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  PresenceTrackerOutput tracker_output;
+  arm_static_assist(fusion, input, tracker_output);
+
+  input.now_ms = 3000;
+  input.pir_motion = false;
+  tracker_output.drop_reason = "lost_without_exit";
+  tracker_output.drop_ms = input.now_ms;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_assist_active, "test setup should enter static assist");
+
+  input.now_ms = 3500;
+  input.static_radar.presence = false;
+  fusion.update(input, tracker_output);
+  require(!fusion.output().presence && fusion.output().static_assist_armed,
+          "a static clear should release raw presence but retain arming during the existing three-second tail");
+  require(std::strcmp(fusion.output().presence_off_reason, "static_radar_clear") == 0,
+          "a static clear should expose the correct off reason");
+
+  input.now_ms = 6500;
+  input.stable_presence = false;
+  fusion.update(input, tracker_output);
+  require(!fusion.output().presence && fusion.output().static_assist_armed,
+          "final stable presence off should preserve an armed assist during the reentry window");
+
+  input.now_ms = 36000;
+  input.static_radar.presence = true;
+  fusion.update(input, tracker_output);
+  require(fusion.output().presence && fusion.output().static_assist_active,
+          "static evidence returning within thirty seconds should restore presence");
+}
+
+void static_assist_reentry_window_expires_after_thirty_seconds() {
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  PresenceTrackerOutput tracker_output;
+  arm_static_assist(fusion, input, tracker_output);
+
+  input.now_ms = 3000;
+  input.pir_motion = false;
+  tracker_output.drop_reason = "lost_without_exit";
+  tracker_output.drop_ms = input.now_ms;
+  fusion.update(input, tracker_output);
+
+  input.now_ms = 3500;
+  input.static_radar.presence = false;
+  fusion.update(input, tracker_output);
+
+  input.now_ms = 6500;
+  input.stable_presence = false;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_assist_armed,
+          "test setup should retain the armed assist at the start of the reentry window");
+
+  input.now_ms = 36500;
+  input.static_radar.presence = true;
+  fusion.update(input, tracker_output);
+  require(!fusion.output().presence && !fusion.output().static_assist_armed,
+          "static evidence at or after thirty seconds must not start a new presence session");
+}
+
+void static_assist_reentry_window_respects_exit_and_filter_guards() {
+  PresenceFusion exit_fusion;
+  PresenceFusionInput exit_input;
+  PresenceTrackerOutput exit_tracker_output;
+  arm_static_assist(exit_fusion, exit_input, exit_tracker_output);
+
+  exit_input.now_ms = 3000;
+  exit_input.pir_motion = false;
+  exit_tracker_output.drop_reason = "lost_after_exit";
+  exit_tracker_output.drop_ms = exit_input.now_ms;
+  exit_fusion.update(exit_input, exit_tracker_output);
+
+  exit_input.now_ms = 6000;
+  exit_input.stable_presence = false;
+  exit_fusion.update(exit_input, exit_tracker_output);
+  require(!exit_fusion.output().presence && !exit_fusion.output().static_assist_armed,
+          "confirmed exit must prevent the static assist reentry window");
+
+  PresenceFusion filter_fusion;
+  PresenceFusionInput filter_input;
+  PresenceTrackerOutput filter_tracker_output;
+  arm_static_assist(filter_fusion, filter_input, filter_tracker_output);
+
+  filter_input.now_ms = 3000;
+  filter_input.pir_motion = false;
+  filter_tracker_output.drop_reason = "lost_without_exit";
+  filter_tracker_output.drop_ms = filter_input.now_ms;
+  filter_fusion.update(filter_input, filter_tracker_output);
+
+  filter_input.now_ms = 3500;
+  filter_input.static_radar.presence = false;
+  filter_fusion.update(filter_input, filter_tracker_output);
+
+  filter_input.now_ms = 6500;
+  filter_input.stable_presence = false;
+  filter_fusion.update(filter_input, filter_tracker_output);
+
+  filter_input.now_ms = 7000;
+  filter_input.filter_blocked = true;
+  filter_input.static_radar.presence = true;
+  filter_fusion.update(filter_input, filter_tracker_output);
+  require(!filter_fusion.output().presence && !filter_fusion.output().static_assist_armed,
+          "filter block must cancel an open static assist reentry window");
+
+  filter_input.now_ms = 7500;
+  filter_input.filter_blocked = false;
+  filter_fusion.update(filter_input, filter_tracker_output);
+  require(!filter_fusion.output().presence,
+          "static evidence alone must not restart after a filter-cancelled reentry window");
+}
+
+void static_assist_does_not_bypass_filter_or_missing_hardware() {
+  PresenceFusion fusion;
+  PresenceFusionInput input;
+  PresenceTrackerOutput tracker_output;
+  arm_static_assist(fusion, input, tracker_output);
+
+  input.now_ms = 3000;
+  input.pir_motion = false;
+  tracker_output.drop_reason = "lost_without_exit";
+  tracker_output.drop_ms = input.now_ms;
+  fusion.update(input, tracker_output);
+  require(fusion.output().static_assist_active, "test setup should enter static assist");
+
+  input.now_ms = 3500;
+  input.filter_blocked = true;
+  fusion.update(input, tracker_output);
+  require(!fusion.output().presence && !fusion.output().static_assist_active,
+          "static assist must not bypass the existing filter block");
+
+  input.now_ms = 4000;
+  input.filter_blocked = false;
+  input.static_radar = {};
+  fusion.update(input, tracker_output);
+  require(!fusion.output().presence, "unavailable optional hardware must be ignored");
+  require(std::strcmp(fusion.output().presence_off_reason, "static_radar_unavailable") == 0,
+          "missing static radar heartbeat should explain why maintenance ended");
+}
+
+void state_json_exposes_static_radar_fusion_evidence() {
+  DeviceConfigCache cache;
+  SoftwareZoneEvidence zone_evidence;
+  DeviceStateJsonInput input;
+  input.static_radar.available = true;
+  input.static_radar.presence = true;
+  input.static_radar.still = true;
+  input.static_radar.detection_distance_mm = 1850.0f;
+  input.static_radar.still_distance_mm = 1850.0f;
+  input.static_radar.still_energy = 67.0f;
+  input.static_radar_reason = "still";
+  input.pir_evidence = true;
+  input.static_assist_armed = true;
+  input.static_assist_active = true;
+  input.static_assist_held_target = {true, true, false, 600.0f, 1800.0f, 1897.0f, 3200.0f, 1303.0f};
+
+  const std::string json = build_device_state_json(cache, zone_evidence, "{}", input);
+  require(json.find("\"staticRadar\":{\"available\":true") != std::string::npos,
+          "state JSON should expose static radar availability");
+  require(json.find("\"detectionDistanceMm\":1850") != std::string::npos,
+          "state JSON should expose the canonical static radar detection distance");
+  require(json.find("\"stillDistanceMm\":1850") != std::string::npos,
+          "state JSON should expose static radar distance in millimeters");
+  require(json.find("\"reason\":\"still\"") != std::string::npos,
+          "state JSON should expose static radar reason");
+  require(json.find("\"presenceEvidence\":{\"pir\":true,\"tracker\":false,\"staticAssist\":true}") !=
+              std::string::npos,
+          "state JSON should expose independent presence evidence");
+  require(json.find("\"assist\":{\"armed\":true,\"active\":true") != std::string::npos,
+          "state JSON should expose static assist state");
+  require(json.find("\"heldTarget\":{\"id\":\"target_1\",\"x\":600,\"y\":1800") != std::string::npos,
+          "state JSON should expose the bounded held target snapshot");
+  require(json.find("\"distanceMatched\":false") != std::string::npos,
+          "state JSON should expose held-target distance confidence");
 }
 
 void tentative_track_expires_after_miss_budget() {
@@ -385,6 +1010,25 @@ int main() {
   no_detection_stays_idle();
   confirmation_requires_configured_hit_count();
   pir_hint_confirms_on_second_hit();
+  pir_without_target_is_fusion_evidence_not_tracker_evidence();
+  fusion_preserves_filter_and_pir_precedence();
+  fusion_uses_tracker_evidence_and_drop_reason();
+  static_radar_cannot_acquire_presence_by_itself();
+  static_radar_detection_distance_rejects_single_sample_spikes();
+  static_radar_detection_distance_accepts_persistent_changes_and_resets();
+  static_radar_detection_distance_ignores_duplicate_ticks_and_unavailable_resets();
+  static_radar_detection_distance_keeps_stable_value_during_invalid_samples();
+  replay_log_serializes_canonical_static_distance();
+  static_assist_maintains_presence_after_unconfirmed_loss();
+  static_assist_preserves_one_spatial_target_with_distance_confidence();
+  static_assist_does_not_guess_between_multiple_spatial_targets();
+  static_assist_combines_pir_and_tracker_reacquisition();
+  static_assist_respects_exit_veto_and_ignores_stale_drop_events();
+  static_assist_allows_one_reentry_window_after_stable_presence_ends();
+  static_assist_reentry_window_expires_after_thirty_seconds();
+  static_assist_reentry_window_respects_exit_and_filter_guards();
+  static_assist_does_not_bypass_filter_or_missing_hardware();
+  state_json_exposes_static_radar_fusion_evidence();
   tentative_track_expires_after_miss_budget();
   confirmed_track_coasts_and_reacquires();
   filter_block_ages_track_without_consuming_detection();

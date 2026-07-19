@@ -14,11 +14,11 @@ Start here when deciding which project document to read or update.
 
 ## Presence Tracking
 
-- [presence-exit-zone.md](presence-exit-zone.md): Planned exit-zone evidence layer for reducing still-person false-off events.
-- [presence-exit-zone.ko.md](presence-exit-zone.ko.md): Korean version of exit-zone notes.
+- [presence-exit-zone.md](presence-exit-zone.md): Current exit-zone and room-boundary evidence used by the production tracker.
+- [presence-exit-zone.ko.md](presence-exit-zone.ko.md): Korean version of the current exit-evidence behavior.
 - [presence-tracker.md](presence-tracker.md): Current tracker responsibilities, boundaries, and implementation notes.
 - [presence-tracker.ko.md](presence-tracker.ko.md): Korean version of the current tracker notes.
-- [presence-tracker-future.md](presence-tracker-future.md): Future tracker work and migration notes.
+- [presence-tracker-future.md](presence-tracker-future.md): Future validation and tuning work that preserves the current acquisition boundary.
 - [presence-tracker-future.ko.md](presence-tracker-future.ko.md): Korean version of future tracker notes.
 
 ## Replay and Simulation

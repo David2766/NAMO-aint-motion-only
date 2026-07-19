@@ -1,10 +1,11 @@
-# Presence Replay Plan
+# Presence Replay
 
-This document defines the planned test workflow for presence reliability work.
+This document defines the test workflow for presence reliability work.
 The goal is to stop relying on long manual sitting tests and move toward
 repeatable replay, scoring, and simulation.
 
-This is a design document only. It does not change production behavior.
+Replay diagnostics record production inputs and outputs but do not change
+production behavior by themselves.
 
 ## 1. Goal
 
@@ -37,19 +38,19 @@ This should not be the main way to tune tracker behavior.
 
 ### 2.2 Real Log Replay
 
-The device should capture a compact raw replay log that can be downloaded and
+The device captures a compact raw replay log that can be downloaded and
 replayed on a PC.
 
 The replay log must include the input signals needed to reconstruct tracker
 behavior, not only event summaries.
 
-Planned endpoint:
+Endpoint:
 
 ```text
 GET /api/diagnostics/replay.ndjson
 ```
 
-The endpoint should return newline-delimited JSON. If the endpoint fails, it
+The endpoint returns newline-delimited JSON. If the endpoint fails, it
 must follow `docs/api-contract.md`.
 
 Each row should represent one sampling tick. The preferred interval is the same
@@ -58,7 +59,7 @@ as the production presence tick.
 Example compact row:
 
 ```json
-{"q":12,"t":123456,"p":0,"lx":50.2,"r":[[1,1240,1810,2,2195,0,0,1],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]],"tg":[[1,1240,1810,2,2195],[0,0,0,0,0],[0,0,0,0,0]],"f":[0,0,0,0,0],"ex":[0,0,0,-1],"l":[1,0,1,1,0,1,82,0,1,0,3,2,4],"tr":[1,0,2,1,100,1,1,0,1,0,0,1]}
+{"q":12,"t":123456,"p":0,"lx":50.2,"r":[[1,1240,1810,2,2195,0,0,1],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]],"tg":[[1,1240,1810,2,2195],[0,0,0,0,0],[0,0,0,0,0]],"sr":[1,1,0,1,0,1850,0,67,1850],"sf":[0,0,1,1,0,0,0],"f":[0,0,0,0,0],"ex":[0,0,0,-1],"l":[1,0,1,1,0,1,82,0,9,0,3,2,4],"tr":[0,0,0,0,0,0,0,0,0,0,0,0]}
 ```
 
 Minimum fields:
@@ -71,19 +72,26 @@ Minimum fields:
   Target tuple: `[valid, x, y, speed, distance, filterMode, filtered, rangeValid]`.
 - `tg`: up to three target slots after the current production filter/range-gate path.
   Target tuple: `[valid, x, y, speed, distance]`.
+- `sr`: optional LD2410C static-radar input tuple:
+  `[available, presence, moving, still, movingDistanceMm, stillDistanceMm, movingEnergy, stillEnergy, detectionDistanceMm]`.
+  The final field is the canonical stabilized distance used by presence fusion
+  and dashboard positioning. Legacy eight-item tuples remain valid and decode
+  `detectionDistanceMm` as `0`.
+- `sf`: optional presence-fusion tuple:
+  `[pirEvidence, trackerEvidence, assistArmed, assistActive, armPending, exitVeto, armElapsedMs]`.
+  Missing tuples default to zeros so older replay files remain valid.
 - `f`: filter/range tuple:
   `[filterBlocked, rangeReasonCode, suspectCount, outOfRangeCount, remoteCandidateCount]`.
 - `ex`: exit-zone evidence tuple:
   `[exitActive, exitZoneMask, exitTargetCount, exitLastSeenAgeMs]`.
-- `l`: legacy production tuple:
+- `l`: production presence-output tuple:
   `[presence, motion, still, targetCount, movingCount, stillCount, stillConfidence, emptySamples,
   presenceReasonCode, presenceOffReasonCode, motionReasonCode, stillStateCode, stillReasonCode]`.
 - `tr`: tracker tuple:
   `[presence, motion, stateCode, reasonCode, score, inputCount, activeCount, tentativeCount,
   confirmedCount, coastingCount, movingCount, stillCount]`.
 
-The replay log should be RAM-only at first. It is diagnostic data, not user
-configuration.
+The replay log is RAM-only. It is diagnostic data, not user configuration.
 
 ### 2.3 Ground Truth Labels
 
@@ -146,6 +154,7 @@ Available commands:
 
 ```text
 python tools/presence-replay/replay.py logs/replay.ndjson --truth logs/truth.json
+python tools/presence-replay/test_replay.py
 python tools/presence-replay/native/test.py
 python tools/presence-replay/native/build.py
 ```
@@ -153,13 +162,9 @@ python tools/presence-replay/native/build.py
 `replay.py` scores existing firmware output. The native commands compile the
 tracker runner and unit tests with `cl`, `g++`, or `clang++`.
 
-Later versions can compare multiple tracker candidates:
-
-- Legacy production logic.
-- Current tracker-assisted logic.
-- Alpha-beta tracker variant.
-- Kalman filter variant.
-- Noise-map variant.
+The native runner executes the current Kalman-based tracker. Future experiments
+may compare policy or noise-model variants, but replay files must remain
+backward compatible.
 
 ## 5. Firmware Boundary
 
@@ -167,17 +172,34 @@ The firmware should only collect compact replay samples and expose downloads.
 
 It should not run Monte Carlo simulation.
 
-The 500 ms lambda should not grow. If replay logging is implemented, the lambda
-should only pass the current sample to a dedicated diagnostics component.
+The 500 ms lambda should not grow. It only passes the current sample to the
+dedicated diagnostics component.
 
-## 6. Development Order
+## 6. Current Status
 
-1. Define this document.
-2. Add a compact raw replay sample structure.
-3. Add a RAM ring buffer for replay samples.
-4. Add `/api/diagnostics/replay.ndjson`.
-5. Add a dashboard download button.
-6. Add a PC replay scorer.
-7. Add natural scenario simulation.
-8. Add Monte Carlo runner.
-9. Use replay results before changing production tracker behavior again.
+The firmware ring buffer, diagnostics endpoint, dashboard download, PC scorer,
+native tracker runner, and native unit tests are implemented. Scenario and
+Monte Carlo tools remain optional follow-up work. Production tracker changes
+should continue to be checked against captured replay data.
+
+## 7. LD2410C Fusion Fields
+
+The `sr` tuple records LD2410C sensor input and the stabilized distance used by
+the current fusion path:
+
+```text
+[available, presence, moving, still, movingDistanceMm, stillDistanceMm, movingEnergy, stillEnergy, detectionDistanceMm]
+```
+
+Legacy eight-item `sr` tuples default `detectionDistanceMm` to zero. The `sf`
+tuple records fusion state:
+
+```text
+[pirEvidence, trackerEvidence, assistArmed, assistActive, armPending, exitVeto, armElapsedMs]
+```
+
+Replay files without `sf` default every fusion field to zero. LD2410C
+assistance may maintain an already established presence session. Its stabilized
+distance may only evaluate display confidence for the last unambiguous LD2450
+position; it cannot acquire presence, motion, or a new spatial position by
+itself.

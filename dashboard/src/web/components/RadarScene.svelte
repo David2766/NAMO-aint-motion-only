@@ -1,8 +1,10 @@
 <script lang="ts">
   import { toScreenPoint } from "../../core/radar-math";
   import { renderGrid } from "../../core/radar-svg";
+  import { presenceDisplayTargets } from "../../core/presence-target-display";
   import { localizedZoneDisplayName } from "../../core/zones";
   import type { RadarViewport } from "../../core/types";
+  import StaticRadarTuningOverlay from "./StaticRadarTuningOverlay.svelte";
   import {
     RADAR_SCENE_HEIGHT,
     RADAR_SCENE_PAD,
@@ -10,7 +12,14 @@
     radarSceneViewport
   } from "../canvas/radar-view";
   import type { Messages } from "../i18n/types";
-  import type { WebDeviceConfig, WebDeviceState, WebTarget, WebZone } from "../types";
+  import type {
+    WebDeviceConfig,
+    WebDeviceState,
+    WebStaticRadarGateTuning,
+    WebStaticRadarTuningStatus,
+    WebTarget,
+    WebZone
+  } from "../types";
   import { exitLineFromZone } from "../zone-geometry";
 
   interface Props {
@@ -21,6 +30,11 @@
     editable?: boolean;
     selectedPointIndex?: number;
     debugMode?: boolean;
+    staticRadarTuning?: boolean;
+    staticRadarTuningStatus?: WebStaticRadarTuningStatus | null;
+    staticRadarDetectedGate?: number | null;
+    selectedStaticRadarGate?: number;
+    onSelectStaticRadarGate?: (gate: number) => void;
     onCanvasClick?: (event: MouseEvent) => void;
     onZonePointerDown?: (event: PointerEvent) => void;
     onZoneEdgeClick?: (event: MouseEvent) => void;
@@ -36,6 +50,11 @@
     editable = false,
     selectedPointIndex = -1,
     debugMode = false,
+    staticRadarTuning = false,
+    staticRadarTuningStatus = null,
+    staticRadarDetectedGate = null,
+    selectedStaticRadarGate = 0,
+    onSelectStaticRadarGate,
     onCanvasClick,
     onZonePointerDown,
     onZoneEdgeClick,
@@ -49,7 +68,7 @@
   const bottomY = RADAR_SCENE_HEIGHT - RADAR_SCENE_PAD;
 
   function renderableTargets(): WebTarget[] {
-    return state?.targets.filter((target) => isRenderableTarget(target, debugMode)) ?? [];
+    return presenceDisplayTargets(state).filter((target) => isRenderableTarget(target, debugMode));
   }
 
   function screenPoint(x: number, y: number) {
@@ -114,6 +133,16 @@
     return debugMode && Number.isFinite(target.rawY) ? Number(target.rawY) : target.y;
   }
 
+  function staticRadarGateAriaLabel(gate: WebStaticRadarGateTuning): string {
+    return text.staticRadarGateAria(
+      gate.gate,
+      gate.startMm / 1000,
+      gate.endMm / 1000,
+      Math.round(gate.moveEnergy),
+      Math.round(gate.stillEnergy)
+    );
+  }
+
   function isRenderableTarget(target: WebTarget, showDebug: boolean): boolean {
     const radarX = showDebug && Number.isFinite(target.rawX) ? Number(target.rawX) : target.x;
     const radarY = showDebug && Number.isFinite(target.rawY) ? Number(target.rawY) : target.y;
@@ -134,7 +163,7 @@
 
 {#if state && config}
   <svg
-    class="radar-scene"
+    class={`radar-scene${staticRadarTuning ? " static-radar-tuning" : ""}`}
     viewBox={`0 0 ${RADAR_SCENE_WIDTH} ${RADAR_SCENE_HEIGHT}`}
     role="img"
     aria-label={text.radarAria}
@@ -325,6 +354,17 @@
       {/if}
     {/each}
 
+    {#if staticRadarTuning && staticRadarTuningStatus?.active}
+      <StaticRadarTuningOverlay
+        gates={staticRadarTuningStatus.gates}
+        detectedGate={staticRadarDetectedGate}
+        selectedGate={selectedStaticRadarGate}
+        {viewport}
+        gateAriaLabel={staticRadarGateAriaLabel}
+        onSelectGate={(gate) => onSelectStaticRadarGate?.(gate)}
+      />
+    {/if}
+
     <polygon
       class="sensor"
       points={`${centerX},${bottomY - 12} ${centerX - 10},${bottomY + 8} ${centerX + 10},${bottomY + 8}`}
@@ -333,7 +373,7 @@
     {#each renderableTargets() as target (target.id)}
       {@const point = targetScreenPoint(target)}
       <g
-        class={`target${isFilteredTarget(target) ? " filtered" : ""}${target.reduced ? " reduced" : ""}`}
+        class={`target${isFilteredTarget(target) ? " filtered" : ""}${target.reduced ? " reduced" : ""}${target.displayMode ? ` ${target.displayMode}` : ""}`}
         style={`--target-color:${target.color}`}
       >
         <circle cx={point.x} cy={point.y} r="9"></circle>

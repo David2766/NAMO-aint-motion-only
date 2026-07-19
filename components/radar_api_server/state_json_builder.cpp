@@ -153,6 +153,14 @@ std::string build_device_state_json(const DeviceConfigCache &config_cache, const
   out += ",\"longPresenceDropCount\":";
   out += std::to_string(input.long_presence_drop_count);
 
+  out += ",\"presenceEvidence\":{\"pir\":";
+  out += input.pir_evidence ? "true" : "false";
+  out += ",\"tracker\":";
+  out += input.tracker_evidence ? "true" : "false";
+  out += ",\"staticAssist\":";
+  out += input.static_assist_active ? "true" : "false";
+  out += "}";
+
   out += ",\"still\":{\"state\":";
   append_json_string(out, input.still_state);
   out += ",\"reason\":";
@@ -186,6 +194,60 @@ std::string build_device_state_json(const DeviceConfigCache &config_cache, const
   out += std::to_string(input.range_out_of_range_count);
   out += ",\"remoteCandidateCount\":";
   out += std::to_string(input.range_remote_candidate_count);
+  out += "}";
+
+  out += ",\"staticRadar\":{\"available\":";
+  out += input.static_radar.available ? "true" : "false";
+  out += ",\"presence\":";
+  out += input.static_radar.presence ? "true" : "false";
+  out += ",\"moving\":";
+  out += input.static_radar.moving ? "true" : "false";
+  out += ",\"still\":";
+  out += input.static_radar.still ? "true" : "false";
+  append_float(out, "detectionDistanceMm", input.static_radar.detection_distance_mm, "%.0f");
+  append_float(out, "movingDistanceMm", input.static_radar.moving_distance_mm, "%.0f");
+  append_float(out, "stillDistanceMm", input.static_radar.still_distance_mm, "%.0f");
+  append_float(out, "movingEnergy", input.static_radar.moving_energy, "%.0f");
+  append_float(out, "stillEnergy", input.static_radar.still_energy, "%.0f");
+  out += ",\"reason\":";
+  append_json_string(out, input.static_radar_reason);
+  out += ",\"assist\":{\"armed\":";
+  out += input.static_assist_armed ? "true" : "false";
+  out += ",\"active\":";
+  out += input.static_assist_active ? "true" : "false";
+  out += ",\"armPending\":";
+  out += input.static_assist_arm_pending ? "true" : "false";
+  out += ",\"armElapsedMs\":";
+  out += std::to_string(input.static_assist_arm_elapsed_ms);
+  out += ",\"exitVeto\":";
+  out += input.static_assist_exit_veto ? "true" : "false";
+  out += ",\"heldTarget\":";
+  if (!input.static_assist_held_target.valid) {
+    out += "null";
+  } else {
+    out += "{\"id\":\"target_1\",\"x\":";
+    out += std::to_string(static_cast<int>(std::lround(input.static_assist_held_target.x_mm)));
+    out += ",\"y\":";
+    out += std::to_string(static_cast<int>(std::lround(input.static_assist_held_target.y_mm)));
+    out += ",\"lastDistanceMm\":";
+    out += std::to_string(static_cast<int>(std::lround(input.static_assist_held_target.last_distance_mm)));
+    out += ",\"staticDistanceMm\":";
+    if (input.static_assist_held_target.distance_comparable) {
+      out += std::to_string(static_cast<int>(std::lround(input.static_assist_held_target.static_distance_mm)));
+    } else {
+      out += "null";
+    }
+    out += ",\"distanceDeltaMm\":";
+    if (input.static_assist_held_target.distance_comparable) {
+      out += std::to_string(static_cast<int>(std::lround(input.static_assist_held_target.distance_delta_mm)));
+    } else {
+      out += "null";
+    }
+    out += ",\"distanceMatched\":";
+    out += input.static_assist_held_target.distance_matched ? "true" : "false";
+    out += "}";
+  }
+  out += "}";
   out += "}";
 
   out += ",\"room\":{\"configured\":";

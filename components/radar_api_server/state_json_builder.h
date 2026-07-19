@@ -1,6 +1,7 @@
 #pragma once
 
 #include "device_config_cache.h"
+#include "presence_fusion.h"
 #include "software_zone_evidence.h"
 
 #include <cstdint>
@@ -53,6 +54,16 @@ struct DeviceStateJsonInput {
   int range_suspect_count{0};
   int range_out_of_range_count{0};
   int range_remote_candidate_count{0};
+  StaticRadarEvidence static_radar{};
+  const char *static_radar_reason{"unavailable"};
+  bool pir_evidence{false};
+  bool tracker_evidence{false};
+  bool static_assist_armed{false};
+  bool static_assist_active{false};
+  bool static_assist_arm_pending{false};
+  bool static_assist_exit_veto{false};
+  uint32_t static_assist_arm_elapsed_ms{0};
+  StaticAssistHeldTarget static_assist_held_target{};
   StateJsonTarget targets[3]{};
 };
 

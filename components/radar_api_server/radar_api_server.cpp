@@ -43,6 +43,7 @@ void RadarApiServer::dump_config() {
   ESP_LOGCONFIG(TAG, "  System API: GET /api/system/status, POST /api/system/reset");
   ESP_LOGCONFIG(TAG, "  Control Status API: GET /api/control/status");
   ESP_LOGCONFIG(TAG, "  Control API: POST /api/control/status-led|led-duration|environment-correction|temperature-offset|humidity-offset|timezone");
+  ESP_LOGCONFIG(TAG, "  Static Radar Tuning API: GET status, POST session|gate");
   ESP_LOGCONFIG(TAG, "  Diagnostics API: GET /api/diagnostics/events|events.txt|replay.ndjson");
   ESP_LOGCONFIG(TAG, "  Floorplan Upload API: POST /api/floorplan/upload/start|chunk|commit");
 }
@@ -82,8 +83,10 @@ void RadarApiServer::handleRequest(AsyncWebServerRequest *request) {
 }
 
 void RadarApiServer::update_presence_tracker(uint32_t now_ms, bool pir_motion, bool filter_blocked,
+                                             bool stable_presence,
                                              bool room_context_configured,
-                                             float illuminance_lux, float stationary_speed_cm_s,
+                                             const StaticRadarEvidence &static_radar, float illuminance_lux,
+                                             float stationary_speed_cm_s,
                                              bool target_1_valid, float target_1_x, float target_1_y,
                                              float target_1_speed, float target_1_distance,
                                              int target_1_exit_zone_mask, bool target_1_room_inside,
@@ -114,6 +117,13 @@ void RadarApiServer::update_presence_tracker(uint32_t now_ms, bool pir_motion, b
                       target_3_room_signed_distance};
   this->last_tracker_input_ = input;
   this->presence_tracker_.update(input);
+  PresenceFusionInput fusion_input;
+  fusion_input.now_ms = now_ms;
+  fusion_input.pir_motion = pir_motion;
+  fusion_input.filter_blocked = filter_blocked;
+  fusion_input.stable_presence = stable_presence;
+  fusion_input.static_radar = static_radar;
+  this->presence_fusion_.update(fusion_input, this->presence_tracker_.output());
 }
 
 void RadarApiServer::update_legacy_presence(uint32_t now_ms, bool pir_motion, bool filter_blocked, int target_count,
@@ -230,6 +240,15 @@ void RadarApiServer::update_diagnostic_snapshot(bool presence, bool motion, bool
   snapshot.tracker_still_track_count = tracker.still_track_count;
   snapshot.tracker_state = tracker.state;
   snapshot.tracker_reason = tracker.reason;
+  const auto &fusion = this->presence_fusion_.output();
+  snapshot.static_radar = fusion.static_radar;
+  snapshot.pir_evidence = fusion.pir_evidence;
+  snapshot.tracker_evidence = fusion.tracker_evidence;
+  snapshot.static_assist_armed = fusion.static_assist_armed;
+  snapshot.static_assist_active = fusion.static_assist_active;
+  snapshot.static_assist_arm_pending = fusion.static_assist_arm_pending;
+  snapshot.static_assist_exit_veto = fusion.static_assist_exit_veto;
+  snapshot.static_assist_arm_elapsed_ms = fusion.static_assist_arm_elapsed_ms;
   this->diagnostic_log_.update(snapshot);
   this->presence_replay_log_.update(this->last_tracker_input_, this->last_replay_raw_input_, snapshot);
 }

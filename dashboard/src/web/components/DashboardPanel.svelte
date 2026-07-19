@@ -2,6 +2,7 @@
   import { onDestroy } from "svelte";
   import { apiErrorMessage } from "../api/api-message";
   import type { FloorplanStorageDocument } from "../../core/floorplan/floorplan-storage";
+  import { presenceDisplayTargets } from "../../core/presence-target-display";
   import {
     loadFloorplanStorageDocument,
     loadFloorplanStorageImage,
@@ -96,6 +97,7 @@
   const targetCount = $derived(deviceState?.targetCount ?? deviceState?.targets.filter((target) => target.active).length ?? 0);
   const movingTargetCount = $derived(deviceState?.movingTargetCount ?? 0);
   const stillTargetCount = $derived(deviceState?.stillTargetCount ?? 0);
+  const displayTargets = $derived(presenceDisplayTargets(deviceState));
   const hasFloorplan = $derived(Boolean(config?.floorplan?.enabled && config.floorplan.hasImage));
   const zoneCount = $derived(config?.zones.length ?? 0);
   const filterZoneCount = $derived(config?.zones.filter((zone) => zone.type === "filter").length ?? 0);
@@ -112,6 +114,14 @@
 
   function yesNo(value: boolean | undefined): string {
     return value ? messages.dashboard.detected : messages.dashboard.notDetected;
+  }
+
+  function staticRadarSummary(): string {
+    const staticRadar = deviceState?.debug?.staticRadar;
+    if (!staticRadar?.available) return messages.dashboard.staticRadarUnavailable;
+    return staticRadar.presence
+      ? messages.dashboard.staticRadarDetected
+      : messages.dashboard.staticRadarClear;
   }
 
   function formatNumber(value: number | null | undefined, suffix = ""): string {
@@ -398,6 +408,7 @@
         <span>{messages.dashboard.presence}</span>
         <strong>{yesNo(deviceState?.presence)}</strong>
       </div>
+      <small>{staticRadarSummary()}</small>
     </div>
 
     <div class="floorplan-workflow-card dashboard-status-card" data-tone={deviceState?.motion ? "ok" : "idle"}>
@@ -412,7 +423,9 @@
         <span>{messages.dashboard.targetCount}</span>
         <strong>{messages.dashboard.targetCountValue(targetCount)}</strong>
       </div>
-      <small>{messages.dashboard.targetSummary(movingTargetCount, stillTargetCount)}</small>
+      <div>
+        <small>{messages.dashboard.targetSummary(movingTargetCount, stillTargetCount)}</small>
+      </div>
     </div>
 
     <div class="floorplan-workflow-card dashboard-status-card">
@@ -460,7 +473,7 @@
               scalePercent={(floorplanDocument.radar.scale ?? 1) * 100}
               zones={config?.zones ?? []}
               calibrationZones={config?.calibrationZones ?? []}
-              targets={deviceState?.targets ?? []}
+              targets={displayTargets}
               wallSegments={roomBoundarySegments()}
               occlusionSegments={radarOcclusionSegments()}
               ignoredOcclusionSegmentIds={floorplanDocument.occlusion?.ignoredEdges ?? []}

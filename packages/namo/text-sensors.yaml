@@ -97,7 +97,7 @@ text_sensor:
     lambda: |-
       return id(diag_last_presence_reason);
   - platform: template
-    name: "Presence Debug Off Reason"
+    name: "Last Presence Off Reason"
     id: presence_debug_off_reason
     entity_category: diagnostic
     update_interval: 2s

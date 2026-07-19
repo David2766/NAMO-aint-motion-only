@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import globalsSource from "../../../packages/presence-sensor-xiao-s3/globals.yaml?raw";
-import directionSource from "../../../packages/presence-sensor-xiao-s3/lambdas/interval-500ms.yaml?raw";
-import primaryEntitiesSource from "../../../packages/presence-sensor-xiao-s3/primary-entities.yaml?raw";
-import selectsSource from "../../../packages/presence-sensor-xiao-s3/selects.yaml?raw";
-import sensorsSource from "../../../packages/presence-sensor-xiao-s3/sensors.yaml?raw";
-import textSensorsSource from "../../../packages/presence-sensor-xiao-s3/text-sensors.yaml?raw";
-import zonesSource from "../../../packages/presence-sensor-xiao-s3/zones.yaml?raw";
+import globalsSource from "../../../packages/namo/globals.yaml?raw";
+import directionSource from "../../../packages/namo/lambdas/interval-500ms.yaml?raw";
+import primaryEntitiesSource from "../../../packages/namo/primary-entities.yaml?raw";
+import selectsSource from "../../../packages/namo/selects.yaml?raw";
+import sensorsSource from "../../../packages/namo/sensors.yaml?raw";
+import textSensorsSource from "../../../packages/namo/text-sensors.yaml?raw";
+import zonesSource from "../../../packages/namo/zones.yaml?raw";
 
 const HANGUL = /[\uac00-\ud7a3]/;
 

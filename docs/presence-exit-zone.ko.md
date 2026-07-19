@@ -1,151 +1,83 @@
-# 재실 Exit Zone 설계
+# 재실 퇴실 근거
 
-이 문서는 LD2450 target 관측값이 잠깐 사라질 때 재실 안정성을 높이기 위한
-exit zone evidence layer를 정의한다.
+이 문서는 LD2450 트랙이 사라질 때 production 재실 경로에서 사용하는 퇴실 근거를
+설명한다. 퇴실 근거는 실제 퇴실 가능성과 정지·저움직임 사람의 일시적인 소실을
+구분하는 데 사용한다.
 
-## 1. 목표
-
-exit zone은 target이 사라졌을 때 사람이 실제로 방을 나간 것인지, 아니면
-레이더가 정지/저움직임 사람을 잠깐 놓친 것인지 판단하는 데 도움을 주기 위한
-개념이다.
-
-핵심 규칙은 이렇다.
+## 1. 제품 규칙
 
 ```text
-target이 exit 영역을 지난 뒤 사라짐
-=> 재실 OFF를 빠르게 허용
+최근 퇴실 근거 이후 target이 사라짐
+=> 짧은 퇴실 coasting 경로 사용
 
-target이 exit evidence 없이 사라짐
-=> 정지 인체 dropout 가능성으로 보고 재실을 더 유지
+퇴실 근거 없이 target이 사라짐
+=> 더 긴 비퇴실 coasting 경로 사용
 ```
 
-이건 단순히 긴 delay를 거는 방식과 다르다. 시스템은 무작정 오래 재실을 켜두는
-것이 아니라, 사람이 나갔다는 증거가 없을 때만 재실을 유지해야 한다.
+퇴실 지점은 필터가 아니라 근거다. 타깃이 퇴실 지점에 들어갔다는 이유만으로
+타깃을 제거하거나 관측 중인 재실을 끄지 않는다.
 
-## 2. 현재 코드 경계
+## 2. 사용자 설정
 
-현재 펌웨어/대시보드에는 이미 다음 구역 개념이 있다.
-
-- `detection`: software zone 재실.
-- `filter`: 알려진 오탐 영역의 target 차단.
-- `reduced`: target을 바로 막지 않고 일정 시간 지연 후 통과시키는 보정 구역.
-- `disabled` / excluded: 설정/UI 맥락에서 제외하는 구역.
-
-이 중 어느 것도 exit evidence 개념은 아니다. filter zone은 target을 제거하거나
-약화한다. exit zone은 target을 제거하면 안 된다. exit zone은 track이 사라지기
-전에 나갈 가능성이 높은 경로를 지났다는 증거를 기록해야 한다.
-
-## 3. 제품 규칙
-
-exit-zone 로직은 단일 센서 우선이어야 한다.
-
-다른 방 센서, Home Assistant 상태, BLE nearby, 다중 센서 coordinator 같은 선택
-신호는 나중에 신뢰도를 높이는 데 사용할 수 있다. 하지만 기본 제품 로직은 한
-기기 자체의 radar/PIR/tracker history만으로 동작해야 한다.
-
-## 4. Exit Evidence
-
-track은 다음 조건에서 exit evidence를 만들 수 있다.
-
-- smoothed track 위치가 exit zone 또는 exit boundary에 들어감.
-- 최근 이동 방향이 바깥쪽 또는 exit boundary 쪽을 향함.
-- exit 영역 관측 직후 target이 사라짐.
-
-첫 구현은 이 evidence를 진단용으로 기록하고 노출하는 것부터 시작해야 한다.
-replay와 실제 로그에서 신뢰성이 확인되기 전에는 production 재실 동작을 바로
-바꾸지 않는다.
-
-## 5. Non-Exit Dropout
-
-confirmed track이 exit 영역이 아닌 곳에서 사라지면:
-
-- radar dropout 가능성으로 본다.
-- tracker coasting을 제한된 시간 동안 유지한다.
-- 일반적인 짧은 target lost hold보다 재실을 더 오래 유지한다.
-- 이것을 수면 또는 BLE 재실 증거로 취급하지 않는다.
-
-이 경로는 책상에 앉아 있거나, 바닥에서 자거나, 다른 정지/저움직임 재실 상황에서
-LD2450이 target을 잠깐 놓치는 문제를 줄이기 위한 것이다.
-
-## 6. 첫 데이터 모델
-
-가장 작은 UI/config 변경은 software zone type에 `exit`을 추가하는 것이다.
+대시보드와 저장된 구역 모델은 다음 구역 타입을 지원한다.
 
 ```ts
-type WebZoneType = "detection" | "filter" | "disabled" | "exit";
+type WebZoneType = "detection" | "filter" | "reduced" | "disabled" | "exit";
 ```
 
-이건 의도적으로 단순한 시작점이다. 나중에는 다음처럼 별도 구조로 분리할 수 있다.
+사용자는 문, 통로 또는 퇴실 가능성이 높은 경로에 선택적으로 퇴실 지점을 놓을 수
+있다. 퇴실 지점이 하나도 없어도 기기는 동작한다.
 
-```ts
-exitZones: []
-exitEdges: []
-```
+## 3. 트래커 근거
 
-하지만 UI나 저장 포맷에서 명확한 필요가 생기기 전에는 별도 모델부터 시작하지
-않는다.
+필터링된 타깃 관측값은 퇴실 지점 bit mask를 `PresenceTracker`에 전달한다. 유지
+중인 각 트랙은 마지막 mask와 시각을 기록한다. 최근 근거의 기본 유효 시간은
+8초다.
 
-## 7. 권장 UI
+평면도 방 정보가 있으면 트래커는 현재 방 polygon과의 signed distance도 본다.
+신뢰할 수 있는 안쪽에서 바깥쪽으로의 통과는 방 퇴실 근거가 된다. 경계 근처에서
+좌표가 흔들리는 것만으로 퇴실이 되지 않도록 Kalman 위치 covariance와 measurement
+noise로 신뢰 margin을 계산한다.
 
-대시보드는 최종적으로 사용자가 exit zone을 직접 그릴 수 있어야 한다.
+## 4. 소실 동작
 
-권장 동작:
+확정된 트랙이 관측을 잃으면 `coasting` 상태로 들어간다.
 
-- 구역 편집에 `Exit` 타입을 추가한다.
-- detection/filter zone과 구분되는 색상을 사용한다.
-- 문, 복도, 방 경계, 사람이 감지 공간을 나가는 위치라고 설명한다.
-- 선택 기능으로 둔다. exit zone이 없어도 기기는 동작해야 한다.
+- 최근 설정된 퇴실 지점 근거가 있으면 짧은 퇴실 한도를 사용하고 만료 시
+  `lost_after_exit`이 된다.
+- 확인된 방 경계 통과는 `lost_after_room_exit`이 된다.
+- 퇴실 근거가 없으면 `lost_without_exit`이 되고 더 긴 비퇴실 한도를 사용한다.
+- 퇴실 지점 근처에 있지만 계속 관측되는 타깃은 일반 활성 트랙으로 유지된다.
 
-향후 평면도 보조 동작:
+missed-frame 기본 정책값은 현재 최근 퇴실 근거 4프레임, 일반/방 퇴실 경로
+12프레임, 퇴실 지점 관측이 없을 때 24프레임이다. 이는 구현 기본값이며 API
+보장값은 아니다.
 
-- 문, 방 경계, 좁은 복도형 구조, 벽이 없는 6m radar boundary에서 exit 후보를
-  제안한다.
-- 사용자가 제안된 exit zone을 확인하거나 수정하게 한다.
+## 5. 융합 영향
 
-## 8. 펌웨어 형태
+`PresenceFusion`은 현재 발생한 트래커 drop 이벤트만 소비한다. 새로운
+`lost_after_exit` 또는 `lost_after_room_exit` 이벤트는 해당 소실의 LD2410C 보조를
+막고 유지 중인 표시 좌표를 지운다. PIR 또는 확정된 LD2450이 다시 감지된 뒤에는
+오래된 drop reason을 재사용하지 않는다.
 
-복잡한 exit logic을 500ms lambda에 계속 키워 넣지 않는다.
+LD2410C가 퇴실 여부를 판정하지는 않는다. 확인된 퇴실/filter veto가 없을 때 이미
+armed된 세션을 유지할 수 있을 뿐이다.
 
-권장 방향:
+## 6. 진단과 리플레이
 
-- lambda는 이미 필터링된 target 관측값과 zone-hit flag를 tracker layer로 넘긴다.
-- tracker는 track별 exit evidence를 저장한다.
-  - 마지막 exit 관측 시각
-  - 마지막 exit 위치
-  - exit evidence 이후 track이 사라졌는지
-  - exit evidence 없이 target lost가 발생했는지
-- 재실 판단은 lambda 안에서 exit logic을 중복 구현하지 말고 tracker 출력을 소비한다.
+`/api/state`, 진단 로그와 리플레이 데이터는 퇴실 mask, 최근 퇴실 경과 시간, 방
+상태, 트래커 drop reason과 융합 exit veto를 노출한다. 네이티브 테스트는 다음을
+다룬다.
 
-## 9. Replay 검증
+- 설정된 퇴실 지점 이후 소실;
+- 방 안쪽에서 바깥쪽으로의 경계 통과;
+- 경계 통과 없는 소실;
+- 재획득 이후 오래된 drop 이벤트;
+- 퇴실 또는 filter 근거가 LD2410C 재진입을 막는 동작.
 
-exit zone을 production 재실 판단에 연결하기 전에 replay에서 다음을 측정해야 한다.
+## 7. 경계
 
-- exit evidence 없이 발생한 occupied false-off 횟수.
-- exit evidence 이후에도 남는 empty false-on 시간.
-- exit zone이 긴 정지 인체 dropout을 줄이는지.
-- 문 근처에 앉아 있는 사람을 false absence로 만들지 않는지.
-
-중요 테스트 케이스:
-
-- 책상에 앉아 정지, target 사라짐, exit evidence 없음.
-- 수면 또는 누운 정지 상태, target 사라짐, exit evidence 없음.
-- exit zone을 지나 방 밖으로 나간 뒤 target 사라짐.
-- exit zone 근처에 서 있거나 앉아 있지만 나가지 않음.
-- exit zone 근처의 false target 또는 팬.
-
-## 10. 구현 순서
-
-1. 이 설계 문서를 추가한다.
-2. API/config 문서에 `exit` planned zone type을 추가한다.
-3. 프론트엔드에서 그리기/표시를 지원한다.
-4. 진단 전용 exit-zone hit logging을 추가한다.
-5. replay scoring에 exit evidence 항목을 추가한다.
-6. 그다음에만 exit evidence를 production presence-off 동작에 연결한다.
-
-## 11. 금지 사항
-
-- exit zone을 filter zone처럼 사용하지 않는다.
-- 첫 부팅에서 exit-zone 설정을 필수로 만들지 않는다.
-- exit 판단에 다중 센서 로직을 필수로 요구하지 않는다.
-- tracker coasting을 무식한 긴 timeout으로 대체하지 않는다.
-- replay 데이터로 근거가 생기기 전에 production 재실 동작을 바꾸지 않는다.
+- 퇴실 지점은 filter zone처럼 동작하면 안 된다.
+- 온보딩에서 퇴실 설정을 필수로 만들면 안 된다.
+- 퇴실 판정에 다중 센서, Home Assistant 또는 BLE 근거를 요구하지 않는다.
+- coasting 기본값을 바꾸기 전에 실제 설치 리플레이를 검토한다.

@@ -127,6 +127,49 @@ describe("deviceApi chunked storage uploads", () => {
     ]);
   });
 
+  it("uses bounded control endpoints for the static radar tuning session and gate", async () => {
+    const calls: FormCall[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(readFormCall(input, init));
+      return okResponse();
+    }));
+
+    const { deviceApi } = await loadDeviceApi();
+    await deviceApi.setStaticRadarTuningSession?.(true);
+    await deviceApi.setStaticRadarGateSensitivity?.(3, 72);
+
+    expect(calls).toEqual([
+      {
+        url: "/api/control/static-radar-tuning/session",
+        values: { data: JSON.stringify({ active: true }) }
+      },
+      {
+        url: "/api/control/static-radar-tuning/gate",
+        values: { data: JSON.stringify({ gate: 3, sensitivity: 72 }) }
+      }
+    ]);
+  });
+
+  it("reads static radar tuning telemetry from the bounded status endpoint", async () => {
+    const calls: Array<{ url: string; cache?: RequestCache }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), cache: init?.cache });
+      return new Response(JSON.stringify({
+        ok: true,
+        available: true,
+        active: true,
+        resolutionMm: 750,
+        gates: []
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+
+    const { deviceApi } = await loadDeviceApi();
+    const result = await deviceApi.getStaticRadarTuningStatus?.();
+
+    expect(result?.available).toBe(true);
+    expect(calls).toEqual([{ url: "/api/control/static-radar-tuning", cache: "no-store" }]);
+  });
+
   it("saves stats through the device base URL and forwards upload progress", async () => {
     const calls: FormCall[] = [];
     const progress: Array<{ loaded: number; total: number; percent: number }> = [];

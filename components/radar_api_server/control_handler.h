@@ -23,6 +23,9 @@ class ControlHandler {
   void handle_temperature_offset_(AsyncWebServerRequest *request);
   void handle_humidity_offset_(AsyncWebServerRequest *request);
   void handle_timezone_(AsyncWebServerRequest *request);
+  void handle_static_radar_tuning_status_(AsyncWebServerRequest *request);
+  void handle_static_radar_tuning_session_(AsyncWebServerRequest *request);
+  void handle_static_radar_tuning_gate_(AsyncWebServerRequest *request);
 };
 
 }  // namespace radar_api_server

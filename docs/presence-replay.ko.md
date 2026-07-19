@@ -37,12 +37,12 @@ tracker를 수정할 때마다 사람이 직접 10분씩 앉아 있는 방식은
 
 ### 2.2 실제 로그 리플레이
 
-기기에서 PC로 내려받아 재생할 수 있는 compact raw replay log가 필요하다.
+기기는 PC로 내려받아 재생할 수 있는 compact raw replay log를 기록한다.
 
 리플레이 로그는 이벤트 요약만이 아니라 tracker 동작을 다시 구성할 수 있는
 입력 신호를 포함해야 한다.
 
-계획 endpoint:
+Endpoint:
 
 ```text
 GET /api/diagnostics/replay.ndjson
@@ -57,7 +57,7 @@ endpoint는 newline-delimited JSON을 반환한다. 실패 응답은
 Compact row 예시:
 
 ```json
-{"q":12,"t":123456,"p":0,"lx":50.2,"r":[[1,1240,1810,2,2195,0,0,1],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]],"tg":[[1,1240,1810,2,2195],[0,0,0,0,0],[0,0,0,0,0]],"f":[0,0,0,0,0],"ex":[0,0,0,-1],"l":[1,0,1,1,0,1,82,0,1,0,3,2,4],"tr":[1,0,2,1,100,1,1,0,1,0,0,1]}
+{"q":12,"t":123456,"p":0,"lx":50.2,"r":[[1,1240,1810,2,2195,0,0,1],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]],"tg":[[1,1240,1810,2,2195],[0,0,0,0,0],[0,0,0,0,0]],"sr":[1,1,0,1,0,1850,0,67,1850],"sf":[0,0,1,1,0,0,0],"f":[0,0,0,0,0],"ex":[0,0,0,-1],"l":[1,0,1,1,0,1,82,0,9,0,3,2,4],"tr":[0,0,0,0,0,0,0,0,0,0,0,0]}
 ```
 
 최소 필드:
@@ -70,18 +70,25 @@ Compact row 예시:
   Target tuple: `[valid, x, y, speed, distance, filterMode, filtered, rangeValid]`
 - `tg`: 현재 production filter/range-gate 경로를 지난 target slot 최대 3개
   Target tuple: `[valid, x, y, speed, distance]`
+- `sr`: 선택적인 LD2410C 정적 레이더 입력 tuple
+  `[available, presence, moving, still, movingDistanceMm, stillDistanceMm, movingEnergy, stillEnergy, detectionDistanceMm]`
+  마지막 필드는 재실 융합과 대시보드 위치 표시에 사용하는 안정화된 기준 거리다.
+  기존 8개짜리 튜플도 계속 읽으며 이 경우 `detectionDistanceMm`은 `0`으로 처리한다.
+- `sf`: 선택적인 재실 융합 tuple
+  `[pirEvidence, trackerEvidence, assistArmed, assistActive, armPending, exitVeto, armElapsedMs]`
+  기존 로그에 이 tuple이 없으면 모든 값을 0으로 처리한다.
 - `f`: filter/range tuple:
   `[filterBlocked, rangeReasonCode, suspectCount, outOfRangeCount, remoteCandidateCount]`
 - `ex`: exit zone evidence tuple:
   `[exitActive, exitZoneMask, exitTargetCount, exitLastSeenAgeMs]`
-- `l`: legacy production tuple:
+- `l`: production 재실 출력 tuple:
   `[presence, motion, still, targetCount, movingCount, stillCount, stillConfidence, emptySamples,
   presenceReasonCode, presenceOffReasonCode, motionReasonCode, stillStateCode, stillReasonCode]`
 - `tr`: tracker tuple:
   `[presence, motion, stateCode, reasonCode, score, inputCount, activeCount, tentativeCount,
   confirmedCount, coastingCount, movingCount, stillCount]`
 
-리플레이 로그는 우선 RAM 전용으로 둔다. 사용자 설정이 아니라 진단 데이터다.
+리플레이 로그는 RAM 전용이다. 사용자 설정이 아니라 진단 데이터다.
 
 ### 2.3 Ground Truth 라벨
 
@@ -141,6 +148,7 @@ tools/presence-replay/
 
 ```text
 python tools/presence-replay/replay.py logs/replay.ndjson --truth logs/truth.json
+python tools/presence-replay/test_replay.py
 python tools/presence-replay/native/test.py
 python tools/presence-replay/native/build.py
 ```
@@ -148,13 +156,8 @@ python tools/presence-replay/native/build.py
 `replay.py`는 기존 펌웨어 출력을 점수화한다. 네이티브 명령은 `cl`, `g++`,
 `clang++` 중 하나를 사용해 트래커 실행기와 단위 테스트를 컴파일한다.
 
-나중에는 여러 tracker 후보를 비교할 수 있다.
-
-- 기존 production logic
-- 현재 tracker-assisted logic
-- alpha-beta tracker variant
-- Kalman filter variant
-- noise-map variant
+네이티브 실행기는 현재 Kalman 기반 트래커를 실행한다. 향후 policy 또는 noise model
+후보를 비교할 수 있지만 리플레이 파일의 하위 호환성은 유지해야 한다.
 
 ## 5. 펌웨어 경계
 
@@ -162,17 +165,31 @@ python tools/presence-replay/native/build.py
 
 Monte Carlo 시뮬레이션은 펌웨어 안에서 돌리지 않는다.
 
-500 ms lambda는 커지면 안 된다. replay logging을 구현하더라도 lambda는 현재
-sample을 전용 diagnostics component로 넘기는 정도만 한다.
+500 ms lambda는 커지면 안 된다. 현재 sample을 전용 diagnostics component로
+넘기는 역할만 한다.
 
-## 6. 개발 순서
+## 6. 현재 상태
 
-1. 이 문서를 정의한다.
-2. compact raw replay sample 구조를 추가한다.
-3. replay sample용 RAM ring buffer를 추가한다.
-4. `/api/diagnostics/replay.ndjson` endpoint를 추가한다.
-5. 대시보드 다운로드 버튼을 추가한다.
-6. PC replay scorer를 추가한다.
-7. 자연스러운 시나리오 시뮬레이션을 추가한다.
-8. Monte Carlo runner를 추가한다.
-9. production tracker behavior를 다시 바꾸기 전에 replay 결과를 먼저 본다.
+펌웨어 ring buffer, 진단 endpoint, 대시보드 다운로드, PC scorer, 네이티브 트래커
+실행기와 단위 테스트가 구현되어 있다. 시나리오 및 Monte Carlo 도구는 선택적인
+후속 작업이다. production 트래커를 변경할 때는 계속 실제 리플레이 데이터로
+회귀를 확인한다.
+
+## 7. LD2410C 융합 필드
+
+`sr` 튜플은 LD2410C 센서 입력을 기록한다.
+
+```text
+[available, presence, moving, still, movingDistanceMm, stillDistanceMm, movingEnergy, stillEnergy, detectionDistanceMm]
+```
+
+`sf` 튜플은 재실 융합 상태를 기록한다.
+
+```text
+[pirEvidence, trackerEvidence, assistArmed, assistActive, armPending, exitVeto, armElapsedMs]
+```
+
+기존 8개짜리 `sr` 튜플은 `detectionDistanceMm`을 0으로 처리하고, `sf`가 없는
+기존 리플레이 파일은 모든 융합 값을 0으로 처리한다. LD2410C 보조는 이미 시작된
+재실을 유지할 수 있다. 안정화 거리는 마지막으로 명확했던 LD2450 위치의 표시
+신뢰도만 판단하며, 단독으로 재실·움직임·새 공간 위치를 만들지 않는다.

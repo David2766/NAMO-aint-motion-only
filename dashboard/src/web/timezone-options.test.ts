@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import controlHandlerSource from "../../../components/radar_api_server/control_handler.cpp?raw";
 import firmwareHeader from "../../../components/radar_api_server/timezone_catalog.h?raw";
-import selectConfig from "../../../packages/presence-sensor-xiao-s3/selects.yaml?raw";
+import selectConfig from "../../../packages/namo/selects.yaml?raw";
 import { isTimezoneId, normalizeSupportedTimezone, TIMEZONE_IDS } from "./timezone-options";
 
 describe("timezone options", () => {

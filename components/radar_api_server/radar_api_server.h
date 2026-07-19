@@ -9,6 +9,7 @@
 #include "diagnostic_log.h"
 #include "floorplan_handler.h"
 #include "legacy_presence.h"
+#include "presence_fusion.h"
 #include "presence_tracker.h"
 #include "presence_replay_log.h"
 #include "radar_storage.h"
@@ -24,6 +25,7 @@
 #include "esphome/components/web_server_base/web_server_base.h"
 
 #include <functional>
+#include <array>
 #include <string>
 
 namespace esphome {
@@ -68,8 +70,10 @@ class RadarApiServer : public Component, public AsyncWebHandler {
         build_device_state_json(this->device_config_cache_, this->software_zone_evidence_,
                                 this->presence_tracker_.debug_json(), input);
   }
-  void update_presence_tracker(uint32_t now_ms, bool pir_motion, bool filter_blocked, bool room_context_configured,
-                               float illuminance_lux, float stationary_speed_cm_s,
+  void update_presence_tracker(uint32_t now_ms, bool pir_motion, bool filter_blocked, bool stable_presence,
+                               bool room_context_configured,
+                               const StaticRadarEvidence &static_radar, float illuminance_lux,
+                               float stationary_speed_cm_s,
                                bool target_1_valid, float target_1_x, float target_1_y,
                                float target_1_speed, float target_1_distance, int target_1_exit_zone_mask,
                                bool target_1_room_inside, bool target_1_room_outside,
@@ -108,6 +112,7 @@ class RadarApiServer : public Component, public AsyncWebHandler {
   const SoftwareZoneEvidence &software_zone_evidence() const { return this->software_zone_evidence_; }
   std::string tracker_debug_json() const { return this->presence_tracker_.debug_json(); }
   const PresenceTrackerOutput &tracker_output() const { return this->presence_tracker_.output(); }
+  const PresenceFusionOutput &presence_fusion_output() const { return this->presence_fusion_.output(); }
 
   // Setup Wi-Fi uses ESP-IDF directly so provisioning can keep the setup AP alive
   // while validating the selected STA network. ESPHome is synced only at finish/handoff.
@@ -180,6 +185,44 @@ class RadarApiServer : public Component, public AsyncWebHandler {
     *timezone = this->control_state_.requested_timezone;
     return true;
   }
+  bool take_static_radar_tuning_session_request(uint32_t now_ms, bool *active) {
+    constexpr uint32_t tuning_timeout_ms = 15000;
+    if (this->control_state_.static_radar_tuning_requested_active &&
+        now_ms - this->control_state_.static_radar_tuning_keepalive_ms >= tuning_timeout_ms) {
+      this->control_state_.static_radar_tuning_requested_active = false;
+      this->control_state_.static_radar_tuning_keepalive_ms = 0;
+      this->control_state_.pending_static_radar_tuning_session = true;
+    }
+    if (!this->control_state_.pending_static_radar_tuning_session)
+      return false;
+    this->control_state_.pending_static_radar_tuning_session = false;
+    *active = this->control_state_.static_radar_tuning_requested_active;
+    return true;
+  }
+  bool take_static_radar_gate_request(uint8_t *gate, uint8_t *sensitivity) {
+    if (!this->control_state_.pending_static_radar_gate)
+      return false;
+    this->control_state_.pending_static_radar_gate = false;
+    *gate = this->control_state_.requested_static_radar_gate;
+    *sensitivity = this->control_state_.requested_static_radar_sensitivity;
+    return true;
+  }
+  void update_static_radar_tuning_status(
+      bool available, bool active, uint16_t resolution_mm,
+      const std::array<float, ControlState::STATIC_RADAR_GATE_COUNT> &move_energy,
+      const std::array<float, ControlState::STATIC_RADAR_GATE_COUNT> &still_energy,
+      const std::array<float, ControlState::STATIC_RADAR_GATE_COUNT> &move_threshold,
+      const std::array<float, ControlState::STATIC_RADAR_GATE_COUNT> &still_threshold) {
+    this->control_state_.static_radar_available = available;
+    this->control_state_.static_radar_tuning_active = available && active;
+    this->control_state_.static_radar_gate_resolution_mm = resolution_mm;
+    if (!this->control_state_.static_radar_tuning_active)
+      return;
+    for (size_t gate = 0; gate < ControlState::STATIC_RADAR_GATE_COUNT; gate++) {
+      this->control_state_.static_radar_gates[gate] = {
+          move_energy[gate], still_energy[gate], move_threshold[gate], still_threshold[gate]};
+    }
+  }
   void update_diagnostic_snapshot(bool presence, bool motion, bool pir_motion, int target_count,
                                   int moving_target_count, int still_target_count, int still_confidence,
                                   bool still_hold_active, int empty_samples, int range_suspect_count,
@@ -198,6 +241,7 @@ class RadarApiServer : public Component, public AsyncWebHandler {
   ControlState control_state_;
   DiagnosticLog diagnostic_log_;
   PresenceTracker presence_tracker_;
+  PresenceFusion presence_fusion_;
   LegacyPresence legacy_presence_;
   PresenceTrackerInput last_tracker_input_{};
   PresenceReplayRawInput last_replay_raw_input_{};

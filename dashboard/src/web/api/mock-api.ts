@@ -1,12 +1,15 @@
 import type { WebDeviceConfig, WebDeviceState, WebDeviceStats, WebStatsEntry } from "../../core/types";
+import version from "../../../../version.json";
 import { hasMockFloorplanStorage, saveMockFloorplan } from "../floorplan/mock-floorplan-storage";
-import type { DeviceApi, WebSystemStatus } from "../types";
+import type { DeviceApi, WebStaticRadarTuningStatus, WebSystemStatus } from "../types";
 
 const startTime = Date.now();
 const HEATMAP_COLS = 33;
 const HEATMAP_ROWS = 26;
 const HEATMAP_CELL_COUNT = HEATMAP_COLS * HEATMAP_ROWS;
 const CONFIG_STORAGE_KEY = "presence-sensor-demo-config";
+const STATIC_RADAR_GATE_COUNT = 9;
+const STATIC_RADAR_RESOLUTION_MM = 750;
 
 function plainClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -33,6 +36,33 @@ function clearStoredConfig(): void {
 
 function waveValue(base: number, spread: number, elapsed: number, speed: number, phase = 0): number {
   return Math.round((base + Math.sin(elapsed / speed + phase) * spread) * 10) / 10;
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function staticRadarDemoFrame(elapsed: number) {
+  const cycle = elapsed % 36;
+  const targetCount = cycle < 22 ? 1 + (Math.floor(cycle / 7.5) % 3) : 0;
+  const staticPresence = cycle < 30;
+  const assistActive = targetCount === 0 && staticPresence;
+  const graceActive = targetCount === 0 && !staticPresence && cycle < 33;
+  const detectionDistanceMm = staticPresence
+    ? Math.round(clamp(1750 + Math.sin(elapsed / 4.2) * 1050, 350, 4100))
+    : 0;
+  const lastDistanceMm = 1897;
+  const distanceDeltaMm = staticPresence ? Math.abs(detectionDistanceMm - lastDistanceMm) : null;
+
+  return {
+    targetCount,
+    staticPresence,
+    assistActive,
+    presence: targetCount > 0 || assistActive || graceActive,
+    detectionDistanceMm,
+    distanceDeltaMm,
+    distanceMatched: distanceDeltaMm != null && distanceDeltaMm <= 750
+  };
 }
 
 function dayKeyFromDate(date: Date): number {
@@ -175,11 +205,41 @@ let temperatureOffset = 0;
 let humidityOffset = 0;
 let timezone = "Asia/Seoul";
 let stats: WebDeviceStats = createDemoStats();
+let staticRadarTuningActive = false;
+let staticRadarSensitivity = Array.from({ length: STATIC_RADAR_GATE_COUNT }, () => 50);
+
+function createStaticRadarTuningStatus(elapsed: number): WebStaticRadarTuningStatus {
+  const frame = staticRadarDemoFrame(elapsed);
+  const detectedGate = frame.staticPresence
+    ? clamp(Math.floor(frame.detectionDistanceMm / STATIC_RADAR_RESOLUTION_MM), 0, STATIC_RADAR_GATE_COUNT - 1)
+    : -1;
+
+  return {
+    ok: true,
+    available: true,
+    active: staticRadarTuningActive,
+    resolutionMm: STATIC_RADAR_RESOLUTION_MM,
+    gates: staticRadarSensitivity.map((sensitivity, gate) => {
+      const distanceFromDetection = detectedGate < 0 ? STATIC_RADAR_GATE_COUNT : Math.abs(gate - detectedGate);
+      const signal = distanceFromDetection === 0 ? 76 : distanceFromDetection === 1 ? 24 : 4;
+      const variation = Math.round(Math.sin(elapsed * 1.7 + gate * 0.8) * 5);
+      return {
+        gate,
+        startMm: gate * STATIC_RADAR_RESOLUTION_MM,
+        endMm: (gate + 1) * STATIC_RADAR_RESOLUTION_MM,
+        sensitivity,
+        moveEnergy: staticRadarTuningActive ? clamp(signal - 18 + variation, 0, 100) : 0,
+        stillEnergy: staticRadarTuningActive ? clamp(signal + variation, 0, 100) : 0
+      };
+    })
+  };
+}
 
 export const mockApi: DeviceApi = {
   async getState(): Promise<WebDeviceState> {
     const elapsed = (Date.now() - startTime) / 1000;
-    const targetCount = 1 + (Math.floor(elapsed / 12) % 3);
+    const staticRadar = staticRadarDemoFrame(elapsed);
+    const targetCount = staticRadar.targetCount;
     const targets = [
       {
         id: "target_1",
@@ -209,9 +269,12 @@ export const mockApi: DeviceApi = {
     return {
       connected: true,
       updatedAt: Date.now(),
-      presence: true,
-      motion: true,
-      pirMotion: true,
+      presence: staticRadar.presence,
+      motion: targetCount > 0,
+      pirMotion: targetCount > 0,
+      targetCount,
+      movingTargetCount: targetCount > 0 ? 1 : 0,
+      stillTargetCount: Math.max(0, targetCount - 1),
       temperatureC: waveValue(25.4, 0.25, elapsed, 17),
       humidityPercent: waveValue(45, 0.45, elapsed, 19, 1.1),
       illuminanceLux: Math.round(waveValue(180, 1.8, elapsed, 23, 2.2)),
@@ -225,6 +288,11 @@ export const mockApi: DeviceApi = {
         emptySamplesConsecutive: 0,
         shortPresenceDropCount: 1,
         longPresenceDropCount: 0,
+        presenceEvidence: {
+          pir: targetCount > 0,
+          tracker: targetCount > 0,
+          staticAssist: staticRadar.assistActive
+        },
         still: {
           state: "candidate",
           reason: "same_area_still",
@@ -241,6 +309,36 @@ export const mockApi: DeviceApi = {
           suspectTargetCount: targetCount >= 3 ? 1 : 0,
           outOfRangeTargetCount: 0,
           remoteCandidateCount: targetCount >= 3 ? 1 : 0
+        },
+        staticRadar: {
+          available: true,
+          presence: staticRadar.staticPresence,
+          moving: targetCount > 0 && Math.floor(elapsed) % 4 < 2,
+          still: staticRadar.staticPresence,
+          detectionDistanceMm: staticRadar.detectionDistanceMm,
+          movingDistanceMm: targetCount > 0 ? staticRadar.detectionDistanceMm : 0,
+          stillDistanceMm: staticRadar.detectionDistanceMm,
+          movingEnergy: staticRadar.staticPresence ? Math.round(38 + Math.sin(elapsed * 1.3) * 12) : 0,
+          stillEnergy: staticRadar.staticPresence ? Math.round(72 + Math.sin(elapsed * 0.9) * 10) : 0,
+          reason: staticRadar.staticPresence ? (targetCount > 0 ? "target" : "still") : "clear",
+          assist: {
+            armed: true,
+            active: staticRadar.assistActive,
+            armPending: false,
+            armElapsedMs: 0,
+            exitVeto: false,
+            heldTarget: staticRadar.assistActive
+              ? {
+                  id: "target_1",
+                  x: 600,
+                  y: 1800,
+                  lastDistanceMm: 1897,
+                  staticDistanceMm: staticRadar.detectionDistanceMm,
+                  distanceDeltaMm: staticRadar.distanceDeltaMm,
+                  distanceMatched: staticRadar.distanceMatched
+                }
+              : null
+          }
         }
       }
     };
@@ -269,7 +367,7 @@ export const mockApi: DeviceApi = {
     return {
       ok: true,
       firmware: {
-        version: "0.4.0",
+        version: version.firmware,
         buildTime: "mock",
         uptimeSeconds: Math.round((Date.now() - startTime) / 1000)
       },
@@ -287,13 +385,13 @@ export const mockApi: DeviceApi = {
         guardSeconds: 60
       },
       dashboard: {
-        version: "0.4.0",
+        version: version.dashboard,
         gzipBytes: 92000
       },
       schema: {
-        config: 1,
-        floorplan: 1,
-        stats: 1
+        config: version.configSchema,
+        floorplan: version.floorplanSchema,
+        stats: version.statsSchema
       },
       memory: {
         freeHeap: 6370000,
@@ -356,6 +454,10 @@ export const mockApi: DeviceApi = {
     };
   },
 
+  async getStaticRadarTuningStatus(): Promise<WebStaticRadarTuningStatus> {
+    return createStaticRadarTuningStatus((Date.now() - startTime) / 1000);
+  },
+
   async saveConfig(nextConfig: WebDeviceConfig): Promise<void> {
     config = plainClone(nextConfig);
     storeConfig(config);
@@ -406,6 +508,17 @@ export const mockApi: DeviceApi = {
     }
   },
 
+  async setStaticRadarTuningSession(active: boolean): Promise<void> {
+    staticRadarTuningActive = active;
+  },
+
+  async setStaticRadarGateSensitivity(gate: number, sensitivity: number): Promise<void> {
+    if (!Number.isInteger(gate) || gate < 0 || gate >= STATIC_RADAR_GATE_COUNT) {
+      throw new Error("invalid static radar gate");
+    }
+    staticRadarSensitivity[gate] = Math.round(clamp(sensitivity, 0, 100));
+  },
+
   async saveFloorplan(document, image): Promise<void> {
     await saveMockFloorplan(document, image);
     config = {
@@ -448,6 +561,8 @@ export const mockApi: DeviceApi = {
       temperatureOffset = 0;
       humidityOffset = 0;
       timezone = "Asia/Seoul";
+      staticRadarTuningActive = false;
+      staticRadarSensitivity = Array.from({ length: STATIC_RADAR_GATE_COUNT }, () => 50);
     }
     if (options.stats) {
       stats = createDemoStats();

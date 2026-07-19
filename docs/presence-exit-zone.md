@@ -1,156 +1,87 @@
-# Presence Exit Zone Design
+# Presence Exit Evidence
 
-This document defines the planned exit-zone evidence layer for improving
-presence stability when LD2450 target observations temporarily disappear.
+This document describes the production exit evidence used when an LD2450 track
+disappears. Exit evidence helps distinguish a likely departure from a temporary
+loss of a still or low-motion person.
 
-## 1. Goal
-
-Exit zones should help decide whether a missing target means the person really
-left the room or the radar temporarily lost a still/low-motion person.
-
-The core rule is:
+## 1. Product Rule
 
 ```text
-target disappeared after crossing an exit area
-=> allow presence to turn off quickly
+target disappears after recent exit evidence
+=> use the short exit coasting path
 
-target disappeared without exit evidence
-=> treat it as a possible still-person dropout and hold presence longer
+target disappears without exit evidence
+=> use the longer non-exit coasting path
 ```
 
-This is different from a simple fixed long delay. The system should not keep
-presence on for a long time blindly. It should keep presence only when there is
-no evidence that the person left.
+Exit areas are evidence, not filters. Entering an exit area does not remove a
+target and does not turn presence off while the target is still observed.
 
-## 2. Current Code Boundary
+## 2. User Configuration
 
-The current firmware/dashboard already has these zone concepts:
-
-- `detection`: software zone presence.
-- `filter`: block targets in known false-positive areas.
-- `reduced`: calibration zone that delays filtering before accepting a target.
-- `disabled` / excluded: ignore a zone in configuration/UI contexts.
-
-None of these is an exit-evidence concept. A filter zone removes or weakens a
-target. An exit zone should not remove a target. It should record that a track
-passed through a likely exit path before disappearing.
-
-## 3. Product Rule
-
-Exit-zone logic must be single-sensor first.
-
-Optional signals such as another room sensor, Home Assistant state, BLE nearby,
-or multi-sensor coordination may improve confidence later, but the base product
-must work from one device's own radar/PIR/tracker history.
-
-## 4. Exit Evidence
-
-A track may produce exit evidence when:
-
-- Its smoothed track position enters an exit zone or exit boundary.
-- Its recent movement direction points outward or toward the exit boundary.
-- The target disappears shortly after the exit-area observation.
-
-The first implementation should only record and expose this evidence for
-diagnostics. It should not immediately change production presence behavior until
-replay and real logs show that the evidence is reliable.
-
-## 5. Non-Exit Dropout
-
-When a confirmed track disappears away from an exit area:
-
-- Treat it as a possible radar dropout.
-- Keep tracker coasting active for a bounded time.
-- Keep presence on longer than the normal short lost-target hold.
-- Do not treat this as proof of sleep or BLE presence.
-
-This path is intended for cases such as desk sitting, floor sleeping, or other
-still/low-motion occupancy where LD2450 may temporarily lose the target.
-
-## 6. First Data Model
-
-The smallest practical UI/config change is to add an `exit` software zone type.
+The dashboard and stored zone model support these zone types:
 
 ```ts
-type WebZoneType = "detection" | "filter" | "disabled" | "exit";
+type WebZoneType = "detection" | "filter" | "reduced" | "disabled" | "exit";
 ```
 
-This is intentionally simple. A later version may split exit evidence into a
-separate object such as:
+Users may place optional exit areas over doors, passages, or other likely
+departure paths. A device continues to work without any configured exit area.
 
-```ts
-exitZones: []
-exitEdges: []
-```
+## 3. Tracker Evidence
 
-Do not start with the separate model unless the UI or storage format clearly
-needs it.
+Filtered target observations carry an exit-zone bit mask into
+`PresenceTracker`. Each retained track records its latest mask and timestamp.
+The default recent-evidence window is 8 seconds.
 
-## 7. Suggested UI
+When floorplan room context is available, the tracker also watches signed
+distance from the current room polygon. A confident inside-to-outside crossing
+creates room-exit evidence. The confidence margin comes from Kalman position
+covariance plus measurement noise so a point hovering near the boundary is not
+treated as an exit by itself.
 
-The dashboard should eventually allow users to draw exit zones manually.
+## 4. Drop Behavior
 
-Recommended behavior:
+When a confirmed track loses observations it enters `coasting`.
 
-- Add an `Exit` zone type in zone editing.
-- Use a distinct color from detection/filter zones.
-- Describe it as a door, hallway, room boundary, or area where people leave the
-  monitored room.
-- Keep it optional. The device should still work without an exit zone.
+- Recent configured exit-zone evidence uses the short exit limit and produces
+  `lost_after_exit` when the track expires.
+- Confirmed room-boundary crossing produces `lost_after_room_exit`.
+- No exit evidence produces `lost_without_exit` and uses the longer non-exit
+  limit.
+- A target observed near an exit but not crossing or disappearing remains a
+  normal active track.
 
-Future floorplan-assisted behavior:
+The default missed-frame limits are policy values, currently 4 for recent exit
+evidence, 12 for the general/room-exit path, and 24 when no exit zone has been
+seen. They are implementation defaults rather than API guarantees.
 
-- Suggest exit candidates from doors, room boundaries, narrow hallway-like
-  geometry, or the 6m radar boundary when no wall is detected.
-- Let the user confirm or edit suggested exit zones.
+## 5. Fusion Effect
 
-## 8. Firmware Shape
+`PresenceFusion` consumes only current tracker drop events. A new
+`lost_after_exit` or `lost_after_room_exit` event vetoes LD2410C assistance for
+that loss and clears any retained display coordinate. Stale drop reasons are
+not reused after PIR or confirmed LD2450 reacquisition.
 
-Avoid growing the 500ms lambda with complex exit logic.
+LD2410C does not decide whether a departure occurred. It can only maintain an
+already armed session when no confirmed exit/filter veto is active.
 
-Preferred direction:
+## 6. Diagnostics and Replay
 
-- The lambda passes already-filtered target observations and zone-hit flags into
-  the tracker layer.
-- The tracker stores per-track exit evidence:
-  - last exit observation time
-  - last exit position
-  - whether the track disappeared after exit evidence
-  - whether a lost target had no exit evidence
-- Presence decisions consume tracker output instead of duplicating exit logic in
-  the lambda.
+`/api/state`, diagnostic logs, and replay data expose exit masks, recent exit
+age, room state, tracker drop reason, and fusion exit veto. Native tests cover:
 
-## 9. Replay Validation
+- disappearance after a configured exit area;
+- inside-to-outside room-boundary crossing;
+- disappearance without crossing;
+- stale drop events after reacquisition;
+- LD2410C reentry blocked by exit or filter evidence.
 
-Before enabling exit zones in production presence decisions, replay should
-measure:
+## 7. Boundaries
 
-- Occupied false-off count without exit evidence.
-- Empty false-on duration after exit evidence.
-- Whether exit zones reduce long still-person dropouts.
-- Whether exit zones create false absence when a person sits near a door.
-
-Important test cases:
-
-- Sitting still at a desk, target disappears, no exit evidence.
-- Sleeping or lying still, target disappears, no exit evidence.
-- Walking out through an exit zone, target disappears.
-- Standing or sitting near an exit zone without leaving.
-- False target or fan near an exit zone.
-
-## 10. Implementation Order
-
-1. Add this design document.
-2. Add `exit` as a planned zone type in API/config documentation.
-3. Add frontend drawing/display support.
-4. Add diagnostics-only exit-zone hit logging.
-5. Add replay scoring for exit evidence.
-6. Only then connect exit evidence to production presence-off behavior.
-
-## 11. Do Not
-
-- Do not use exit zones as filter zones.
-- Do not require exit-zone setup during first boot.
-- Do not make multi-sensor logic mandatory for exit decisions.
-- Do not replace tracker coasting with a blind long timeout.
-- Do not change production presence behavior before replay data supports it.
+- Exit areas must not behave like filter zones.
+- Exit setup must remain optional during onboarding.
+- Multi-sensor, Home Assistant, and BLE evidence are not required for an exit
+  decision.
+- Real installation replay data should be reviewed before changing coasting
+  defaults.

@@ -321,6 +321,9 @@ Endpoints:
 
 - `GET /api/control/status`
 - `POST /api/control/timezone`
+- `GET /api/control/static-radar-tuning`
+- `POST /api/control/static-radar-tuning/session`
+- `POST /api/control/static-radar-tuning/gate`
 
 Rules:
 
@@ -337,6 +340,29 @@ Rules:
   apply operation.
 - Unsupported timezone identifiers return the standard `invalid_request`
   envelope with `field: timezone` and `target: timezone`.
+
+LD2410C tuning uses a short-lived engineering session so per-gate telemetry
+does not run during normal operation.
+
+- `GET /api/control/static-radar-tuning` always returns `available` and
+  `active`. While inactive, `gates` is empty. While active, `gates` contains
+  G0 through G8 with `startMm`, `endMm`, `sensitivity`, `moveEnergy`,
+  and `stillEnergy`. Gate energy is tuning telemetry and must not be treated
+  as a detected target position.
+- `POST /api/control/static-radar-tuning/session` requires boolean `active`.
+  An active request is also a keepalive. The firmware must leave engineering
+  mode automatically when no active keepalive arrives for 15 seconds.
+- Starting a session when LD2410C is unavailable returns HTTP `409` with code
+  `static_radar_unavailable`.
+- `POST /api/control/static-radar-tuning/gate` requires integer `gate` in
+  `[0, 8]` and integer `sensitivity` in `[0, 100]`. The product-level
+  sensitivity is translated to both LD2410C move and still thresholds as
+  `threshold = 100 - sensitivity`.
+- Gate writes are accepted only while the engineering session is active.
+  Otherwise the endpoint returns HTTP `409` with code
+  `static_radar_tuning_inactive`.
+- Engineering telemetry is diagnostic only. It must not change presence,
+  motion, target coordinates, target counts, zones, rooms, or heatmaps.
 
 ### 7.3 Upload Codes
 
@@ -487,6 +513,28 @@ state, track score, observation counters, and recommended presence. These fields
 must not replace the stable device state until the firmware behavior has been
 verified in real installations.
 
+`GET /api/state` may expose bounded LD2410C evidence under
+`debug.staticRadar`. Its `available`, `presence`, `moving`, `still`, distance,
+energy, and short `reason` fields describe sensor input. `detectionDistanceMm`
+is the canonical LD2410C target distance stabilized with a three-sample median.
+At most one distance sample per second enters the median window. Brief invalid
+distance samples do not replace the last stable value; the history resets when
+static-radar presence clears or the sensor becomes unavailable.
+`movingDistanceMm` and
+`stillDistanceMm` are diagnostic raw values and must not be combined by clients
+to infer a target position. The nested `assist`
+object reports whether presence assistance is armed, active, arming, or vetoed
+by confirmed exit evidence. `debug.presenceEvidence` reports the independent
+PIR, tracker, and static-assist evidence used by fusion.
+
+LD2410C assistance may maintain an already established presence session, but it
+must not start a new session by itself. PIR and confirmed LD2450 tracker
+evidence remain the only acquisition inputs. LD2410C assistance must not create
+motion, target coordinates, target counts, room state, or zone presence. A
+confirmed `lost_after_exit` or `lost_after_room_exit` event must prevent a new
+static hold for that drop event. Missing LD2410C hardware must behave as
+`available: false` and preserve PIR plus LD2450 behavior.
+
 Replay diagnostics may expose newline-delimited samples through a dedicated
 debug endpoint. Replay payloads are for offline testing and must not be embedded
 inside normal status responses.
@@ -495,6 +543,9 @@ Replay diagnostics may append compact optional tuples over time. Consumers must
 ignore unknown fields and must provide safe defaults for missing optional fields.
 For example, the `ex` tuple reports exit-zone evidence as
 `[exitActive, exitZoneMask, exitTargetCount, exitLastSeenAgeMs]`.
+The optional `sf` tuple reports fusion evidence and state as
+`[pirEvidence, trackerEvidence, assistArmed, assistActive, armPending,
+exitVeto, armElapsedMs]`.
 
 ---
 
@@ -600,3 +651,60 @@ For now, new status-producing work should follow this rule:
 Legacy string fields may remain, but new UI work should use `code` first.
 
 ---
+
+## 15. LD2410C Presence Assistance Contract
+
+`GET /api/state` exposes bounded LD2410C input and presence-assistance state
+under `debug.staticRadar`. The `assist` object contains `armed`, `active`,
+`armPending`, `armElapsedMs`, `exitVeto`, and the optional `heldTarget` snapshot.
+Clients that display the LD2410C target position must use `presence` together
+with the single `detectionDistanceMm` value.
+`debug.presenceEvidence` reports PIR, LD2450 tracker, and LD2410C assistance as
+independent evidence.
+
+LD2410C may only maintain a presence session already acquired by PIR or a
+confirmed LD2450 track. It must not acquire presence by itself and must not
+create motion, active target coordinates or counts, room state, zone presence,
+or heatmap samples. A current `lost_after_exit` or `lost_after_room_exit` drop
+must veto a new static hold for that loss. Missing hardware is represented by
+`available: false` and must preserve existing PIR plus LD2450 behavior.
+
+While assistance is active, `assist.heldTarget` may preserve the last coordinate
+of exactly one confirmed or coasting LD2450 track for display only. It is `null`
+when no unambiguous prior spatial target exists. The snapshot does not make the
+target active and consumers must not include it in target counts, zones, rooms,
+calibration, or heatmaps.
+
+```json
+{
+  "heldTarget": {
+    "id": "target_1",
+    "x": 600,
+    "y": 1800,
+    "lastDistanceMm": 1897,
+    "staticDistanceMm": 1950,
+    "distanceDeltaMm": 53,
+    "distanceMatched": true
+  }
+}
+```
+
+`staticDistanceMm` and `distanceDeltaMm` are `null` when the stabilized
+`detectionDistanceMm` is unavailable or invalid. `distanceMatched` is then
+`false`. The dashboard may show a matched snapshot with the normal target
+appearance and an unmatched snapshot as position-uncertain.
+
+The optional replay `sr` tuple records static-radar evidence in this order:
+
+```text
+[available, presence, moving, still, movingDistanceMm, stillDistanceMm, movingEnergy, stillEnergy, detectionDistanceMm]
+```
+
+Readers must also accept legacy eight-item tuples and treat the missing
+`detectionDistanceMm` as `0`.
+
+The optional replay `sf` tuple records fusion state in this order:
+
+```text
+[pirEvidence, trackerEvidence, assistArmed, assistActive, armPending, exitVeto, armElapsedMs]
+```

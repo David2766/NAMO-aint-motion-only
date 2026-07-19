@@ -1,18 +1,27 @@
 # Presence Tracker Future Work
 
-Future tracker work split out from [presence-tracker.md](presence-tracker.md).
+Future work must preserve the current acquisition boundary: PIR and LD2450 may
+start presence, while optional LD2410C assistance may only maintain an already
+established session.
 
-## 1. Next Safe Steps
+## Next Validation Steps
 
-1. Compare legacy presence with tracker presence in real diagnostic logs.
-2. Compare `inputDetectionCount`, `activeTrackCount`, `confirmedTrackCount`,
-   and `coastingTrackCount` against real logs. `activeTrackCount` should no
-   longer grow repeatedly while `inputDetectionCount` stays at 1.
-3. Tune the tentative/confirmed/coasting lifecycle using `observedFrames`,
-   `missedFrames`, `recentHits`, `trackState`, and transition `reason`.
-4. Compare smoothed tracker moving/still output against the legacy raw
-   moving/still counters before using tracker output anywhere else.
-5. Keep the legacy path available as a fallback until real installation data
-   proves the tracker path is stable enough to become the default.
+1. Collect replay logs from sleeping, desk work, empty rooms, fans, HVAC, and
+   confirmed exits across several installations.
+2. Tune Kalman noise, association gates, and coasting limits from those logs
+   instead of individual anecdotes.
+3. Measure whether a sustained invalid LD2410C distance needs an expiry while
+   preserving the current protection against brief unknown values.
+4. Validate the 750 mm held-target distance tolerance against room size,
+   orientation, and close multi-radar installations.
+5. Compare false-off time, false-on time, fragmentation, and reacquisition
+   latency before changing production defaults.
 
----
+## Separate Features
+
+- BLE nearby evidence must remain optional and must not silently become a
+  required acquisition source.
+- Sleep schedules should be a product mode with explicit user behavior, not an
+  implicit tracker heuristic.
+- Multi-device coordination belongs to
+  [multi-sensor-contract.md](multi-sensor-contract.md), not this tracker.

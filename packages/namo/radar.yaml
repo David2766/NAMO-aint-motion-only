@@ -1,0 +1,6 @@
+ld2450:
+  id: ld2450_radar
+  uart_id: uart_bus
+ld2410:
+  id: ld2410_radar
+  uart_id: ld2410_uart

@@ -375,9 +375,7 @@ void PresenceTracker::age_track_(Track &track, const PresenceTrackerInput &input
 
 void PresenceTracker::rebuild_output_(const PresenceTrackerInput &input) {
   PresenceTrackerOutput output;
-  output.presence = input.pir_motion;
-  output.motion = input.pir_motion;
-  output.reason = input.pir_motion ? "pir" : input.filter_blocked ? "filter_blocked" : "none";
+  output.reason = input.filter_blocked ? "filter_blocked" : "none";
   output.drop_reason = this->last_drop_reason_;
   output.drop_ms = this->last_drop_ms_;
   output.input_detection_count = 0;
@@ -436,8 +434,7 @@ void PresenceTracker::rebuild_output_(const PresenceTrackerInput &input) {
                                state_name_(track.state), track.reason, direction_name_(track.direction),
                                track.exit_zone_mask, exit_age_ms, exit_recent, this->room_state_name_(track)};
       }
-      if (!input.pir_motion)
-        output.reason = track.reason;
+      output.reason = track.reason;
     }
   }
 

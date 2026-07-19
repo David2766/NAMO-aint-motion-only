@@ -8,7 +8,7 @@ esphome:
 esp32:
   board: seeed_xiao_esp32s3
   flash_size: 8MB
-  partitions: packages/presence-sensor-xiao-s3/partitions-8mb.csv
+  partitions: packages/namo/partitions-8mb.csv
   framework:
     type: esp-idf
 psram:
@@ -47,12 +47,18 @@ i2c:
   scl: GPIO6
   scan: true
 uart:
-  id: uart_bus
-  tx_pin: GPIO43
-  rx_pin: GPIO44
-  baud_rate: 256000
-  parity: NONE
-  stop_bits: 1
+  - id: uart_bus
+    tx_pin: GPIO43
+    rx_pin: GPIO44
+    baud_rate: 256000
+    parity: NONE
+    stop_bits: 1
+  - id: ld2410_uart
+    tx_pin: GPIO2
+    rx_pin: GPIO3
+    baud_rate: 256000
+    parity: NONE
+    stop_bits: 1
 output:
   - platform: gpio
     pin: GPIO21
