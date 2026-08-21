@@ -4,6 +4,12 @@
 
 *Still here, even when you're still.*
 
+[![Dashboard demo](https://github.com/David2766/NAMO-aint-motion-only/actions/workflows/demo-pages.yml/badge.svg)](https://github.com/David2766/NAMO-aint-motion-only/actions/workflows/demo-pages.yml)
+[![Release](https://img.shields.io/github/v/release/David2766/NAMO-aint-motion-only?include_prereleases&sort=semver)](https://github.com/David2766/NAMO-aint-motion-only/releases)
+[![Software license](https://img.shields.io/badge/software-AGPL--3.0--or--later-blue)](LICENSE)
+[![Hardware license](https://img.shields.io/badge/hardware-CC_BY--NC--SA_4.0-lightgrey)](hardware/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/David2766/NAMO-aint-motion-only?style=flat&logo=github)](https://github.com/David2766/NAMO-aint-motion-only/stargazers)
+
 NAMO is a fully local mmWave spatial presence platform with live floorplan
 tracking, visual zones, multi-device coordinate fusion, and Home Assistant
 integration.
