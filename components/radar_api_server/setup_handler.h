@@ -11,8 +11,8 @@ class SetupHandler {
  public:
   explicit SetupHandler(RadarApiServer *server) : server_(server) {}
 
-  bool can_handle(AsyncWebServerRequest *request) const;
-  bool handle(AsyncWebServerRequest *request);
+  bool can_handle(AsyncWebServerRequest *request, StringRef url) const;
+  bool handle(AsyncWebServerRequest *request, StringRef url);
   void prepare_setup_access_point() const;
   void finish_setup_scan() const;
   void finish_setup_scan_and_open_ap() const;

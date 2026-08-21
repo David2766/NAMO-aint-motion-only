@@ -1,5 +1,7 @@
 #include "presence_tracker.h"
 
+#include "fixed_text_buffer.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -20,6 +22,28 @@ int clamp_score(int value) {
 
 }  // namespace
 
+PresenceTargetAdmissionResult evaluate_presence_target_admission(
+    const std::array<PresenceTargetAdmissionInput, 3> &targets) {
+  PresenceTargetAdmissionResult result;
+  for (std::size_t index = 0; index < targets.size(); index++) {
+    const auto &target = targets[index];
+    if (!target.observed)
+      continue;
+
+    result.observed_count++;
+    if (target.filter_blocked)
+      result.blocked_count++;
+
+    result.association_candidates[index] = target.filter_blocked || target.range_valid;
+    result.admitted[index] = !target.filter_blocked && target.range_valid;
+    if (result.admitted[index])
+      result.admitted_count++;
+  }
+  result.fully_filter_blocked =
+      result.observed_count > 0 && result.blocked_count == result.observed_count;
+  return result;
+}
+
 void PresenceTracker::update(const PresenceTrackerInput &input) {
   for (auto &track : this->tracks_)
     track.updated = false;
@@ -27,13 +51,14 @@ void PresenceTracker::update(const PresenceTrackerInput &input) {
   if (!input.filter_blocked) {
     int mapping[3] = {-1, -1, -1};
     bool target_used[3] = {false, false, false};
+    bool ambiguous_targets[3] = {false, false, false};
     bool reserved_tracks[3] = {false, false, false};
     int valid_target_count = 0;
     for (const auto &target : input.targets) {
-      if (target.valid)
+      if (target.valid && !target.filter_blocked)
         valid_target_count++;
     }
-    this->associate_targets_(input, mapping);
+    this->associate_targets_(input, mapping, ambiguous_targets);
 
     for (int track_index = 0; track_index < 3; track_index++) {
       const int target_index = mapping[track_index];
@@ -41,13 +66,24 @@ void PresenceTracker::update(const PresenceTrackerInput &input) {
         continue;
       target_used[target_index] = true;
       reserved_tracks[track_index] = true;
-      this->update_track_(this->tracks_[track_index], input.targets[target_index], input);
+      const auto &target = input.targets[target_index];
+      if (target.filter_blocked) {
+        this->tracks_[track_index].admission_blocked = true;
+        this->age_track_(this->tracks_[track_index], input, true);
+        this->tracks_[track_index].updated = true;
+        continue;
+      }
+      this->update_track_(this->tracks_[track_index], target, input);
     }
 
     const int stable_track_count = this->stable_track_count_();
     for (int target_index = 0; target_index < 3; target_index++) {
       const auto &target = input.targets[target_index];
-      if (!target.valid || target_used[target_index])
+      if (!target.valid || target.filter_blocked || target_used[target_index])
+        continue;
+      if (ambiguous_targets[target_index])
+        continue;
+      if (target.reduced_zone)
         continue;
       if (stable_track_count >= valid_target_count)
         continue;
@@ -57,13 +93,18 @@ void PresenceTracker::update(const PresenceTrackerInput &input) {
         continue;
 
       reserved_tracks[track_index] = true;
-      this->update_track_(this->tracks_[track_index], target, input);
+      const bool conservative_confirmation =
+          stable_track_count > 0 || valid_target_count > 1;
+      const uint32_t secondary_parent_track_id =
+          conservative_confirmation ? this->select_secondary_parent_(target) : 0;
+      this->update_track_(this->tracks_[track_index], target, input,
+                          conservative_confirmation, secondary_parent_track_id);
     }
   }
 
   for (auto &track : this->tracks_) {
     if (!track.updated)
-      this->age_track_(track, input);
+      this->age_track_(track, input, input.filter_blocked);
   }
 
   this->rebuild_output_(input);
@@ -71,7 +112,19 @@ void PresenceTracker::update(const PresenceTrackerInput &input) {
 
 std::string PresenceTracker::debug_json() const {
   std::string out;
-  out.reserve(520);
+  out.reserve(2048);
+  this->append_debug_json_(out);
+  return out;
+}
+
+bool PresenceTracker::write_debug_json(FixedTextBuffer &output) const {
+  output.clear();
+  this->append_debug_json_(output);
+  return output.ok();
+}
+
+template<typename Output>
+void PresenceTracker::append_debug_json_(Output &out) const {
   out += R"({"presence":)";
   out += this->output_.presence ? "true" : "false";
   out += R"(,"motion":)";
@@ -166,10 +219,11 @@ std::string PresenceTracker::debug_json() const {
     out += "}";
   }
   out += "]}";
-  return out;
 }
 
-void PresenceTracker::associate_targets_(const PresenceTrackerInput &input, int (&mapping)[3]) const {
+void PresenceTracker::associate_targets_(const PresenceTrackerInput &input,
+                                         int (&mapping)[3],
+                                         bool (&ambiguous_targets)[3]) const {
   int track_indices[3] = {-1, -1, -1};
   int target_indices[3] = {-1, -1, -1};
   int track_count = 0;
@@ -177,6 +231,7 @@ void PresenceTracker::associate_targets_(const PresenceTrackerInput &input, int 
 
   for (int i = 0; i < 3; i++) {
     mapping[i] = -1;
+    ambiguous_targets[i] = false;
     if (this->tracks_[i].state != TrackState::IDLE)
       track_indices[track_count++] = i;
     if (input.targets[i].valid)
@@ -187,63 +242,103 @@ void PresenceTracker::associate_targets_(const PresenceTrackerInput &input, int 
     return;
 
   int best_mapping[3] = {-1, -1, -1};
+  int second_mapping[3] = {-1, -1, -1};
   int best_match_count = -1;
   float best_cost = 1.0e12f;
+  float second_cost = 1.0e12f;
 
-  for (int c0 = -1; c0 < target_count; c0++) {
-    for (int c1 = -1; c1 < target_count; c1++) {
-      for (int c2 = -1; c2 < target_count; c2++) {
-        const int choices[3] = {c0, c1, c2};
-        bool used_targets[3] = {false, false, false};
-        int candidate_mapping[3] = {-1, -1, -1};
-        int match_count = 0;
-        float cost = 0.0f;
-        bool valid = true;
+  int combination_count = 1;
+  for (int pos = 0; pos < track_count; pos++)
+    combination_count *= target_count + 1;
 
-        for (int pos = 0; pos < track_count; pos++) {
-          const int choice = choices[pos];
-          if (choice < 0)
-            continue;
-          if (used_targets[choice]) {
-            valid = false;
-            break;
-          }
+  for (int combination = 0; combination < combination_count; combination++) {
+    int encoded = combination;
+    int choices[3] = {-1, -1, -1};
+    for (int pos = 0; pos < track_count; pos++) {
+      choices[pos] = (encoded % (target_count + 1)) - 1;
+      encoded /= target_count + 1;
+    }
+    bool used_targets[3] = {false, false, false};
+    int candidate_mapping[3] = {-1, -1, -1};
+    int match_count = 0;
+    float cost = 0.0f;
+    bool valid = true;
 
-          const int track_index = track_indices[pos];
-          const int target_index = target_indices[choice];
-          const auto &track = this->tracks_[track_index];
-          const auto &target = input.targets[target_index];
-          const float distance = distance_between_(target.x_mm, target.y_mm, this->predicted_x_(track, input.now_ms),
-                                                   this->predicted_y_(track, input.now_ms));
-          if (distance > this->association_radius_for_(track)) {
-            valid = false;
-            break;
-          }
-
-          used_targets[choice] = true;
-          candidate_mapping[track_index] = target_index;
-          match_count++;
-          cost += this->association_cost_(track, distance);
-        }
-
-        if (!valid)
-          continue;
-
-        if (match_count > best_match_count || (match_count == best_match_count && cost < best_cost)) {
-          best_match_count = match_count;
-          best_cost = cost;
-          for (int i = 0; i < 3; i++)
-            best_mapping[i] = candidate_mapping[i];
-        }
+    for (int pos = 0; pos < track_count; pos++) {
+      const int choice = choices[pos];
+      if (choice < 0)
+        continue;
+      if (used_targets[choice]) {
+        valid = false;
+        break;
       }
+
+      const int track_index = track_indices[pos];
+      const int target_index = target_indices[choice];
+      const auto &track = this->tracks_[track_index];
+      const auto &target = input.targets[target_index];
+      const float distance =
+          distance_between_(target.x_mm, target.y_mm,
+                            this->predicted_x_(track, input.now_ms),
+                            this->predicted_y_(track, input.now_ms));
+      if (distance > this->association_radius_for_(track, target)) {
+        valid = false;
+        break;
+      }
+
+      used_targets[choice] = true;
+      candidate_mapping[track_index] = target_index;
+      match_count++;
+      cost += this->association_cost_(track, distance);
+    }
+
+    if (!valid)
+      continue;
+
+    if (match_count > best_match_count) {
+      best_match_count = match_count;
+      best_cost = cost;
+      second_cost = 1.0e12f;
+      for (int i = 0; i < 3; i++)
+        best_mapping[i] = candidate_mapping[i];
+    } else if (match_count == best_match_count && cost < best_cost) {
+      second_cost = best_cost;
+      for (int i = 0; i < 3; i++) {
+        second_mapping[i] = best_mapping[i];
+        best_mapping[i] = candidate_mapping[i];
+      }
+      best_cost = cost;
+    } else if (match_count == best_match_count && cost < second_cost) {
+      second_cost = cost;
+      for (int i = 0; i < 3; i++)
+        second_mapping[i] = candidate_mapping[i];
     }
   }
 
   if (best_match_count <= 0)
     return;
 
-  for (int i = 0; i < 3; i++)
+  const bool ambiguous =
+      second_cost < 1.0e12f &&
+      (second_cost - best_cost) < this->policy_.association_ambiguity_margin_mm;
+  for (int i = 0; i < 3; i++) {
     mapping[i] = best_mapping[i];
+    if (!ambiguous || best_mapping[i] == second_mapping[i])
+      continue;
+    if (best_mapping[i] >= 0 && second_mapping[i] >= 0) {
+      const auto &best_target = input.targets[best_mapping[i]];
+      const auto &second_target = input.targets[second_mapping[i]];
+      if (distance_between_(best_target.x_mm, best_target.y_mm,
+                            second_target.x_mm, second_target.y_mm) <
+          this->policy_.association_ambiguity_min_separation_mm)
+        continue;
+    }
+    if (best_mapping[i] >= 0)
+      ambiguous_targets[best_mapping[i]] = true;
+    if (second_mapping[i] >= 0)
+      ambiguous_targets[second_mapping[i]] = true;
+    mapping[i] = -1;
+  }
 }
 
 int PresenceTracker::find_reusable_track_(const bool (&reserved_tracks)[3]) const {
@@ -269,16 +364,46 @@ int PresenceTracker::find_reusable_track_(const bool (&reserved_tracks)[3]) cons
   return weakest_index;
 }
 
-void PresenceTracker::update_track_(Track &track, const PresenceTrackerTargetInput &target,
-                                    const PresenceTrackerInput &input) {
+void PresenceTracker::update_track_(Track &track,
+                                    const PresenceTrackerTargetInput &target,
+                                    const PresenceTrackerInput &input,
+                                    bool conservative_confirmation,
+                                    uint32_t secondary_parent_track_id) {
   const bool was_idle = track.state == TrackState::IDLE;
+  if (was_idle && target.reduced_zone)
+    return;
+
+  track.admission_blocked = false;
 
   if (was_idle) {
+    track.local_track_id = this->allocate_local_track_id_();
     track.state = TrackState::TENTATIVE;
     track.first_seen_ms = input.now_ms;
     track.state_changed_ms = input.now_ms;
     track.reason = "tentative_new";
+    track.conservative_confirmation = conservative_confirmation;
+    track.secondary_origin = secondary_parent_track_id != 0;
+    track.secondary_parent_track_id = secondary_parent_track_id;
     this->reset_filter_(track, target.x_mm, target.y_mm, input.now_ms);
+  }
+
+  if (target.reduced_zone) {
+    if (!track.reduced_zone_observation)
+      track.reduced_zone_entered_ms = input.now_ms;
+    track.reduced_zone_observation = true;
+
+    if ((input.now_ms - track.reduced_zone_entered_ms) > this->policy_.reduced_zone_transit_ms) {
+      track.reduced_zone_coasting = true;
+      this->age_track_(track, input);
+      if (track.state != TrackState::IDLE)
+        track.reason = "coasting_reduced_zone";
+      track.updated = true;
+      return;
+    }
+  } else {
+    track.reduced_zone_observation = false;
+    track.reduced_zone_coasting = false;
+    track.reduced_zone_entered_ms = 0;
   }
 
   const float previous_filtered_x = track.x_mm;
@@ -290,13 +415,51 @@ void PresenceTracker::update_track_(Track &track, const PresenceTrackerTargetInp
     const float predicted_x = this->predicted_x_(track, input.now_ms);
     const float predicted_y = this->predicted_y_(track, input.now_ms);
     const float jump_distance = distance_between_(target.x_mm, target.y_mm, predicted_x, predicted_y);
-    if (jump_distance > this->policy_.teleport_reset_distance_mm) {
+    if (jump_distance > this->policy_.teleport_candidate_distance_mm) {
+      if (target.reduced_zone) {
+        track.reduced_zone_coasting = true;
+        this->age_track_(track, input);
+        if (track.state != TrackState::IDLE)
+          track.reason = "coasting_reduced_zone";
+        track.updated = true;
+        return;
+      }
+
+      const bool candidate_fresh =
+          track.teleport_candidate_active &&
+          input.now_ms - track.teleport_candidate_ms <= this->policy_.teleport_confirmation_window_ms;
+      const bool candidate_consistent =
+          candidate_fresh &&
+          distance_between_(target.x_mm, target.y_mm, track.teleport_candidate_x_mm,
+                            track.teleport_candidate_y_mm) <=
+              this->policy_.teleport_confirmation_radius_mm;
+      if (candidate_consistent) {
+        if (track.teleport_candidate_hits < 255)
+          track.teleport_candidate_hits++;
+      } else {
+        track.teleport_candidate_active = true;
+        track.teleport_candidate_hits = 1;
+      }
+      track.teleport_candidate_x_mm = target.x_mm;
+      track.teleport_candidate_y_mm = target.y_mm;
+      track.teleport_candidate_ms = input.now_ms;
+
+      if (track.teleport_candidate_hits < this->policy_.teleport_confirmation_hits_required) {
+        this->age_track_(track, input);
+        if (track.state != TrackState::IDLE)
+          track.reason = "coasting_teleport_candidate";
+        track.updated = true;
+        return;
+      }
       this->reset_filter_(track, target.x_mm, target.y_mm, input.now_ms);
     } else {
+      track.teleport_candidate_active = false;
+      track.teleport_candidate_hits = 0;
       this->update_filter_(track, target.x_mm, target.y_mm, input.now_ms);
     }
   }
 
+  track.reduced_zone_coasting = false;
   this->refresh_track_kinematics_(track, input);
   const float movement_mm = was_idle ? 0.0f : distance_between_(track.x_mm, track.y_mm, previous_filtered_x, previous_filtered_y);
   const float moving_enter_speed = input.stationary_speed_cm_s * this->policy_.moving_enter_speed_multiplier;
@@ -316,6 +479,7 @@ void PresenceTracker::update_track_(Track &track, const PresenceTrackerTargetInp
     track.observed_frames++;
   track.updated = true;
   this->record_track_observation_(track, true);
+  this->update_secondary_evidence_(track);
 
   if (track.state == TrackState::COASTING) {
     track.state = TrackState::CONFIRMED;
@@ -323,8 +487,9 @@ void PresenceTracker::update_track_(Track &track, const PresenceTrackerTargetInp
     track.reason = "confirmed_reacquired";
   } else if (track.state == TrackState::TENTATIVE && this->should_confirm_(track, input)) {
     const int recent_hits = this->recent_hit_count_(track);
-    const bool pir_fast_confirm = input.pir_motion && recent_hits >= this->policy_.pir_confirm_hits_required &&
-                                  recent_hits < this->policy_.confirm_hits_required;
+    const bool pir_fast_confirm = input.pir_motion &&
+                                  !track.conservative_confirmation &&
+                                  (target.reduced_zone || recent_hits < this->policy_.confirm_hits_required);
     track.state = TrackState::CONFIRMED;
     track.state_changed_ms = input.now_ms;
     track.reason = pir_fast_confirm ? "confirmed_by_pir_hint" : "confirmed_by_hits";
@@ -333,18 +498,24 @@ void PresenceTracker::update_track_(Track &track, const PresenceTrackerTargetInp
   }
 }
 
-void PresenceTracker::age_track_(Track &track, const PresenceTrackerInput &input) {
+void PresenceTracker::age_track_(Track &track, const PresenceTrackerInput &input, bool filter_blocked) {
   if (track.state == TrackState::IDLE)
     return;
 
+  const float observed_x = track.x_mm;
+  const float observed_y = track.y_mm;
   this->predict_filter_(track, input.now_ms);
+  // Keep a coasting track anchored to its last measured position. The updated
+  // covariance and velocity still support bounded next-frame reassociation.
+  track.x_mm = observed_x;
+  track.y_mm = observed_y;
   this->refresh_track_kinematics_(track, input);
   if (track.missed_frames < 65535)
     track.missed_frames++;
   this->record_track_observation_(track, false);
 
   if (track.state == TrackState::TENTATIVE) {
-    track.reason = input.filter_blocked ? "filter_blocked_missed" : "tentative_missed";
+    track.reason = filter_blocked ? "filter_blocked_missed" : "tentative_missed";
     if (track.missed_frames > this->policy_.tentative_delete_missed_frames)
       track = Track{};
     return;
@@ -355,7 +526,7 @@ void PresenceTracker::age_track_(Track &track, const PresenceTrackerInput &input
     track.state_changed_ms = input.now_ms;
     const bool exit_recent = this->has_recent_exit_evidence_(track, input.now_ms);
     const bool room_exit = this->has_room_exit_evidence_(track);
-    track.reason = input.filter_blocked ? "filter_blocked_missed" :
+    track.reason = filter_blocked ? "filter_blocked_missed" :
                    exit_recent ? "coasting_after_exit" :
                    room_exit ? "coasting_after_room_exit" :
                    "coasting_missed";
@@ -380,12 +551,12 @@ void PresenceTracker::rebuild_output_(const PresenceTrackerInput &input) {
   output.drop_ms = this->last_drop_ms_;
   output.input_detection_count = 0;
   for (const auto &target : input.targets) {
-    if (target.valid)
+    if (target.valid && !target.filter_blocked)
       output.input_detection_count++;
   }
 
   for (const auto &track : this->tracks_) {
-    if (track.state == TrackState::IDLE)
+    if (track.state == TrackState::IDLE || track.admission_blocked)
       continue;
 
     output.active_track_count++;
@@ -397,6 +568,8 @@ void PresenceTracker::rebuild_output_(const PresenceTrackerInput &input) {
     if (score > output.track_score) {
       output.track_score = score;
       output.state = state_name_(track.state);
+      if (!input.filter_blocked)
+        output.reason = track.reason;
     }
 
     if (track.state == TrackState::TENTATIVE) {
@@ -409,12 +582,8 @@ void PresenceTracker::rebuild_output_(const PresenceTrackerInput &input) {
       output.confirmed_track_count++;
       output.reason = track.reason;
       const int slot = output.confirmed_track_count + output.coasting_track_count - 1;
-      if (slot >= 0 && slot < static_cast<int>(output.tracks.size())) {
-        output.tracks[slot] = {true, track.moving, false, track.x_mm, track.y_mm, track.vx_mm_s, track.vy_mm_s,
-                               track.speed_cm_s, track.distance_mm, track.radial_velocity_cm_s, score,
-                               state_name_(track.state), track.reason, direction_name_(track.direction),
-                               track.exit_zone_mask, exit_age_ms, exit_recent, this->room_state_name_(track)};
-      }
+      if (slot >= 0 && slot < static_cast<int>(output.tracks.size()))
+        this->fill_track_output_(output.tracks[slot], track, input.now_ms, score, exit_age_ms, exit_recent);
       if (track.moving) {
         output.motion = true;
         output.moving_track_count++;
@@ -428,17 +597,41 @@ void PresenceTracker::rebuild_output_(const PresenceTrackerInput &input) {
       output.presence = true;
       output.coasting_track_count++;
       const int slot = output.confirmed_track_count + output.coasting_track_count - 1;
-      if (slot >= 0 && slot < static_cast<int>(output.tracks.size())) {
-        output.tracks[slot] = {true, track.moving, true, track.x_mm, track.y_mm, track.vx_mm_s, track.vy_mm_s,
-                               track.speed_cm_s, track.distance_mm, track.radial_velocity_cm_s, score,
-                               state_name_(track.state), track.reason, direction_name_(track.direction),
-                               track.exit_zone_mask, exit_age_ms, exit_recent, this->room_state_name_(track)};
-      }
+      if (slot >= 0 && slot < static_cast<int>(output.tracks.size()))
+        this->fill_track_output_(output.tracks[slot], track, input.now_ms, score, exit_age_ms, exit_recent);
       output.reason = track.reason;
     }
   }
 
   this->output_ = output;
+}
+
+void PresenceTracker::fill_track_output_(PresenceTrackerTrackOutput &output, const Track &track,
+                                         uint32_t now_ms, int score, int exit_age_ms,
+                                         bool exit_recent) const {
+  output.valid = true;
+  output.local_track_id = track.local_track_id;
+  output.moving = track.moving;
+  output.coasting = track.state == TrackState::COASTING;
+  output.reduced_zone = track.reduced_zone_observation;
+  output.sample_age_ms = now_ms - track.last_seen_ms;
+  output.x_mm = track.x_mm;
+  output.y_mm = track.y_mm;
+  output.vx_mm_s = track.vx_mm_s;
+  output.vy_mm_s = track.vy_mm_s;
+  output.position_variance_x_mm2 = track.covariance[0][0];
+  output.position_variance_y_mm2 = track.covariance[1][1];
+  output.speed_cm_s = track.speed_cm_s;
+  output.distance_mm = track.distance_mm;
+  output.radial_velocity_cm_s = track.radial_velocity_cm_s;
+  output.track_score = score;
+  output.state = state_name_(track.state);
+  output.reason = track.reason;
+  output.direction = direction_name_(track.direction);
+  output.exit_zone_mask = track.exit_zone_mask;
+  output.exit_age_ms = exit_age_ms;
+  output.exit_recent = exit_recent;
+  output.room_state = this->room_state_name_(track);
 }
 
 void PresenceTracker::record_track_observation_(Track &track, bool observed) {
@@ -452,6 +645,14 @@ void PresenceTracker::record_track_observation_(Track &track, bool observed) {
   track.hit_mask = static_cast<uint8_t>(((track.hit_mask << 1U) | (observed ? 1U : 0U)) & mask);
   if (track.history_frames < window)
     track.history_frames++;
+}
+
+uint32_t PresenceTracker::allocate_local_track_id_() {
+  const uint32_t id = this->next_local_track_id_;
+  this->next_local_track_id_++;
+  if (this->next_local_track_id_ == 0)
+    this->next_local_track_id_ = 1;
+  return id;
 }
 
 void PresenceTracker::update_exit_evidence_(Track &track, const PresenceTrackerTargetInput &target, uint32_t now_ms) {
@@ -507,25 +708,32 @@ void PresenceTracker::update_room_evidence_(Track &track, const PresenceTrackerT
 }
 
 bool PresenceTracker::has_recent_exit_evidence_(const Track &track, uint32_t now_ms) const {
-  if (track.last_exit_seen_ms == 0 || track.exit_zone_mask == 0)
+  if (track.exit_zone_mask == 0)
     return false;
-  return now_ms >= track.last_exit_seen_ms && (now_ms - track.last_exit_seen_ms) <= this->policy_.exit_evidence_max_age_ms;
+  return (now_ms - track.last_exit_seen_ms) <= this->policy_.exit_evidence_max_age_ms;
 }
 
 int PresenceTracker::exit_age_ms_(const Track &track, uint32_t now_ms) const {
-  if (track.last_exit_seen_ms == 0 || track.exit_zone_mask == 0 || now_ms < track.last_exit_seen_ms)
+  if (track.exit_zone_mask == 0)
     return -1;
-  return static_cast<int>(now_ms - track.last_exit_seen_ms);
+  const uint32_t age_ms = now_ms - track.last_exit_seen_ms;
+  return age_ms > 0x7FFFFFFFU ? 0x7FFFFFFF : static_cast<int>(age_ms);
 }
 
 uint8_t PresenceTracker::coasting_delete_missed_frames_for_(const Track &track, uint32_t now_ms) const {
+  uint8_t result = this->policy_.coasting_delete_missed_frames;
   if (this->has_recent_exit_evidence_(track, now_ms))
-    return this->policy_.exit_coasting_delete_missed_frames;
-  if (this->has_room_exit_evidence_(track))
-    return this->policy_.coasting_delete_missed_frames;
-  if (track.exit_zone_mask == 0)
-    return this->policy_.non_exit_coasting_delete_missed_frames;
-  return this->policy_.coasting_delete_missed_frames;
+    result = this->policy_.exit_coasting_delete_missed_frames;
+  else if (track.reduced_zone_coasting)
+    result = this->policy_.reduced_zone_coasting_delete_missed_frames;
+  else if (this->has_room_exit_evidence_(track))
+    result = this->policy_.coasting_delete_missed_frames;
+  else if (track.exit_zone_mask == 0)
+    result = this->policy_.non_exit_coasting_delete_missed_frames;
+
+  if (track.secondary_origin && this->secondary_parent_observed_(track))
+    result = std::min(result, this->policy_.secondary_parent_coasting_delete_missed_frames);
+  return result;
 }
 
 const char *PresenceTracker::room_state_name_(const Track &track) const {
@@ -548,7 +756,20 @@ float PresenceTracker::room_boundary_margin_mm_(const Track &track) const {
 }
 
 bool PresenceTracker::should_confirm_(const Track &track, const PresenceTrackerInput &input) const {
-  const int required_hits = input.pir_motion ? this->policy_.pir_confirm_hits_required : this->policy_.confirm_hits_required;
+  if (track.secondary_origin) {
+    if (track.reduced_zone_observation)
+      return false;
+    const bool guard_elapsed =
+        input.now_ms - track.first_seen_ms >=
+        this->policy_.secondary_guard_confirmation_ms;
+    if (!track.secondary_independent && !guard_elapsed)
+      return false;
+  }
+  const int required_hits =
+      track.conservative_confirmation
+          ? this->policy_.conservative_confirm_hits_required
+          : input.pir_motion ? this->policy_.pir_confirm_hits_required
+                             : this->policy_.confirm_hits_required;
   return track.history_frames >= required_hits && this->recent_hit_count_(track) >= required_hits;
 }
 
@@ -579,15 +800,92 @@ int PresenceTracker::track_score_(const Track &track) const {
 int PresenceTracker::stable_track_count_() const {
   int count = 0;
   for (const auto &track : this->tracks_) {
-    if (is_stable_track_(track))
+    if (is_stable_track_(track) && !track.admission_blocked)
       count++;
   }
   return count;
 }
 
-float PresenceTracker::association_radius_for_(const Track &track) const {
-  return is_stable_track_(track) ? this->policy_.stable_track_reassociation_radius_mm
-                                 : this->policy_.association_radius_mm;
+uint32_t PresenceTracker::select_secondary_parent_(
+    const PresenceTrackerTargetInput &target) const {
+  const Track *best = nullptr;
+  float best_distance = 0.0f;
+  bool best_is_stable = false;
+  for (const auto &track : this->tracks_) {
+    const bool stable = is_stable_track_(track);
+    const bool same_frame_tentative =
+        track.state == TrackState::TENTATIVE && track.updated;
+    if ((!stable && !same_frame_tentative) || track.admission_blocked)
+      continue;
+    const float distance =
+        distance_between_(target.x_mm, target.y_mm, track.x_mm, track.y_mm);
+    if (best == nullptr || (stable && !best_is_stable) ||
+        (stable == best_is_stable && distance < best_distance)) {
+      best = &track;
+      best_distance = distance;
+      best_is_stable = stable;
+    }
+  }
+  return best == nullptr ? 0 : best->local_track_id;
+}
+
+const PresenceTracker::Track *PresenceTracker::find_track_by_id_(
+    uint32_t local_track_id) const {
+  if (local_track_id == 0)
+    return nullptr;
+  for (const auto &track : this->tracks_) {
+    if (track.state != TrackState::IDLE &&
+        track.local_track_id == local_track_id)
+      return &track;
+  }
+  return nullptr;
+}
+
+void PresenceTracker::update_secondary_evidence_(Track &track) {
+  if (!track.secondary_origin || track.secondary_independent)
+    return;
+  const Track *parent = this->find_track_by_id_(track.secondary_parent_track_id);
+  if (parent == nullptr || !parent->updated ||
+      (parent->state != TrackState::TENTATIVE &&
+       !is_stable_track_(*parent)))
+    return;
+
+  const float relative_x = track.x_mm - parent->x_mm;
+  const float relative_y = track.y_mm - parent->y_mm;
+  if (!track.secondary_relative_initialized) {
+    track.secondary_relative_initialized = true;
+    track.secondary_initial_relative_x_mm = relative_x;
+    track.secondary_initial_relative_y_mm = relative_y;
+    return;
+  }
+
+  const float displacement =
+      distance_between_(relative_x, relative_y,
+                        track.secondary_initial_relative_x_mm,
+                        track.secondary_initial_relative_y_mm);
+  if (displacement < this->policy_.secondary_independent_displacement_mm) {
+    track.secondary_independent_hits = 0;
+    return;
+  }
+  if (track.secondary_independent_hits < 255)
+    track.secondary_independent_hits++;
+  if (track.secondary_independent_hits >=
+      this->policy_.secondary_independent_hits_required)
+    track.secondary_independent = true;
+}
+
+bool PresenceTracker::secondary_parent_observed_(const Track &track) const {
+  const Track *parent = this->find_track_by_id_(track.secondary_parent_track_id);
+  return parent != nullptr && is_stable_track_(*parent) && parent->updated;
+}
+
+float PresenceTracker::association_radius_for_(const Track &track,
+                                               const PresenceTrackerTargetInput &target) const {
+  const float radius = is_stable_track_(track) ? this->policy_.stable_track_reassociation_radius_mm
+                                               : this->policy_.association_radius_mm;
+  if (target.reduced_zone && !track.reduced_zone_observation)
+    return std::min(radius, this->policy_.reduced_zone_entry_radius_mm);
+  return radius;
 }
 
 float PresenceTracker::association_cost_(const Track &track, float distance) const {
@@ -600,20 +898,24 @@ float PresenceTracker::association_cost_(const Track &track, float distance) con
 }
 
 float PresenceTracker::predicted_x_(const Track &track, uint32_t now_ms) const {
-  if (!track.filter_initialized || track.last_update_ms == 0 || now_ms <= track.last_update_ms)
+  if (!track.filter_initialized)
     return track.x_mm;
 
   uint32_t dt_ms = now_ms - track.last_update_ms;
+  if (dt_ms == 0)
+    return track.x_mm;
   if (this->policy_.max_filter_dt_ms > 0)
     dt_ms = std::min<uint32_t>(dt_ms, this->policy_.max_filter_dt_ms);
   return track.x_mm + track.vx_mm_s * (static_cast<float>(dt_ms) / 1000.0f);
 }
 
 float PresenceTracker::predicted_y_(const Track &track, uint32_t now_ms) const {
-  if (!track.filter_initialized || track.last_update_ms == 0 || now_ms <= track.last_update_ms)
+  if (!track.filter_initialized)
     return track.y_mm;
 
   uint32_t dt_ms = now_ms - track.last_update_ms;
+  if (dt_ms == 0)
+    return track.y_mm;
   if (this->policy_.max_filter_dt_ms > 0)
     dt_ms = std::min<uint32_t>(dt_ms, this->policy_.max_filter_dt_ms);
   return track.y_mm + track.vy_mm_s * (static_cast<float>(dt_ms) / 1000.0f);
@@ -621,6 +923,8 @@ float PresenceTracker::predicted_y_(const Track &track, uint32_t now_ms) const {
 
 void PresenceTracker::reset_filter_(Track &track, float x_mm, float y_mm, uint32_t now_ms) const {
   track.filter_initialized = true;
+  track.teleport_candidate_active = false;
+  track.teleport_candidate_hits = 0;
   track.x_mm = x_mm;
   track.y_mm = y_mm;
   track.vx_mm_s = 0.0f;
@@ -640,14 +944,9 @@ void PresenceTracker::predict_filter_(Track &track, uint32_t now_ms) const {
     track.last_update_ms = now_ms;
     return;
   }
-  if (track.last_update_ms == 0) {
-    track.last_update_ms = now_ms;
-    return;
-  }
-  if (now_ms <= track.last_update_ms)
-    return;
-
   uint32_t dt_ms = now_ms - track.last_update_ms;
+  if (dt_ms == 0)
+    return;
   if (this->policy_.max_filter_dt_ms > 0)
     dt_ms = std::min<uint32_t>(dt_ms, this->policy_.max_filter_dt_ms);
   const float dt = static_cast<float>(dt_ms) / 1000.0f;
@@ -821,7 +1120,8 @@ const char *PresenceTracker::direction_name_(TrackDirection direction) {
   }
 }
 
-void PresenceTracker::append_json_string_(std::string &out, const char *value) {
+template<typename Output>
+void PresenceTracker::append_json_string_(Output &out, const char *value) {
   out.push_back('"');
   const char *safe = value != nullptr && value[0] != '\0' ? value : "none";
   for (const char *p = safe; *p != '\0'; ++p) {

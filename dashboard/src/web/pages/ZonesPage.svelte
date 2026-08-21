@@ -26,6 +26,7 @@
     messages: Messages;
     activeZoneTool: ZoneTool;
     activeTargetCount: number;
+    calibrationCanStart: boolean;
     calibrationRun: boolean;
     calibrationStatusText: string;
     calibrationTypeLabels: Record<CalibrationActionType, string>;
@@ -35,8 +36,6 @@
     config: WebDeviceConfig | null;
     debugMode: boolean;
     displayConfig: WebDeviceConfig | null;
-    hasState: boolean;
-    pirMotion: boolean;
     saveState: SaveState;
     saveStatusText: string;
     selectedCalibrationZone: WebZone | null;
@@ -49,7 +48,6 @@
     zoneTypeLabels: Record<WebZoneType, string>;
     zones: WebZone[];
     onAddZone: () => void;
-    onAddExitZone: () => void;
     onCalibrationInfoClick: (zoneId: string) => void;
     onConvertToRect: () => void;
     onDeleteCalibrationZone: (zoneId: string) => void;
@@ -69,6 +67,8 @@
     onZonePointDoubleClick: (event: MouseEvent) => void;
     onZonePointerDown: (event: PointerEvent) => void;
     onCanvasClick: (event: MouseEvent) => void;
+    onDetectionOwnerRequired: () => void;
+    isZoneEditable: (zone: WebZone) => boolean;
   };
 
   let {
@@ -76,6 +76,7 @@
     messages,
     activeZoneTool,
     activeTargetCount,
+    calibrationCanStart,
     calibrationRun,
     calibrationStatusText,
     calibrationTypeLabels,
@@ -85,8 +86,6 @@
     config,
     debugMode,
     displayConfig,
-    hasState,
-    pirMotion,
     saveState,
     saveStatusText,
     selectedCalibrationZone,
@@ -99,7 +98,6 @@
     zoneTypeLabels,
     zones,
     onAddZone,
-    onAddExitZone,
     onCalibrationInfoClick,
     onConvertToRect,
     onDeleteCalibrationZone,
@@ -118,7 +116,9 @@
     onZoneEdgeClick,
     onZonePointDoubleClick,
     onZonePointerDown,
-    onCanvasClick
+    onCanvasClick,
+    onDetectionOwnerRequired,
+    isZoneEditable
   }: Props = $props();
 
   const text = $derived(messages.zones);
@@ -149,10 +149,19 @@
     staticRadarSensitivityDirty = true;
   }
 
-  async function refreshStaticRadarTuning(): Promise<void> {
-    if (!api.getStaticRadarTuningStatus) return;
+  async function refreshStaticRadarTuning(): Promise<WebStaticRadarTuningStatus | null> {
+    if (!api.getStaticRadarTuningStatus) return null;
     const next = await api.getStaticRadarTuningStatus();
     staticRadarTuningStatus = next;
+    if (!next.available) {
+      staticRadarTuningError = text.staticRadarUnavailable;
+      return next;
+    }
+    if (next.phase === "failed") {
+      staticRadarTuningError = text.staticRadarLoadFailed;
+      return next;
+    }
+    staticRadarTuningError = "";
     if (!staticRadarSensitivityDirty) {
       const selected = next.gates.find((gate) => gate.gate === selectedStaticRadarGate) ?? next.gates[0];
       if (selected) {
@@ -160,6 +169,7 @@
         staticRadarSensitivity = selected.sensitivity;
       }
     }
+    return next;
   }
 
   async function applyStaticRadarSensitivity(): Promise<void> {
@@ -172,6 +182,33 @@
       await refreshStaticRadarTuning();
     } catch {
       staticRadarTuningError = text.staticRadarApplyFailed;
+    } finally {
+      staticRadarTuningBusy = false;
+    }
+  }
+
+  async function resetStaticRadarFactoryDefaults(): Promise<void> {
+    if (!api.resetStaticRadarFactoryDefaults || !api.setStaticRadarTuningSession ||
+        !api.getStaticRadarTuningStatus || staticRadarTuningBusy) {
+      return;
+    }
+    staticRadarTuningBusy = true;
+    staticRadarTuningError = "";
+    staticRadarTuningStatus = null;
+    staticRadarSensitivityDirty = false;
+    try {
+      await api.resetStaticRadarFactoryDefaults();
+      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      await api.setStaticRadarTuningSession(true);
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        const next = await refreshStaticRadarTuning();
+        if (next?.active && next.gates.length === 9) return;
+      }
+      throw new Error("static_radar_factory_reset_timeout");
+    } catch (cause) {
+      staticRadarTuningError = text.staticRadarFactoryResetFailed;
+      throw cause;
     } finally {
       staticRadarTuningBusy = false;
     }
@@ -191,6 +228,7 @@
     staticRadarTuningStatus = null;
 
     const poll = async () => {
+      if (staticRadarTuningBusy) return;
       try {
         await refreshStaticRadarTuning();
       } catch {
@@ -207,7 +245,11 @@
         await poll();
         pollTimer = window.setInterval(() => void poll(), 1000);
         keepaliveTimer = window.setInterval(
-          () => void api.setStaticRadarTuningSession?.(true).catch(() => undefined),
+          () => {
+            if (!staticRadarTuningBusy) {
+              void api.setStaticRadarTuningSession?.(true).catch(() => undefined);
+            }
+          },
           5000
         );
       })
@@ -283,14 +325,6 @@
       </span>
       <button
         type="button"
-        data-active={selectedZone?.type === "exit" ? "true" : "false"}
-        disabled={!config}
-        onclick={onAddExitZone}
-      >
-        {text.exitPoint}
-      </button>
-      <button
-        type="button"
         disabled={saveDisabled}
         onclick={onSaveConfig}
       >
@@ -318,9 +352,7 @@
       {:else if activeZoneTool === "calibration"}
         <CalibrationPanel
           {messages}
-          loaded={Boolean(config)}
-          {hasState}
-          {pirMotion}
+          canStart={calibrationCanStart}
           running={calibrationRun}
           zones={calibrationZones}
           {selectedZoneId}
@@ -345,6 +377,7 @@
           onSelectGate={selectStaticRadarGate}
           onSetSensitivity={setStaticRadarSensitivity}
           onApply={applyStaticRadarSensitivity}
+          onFactoryReset={resetStaticRadarFactoryDefaults}
         />
       {/if}
     </aside>
@@ -390,6 +423,8 @@
           onZoneEdgeClick={onZoneEdgeClick}
           onZonePointDoubleClick={onZonePointDoubleClick}
           onCalibrationInfoClick={onCalibrationInfoClick}
+          {onDetectionOwnerRequired}
+          {isZoneEditable}
         />
         <p class="map-status-line">{text.mapStatus(activeTargetCount)}</p>
       </div>

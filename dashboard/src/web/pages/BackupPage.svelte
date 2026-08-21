@@ -2,7 +2,15 @@
   import type { BackupIssue, BackupSummary } from "../../core/config-backup";
   import BackupPanel from "../components/BackupPanel.svelte";
   import type { Messages } from "../i18n/types";
-  import type { FirmwareUploadProgress, ResetSettings, WebSystemStatus } from "../types";
+  import type {
+    FirmwareUploadProgress,
+    WebApiKeyResult,
+    WebFirmwareTrustStatus,
+    WebSystemRebootResult,
+    WebSystemResetOptions,
+    WebSystemResetResult,
+    WebSystemStatus
+  } from "../types";
 
   type Props = {
     messages: Messages;
@@ -24,6 +32,7 @@
     systemStatus: WebSystemStatus | null;
     systemStatusLoading: boolean;
     systemStatusError: string;
+    bootGuardRemainingSeconds: number;
     demoMode: boolean;
     issueText: (issue: BackupIssue) => string;
     onExport: () => void | Promise<void>;
@@ -34,10 +43,13 @@
     onConfirmImport: () => void | Promise<void>;
     onCancelImport: () => void;
     onGetSystemStatus?: () => Promise<WebSystemStatus>;
+    onGetFirmwareTrust?: () => Promise<WebFirmwareTrustStatus>;
+    onSetAlphaFirmwareInstallAllowed?: (enabled: boolean) => Promise<WebFirmwareTrustStatus>;
     onUploadFirmware?: (file: File, onProgress?: (progress: FirmwareUploadProgress) => void) => Promise<void>;
-    onGetApiKey?: () => Promise<string>;
-    onResetSystem?: (settings: ResetSettings) => Promise<void>;
-    onRebootSystem?: () => Promise<void>;
+    onGetApiKey?: () => Promise<WebApiKeyResult>;
+    onRotateApiKey?: () => Promise<WebApiKeyResult>;
+    onResetSystem?: (settings: WebSystemResetOptions) => Promise<WebSystemResetResult>;
+    onRebootSystem?: () => Promise<WebSystemRebootResult>;
   };
 
   let {
@@ -60,6 +72,7 @@
     systemStatus,
     systemStatusLoading,
     systemStatusError,
+    bootGuardRemainingSeconds,
     demoMode,
     issueText,
     onExport,
@@ -70,8 +83,11 @@
     onConfirmImport,
     onCancelImport,
     onGetSystemStatus,
+    onGetFirmwareTrust,
+    onSetAlphaFirmwareInstallAllowed,
     onUploadFirmware,
     onGetApiKey,
+    onRotateApiKey,
     onResetSystem,
     onRebootSystem
   }: Props = $props();
@@ -98,6 +114,7 @@
     {systemStatus}
     {systemStatusLoading}
     {systemStatusError}
+    {bootGuardRemainingSeconds}
     {demoMode}
     {issueText}
     {onExport}
@@ -108,8 +125,11 @@
     {onConfirmImport}
     {onCancelImport}
     {onGetSystemStatus}
+    {onGetFirmwareTrust}
+    {onSetAlphaFirmwareInstallAllowed}
     {onUploadFirmware}
     {onGetApiKey}
+    {onRotateApiKey}
     {onResetSystem}
     {onRebootSystem}
   />

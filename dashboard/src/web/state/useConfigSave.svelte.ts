@@ -43,20 +43,24 @@ export function createConfigSave({
       return;
     }
 
-    const config = getConfig();
-    if (!config) return;
+    if (!getConfig()) return;
     if (dirtyVersion === savedVersion) dirtyVersion += 1;
-    const versionToSave = dirtyVersion;
     saveState = "saving";
     saveInFlightPromise = (async () => {
       try {
-        await api.saveConfig(stripPlaceholders(config));
-        savedVersion = Math.max(savedVersion, versionToSave);
-        saveState = dirtyVersion > savedVersion ? "pending" : "saved";
+        while (dirtyVersion > savedVersion) {
+          const config = getConfig();
+          if (!config) return;
+          const versionToSave = dirtyVersion;
+          await api.saveConfig(stripPlaceholders(config));
+          savedVersion = Math.max(savedVersion, versionToSave);
+        }
+        saveState = "saved";
         setStatus(savedMessage(), "ok");
       } catch (error) {
         saveState = "error";
         setStatus(saveFailedMessage(errorMessage(error)), "error");
+        throw error;
       } finally {
         saveInFlightPromise = null;
       }

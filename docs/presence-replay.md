@@ -59,7 +59,7 @@ as the production presence tick.
 Example compact row:
 
 ```json
-{"q":12,"t":123456,"p":0,"lx":50.2,"r":[[1,1240,1810,2,2195,0,0,1],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]],"tg":[[1,1240,1810,2,2195],[0,0,0,0,0],[0,0,0,0,0]],"sr":[1,1,0,1,0,1850,0,67,1850],"sf":[0,0,1,1,0,0,0],"f":[0,0,0,0,0],"ex":[0,0,0,-1],"l":[1,0,1,1,0,1,82,0,9,0,3,2,4],"tr":[0,0,0,0,0,0,0,0,0,0,0,0]}
+{"q":12,"t":123456,"p":0,"lx":50.2,"r":[[1,1240,1810,2,2195,0,0,1],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]],"tg":[[1,1240,1810,2,2195,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],"sr":[1,1,0,1,0,1850,0,67,1850],"sf":[0,0,1,1,0,0,0],"f":[0,0,0,0,0],"ex":[0,0,0,-1],"l":[1,0,1,1,0,1,82,0,9,0,3,2,4],"tr":[0,0,0,0,0,0,0,0,0,0,0,0]}
 ```
 
 Minimum fields:
@@ -70,8 +70,14 @@ Minimum fields:
 - `lx`: illuminance if available.
 - `r`: up to three LD2450 target slots before software/reduced/range filtering.
   Target tuple: `[valid, x, y, speed, distance, filterMode, filtered, rangeValid]`.
-- `tg`: up to three target slots after the current production filter/range-gate path.
-  Target tuple: `[valid, x, y, speed, distance]`.
+- `tg`: up to three target slots after the hard-filter/range-gate path and before tracker admission.
+  Target tuple: `[valid, x, y, speed, distance, reducedZone, filterBlocked]`.
+  Reduced-zone candidates remain in this tuple with `reducedZone=1` so the
+  tracker can keep them tentative without exposing them as active targets.
+  A filtered observation may remain an association candidate with
+  `valid=1, filterBlocked=1`, but it cannot create, update, or publish a track.
+  Legacy five- and six-item tuples remain valid and decode missing flags as
+  `false`.
 - `sr`: optional LD2410C static-radar input tuple:
   `[available, presence, moving, still, movingDistanceMm, stillDistanceMm, movingEnergy, stillEnergy, detectionDistanceMm]`.
   The final field is the canonical stabilized distance used by presence fusion
@@ -82,6 +88,8 @@ Minimum fields:
   Missing tuples default to zeros so older replay files remain valid.
 - `f`: filter/range tuple:
   `[filterBlocked, rangeReasonCode, suspectCount, outOfRangeCount, remoteCandidateCount]`.
+  `filterBlocked` is frame-wide and becomes `1` only when every observed
+  target is blocked; per-target filter decisions remain in each raw target tuple.
 - `ex`: exit-zone evidence tuple:
   `[exitActive, exitZoneMask, exitTargetCount, exitLastSeenAgeMs]`.
 - `l`: production presence-output tuple:
@@ -115,7 +123,7 @@ Optional future labels:
 
 - `zone`: desk, bed, bathroom, entrance, etc.
 - `activity`: sitting, eating, walking, sleeping, cleaning robot, empty.
-- `sensor`: room, bathroom, or primary coordinator in multi-sensor tests.
+- `sensor`: physical participant or logical Fusion Group identifier in multi-participant tests.
 
 ## 3. Scoring
 

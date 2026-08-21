@@ -2,8 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   FloorplanStorageDocument,
   FloorplanStorageObject,
-  FloorplanStorageOcclusion,
-  FloorplanStorageRadar
+  FloorplanStorageOcclusion
 } from "../../core/floorplan/floorplan-storage";
 import type { RoomCandidate } from "../../core/floorplan/floorplan-types";
 import type { WebDeviceConfig } from "../types";
@@ -13,7 +12,9 @@ import type { StoredFloorplanDirtyScope } from "./useStoredFloorplanEditSession.
 
 function documentFixture(): FloorplanStorageDocument {
   return {
-    version: 1,
+    version: 2,
+    floorplanId: "fp-00112233445566778899aabbccddeeff",
+    geometryVersion: 7,
     image: {
       path: "/floorplan.webp",
       mime: "image/webp",
@@ -30,7 +31,8 @@ function documentFixture(): FloorplanStorageDocument {
     radar: {
       originPx: [50, 100],
       rotationDeg: 0,
-      scale: 1
+      scale: 1,
+      poseVersion: 11
     },
     rooms: [{
       id: "room_1",
@@ -81,11 +83,12 @@ function createHarness(options: {
   scaleValid?: boolean;
   saveBlocked?: boolean;
   saveDocument?: (document: FloorplanStorageDocument, options: FloorplanStorageClientOptions) => Promise<void>;
-  saveRadar?: (radar: FloorplanStorageRadar, options: FloorplanStorageClientOptions) => Promise<void>;
   saveRoomName?: (roomId: string, name: string, options: FloorplanStorageClientOptions) => Promise<void>;
   saveOcclusion?: (occlusion: FloorplanStorageOcclusion, options: FloorplanStorageClientOptions) => Promise<void>;
   saveObjects?: (objects: FloorplanStorageObject[], options: FloorplanStorageClientOptions) => Promise<void>;
   saveDeviceConfig?: () => Promise<void>;
+  beforeSharedSave?: () => Promise<void>;
+  publishSharedFloorplan?: (document: FloorplanStorageDocument) => Promise<void>;
   updateDeviceConfig?: (mutator: (current: WebDeviceConfig) => WebDeviceConfig) => void;
 } = {}) {
   let document = options.document === undefined ? documentFixture() : options.document;
@@ -125,6 +128,8 @@ function createHarness(options: {
     saveDeviceConfig: options.saveDeviceConfig ?? vi.fn(async () => {
       calls.push("saveDeviceConfig");
     }),
+    beforeSharedSave: options.beforeSharedSave,
+    publishSharedFloorplan: options.publishSharedFloorplan,
     errorMessage: (error) => error instanceof Error ? error.message : "error",
     touchTolerancePx: 8,
     runStorageTask: async (task) => {
@@ -133,9 +138,6 @@ function createHarness(options: {
     },
     saveDocument: options.saveDocument ?? vi.fn(async () => {
       calls.push("saveDocument");
-    }),
-    saveRadar: options.saveRadar ?? vi.fn(async () => {
-      calls.push("saveRadar");
     }),
     saveRoomName: options.saveRoomName ?? vi.fn(async () => {
       calls.push("saveRoomName");
@@ -195,22 +197,72 @@ describe("stored floorplan save session", () => {
     expect(harness.edit.saveStatus).toBe("done");
   });
 
-  it("uses patch callbacks for scoped radar, room name, occlusion, and object saves", async () => {
+  it("stores radar locally and uses patch callbacks for shared scoped edits", async () => {
     const harness = createHarness({ scopes: ["radar", "roomName", "occlusion", "objects"] });
 
     await harness.session.save();
 
     expect(harness.calls).toEqual([
       "queue",
-      "saveRadar",
-      "queue",
       "saveRoomName",
       "queue",
       "saveOcclusion",
       "queue",
       "saveObjects",
+      "updateDeviceConfig",
+      "saveDeviceConfig",
       "setDocument"
     ]);
+    expect(harness.config.floorplan?.radar?.poseVersion).toBe(12);
+  });
+
+  it("checks ownership and publishes exactly once for shared changes", async () => {
+    const beforeSharedSave = vi.fn(async () => undefined);
+    const publishSharedFloorplan = vi.fn(async () => undefined);
+    const harness = createHarness({
+      scopes: ["document", "coordinateFrame", "objects"],
+      beforeSharedSave,
+      publishSharedFloorplan
+    });
+
+    await harness.session.save();
+
+    expect(harness.calls).toEqual(["queue", "saveDocument", "setDocument"]);
+    expect(beforeSharedSave).toHaveBeenCalledOnce();
+    expect(publishSharedFloorplan).toHaveBeenCalledWith(
+      expect.objectContaining({ geometryVersion: 8 })
+    );
+  });
+
+  it("does not publish local radar-only changes", async () => {
+    const beforeSharedSave = vi.fn(async () => undefined);
+    const publishSharedFloorplan = vi.fn(async () => undefined);
+    const harness = createHarness({
+      scopes: ["radar"],
+      beforeSharedSave,
+      publishSharedFloorplan
+    });
+
+    await harness.session.save();
+
+    expect(beforeSharedSave).not.toHaveBeenCalled();
+    expect(publishSharedFloorplan).not.toHaveBeenCalled();
+  });
+
+  it("keeps shared changes dirty when manifest publication fails", async () => {
+    const harness = createHarness({
+      scopes: ["objects"],
+      publishSharedFloorplan: vi.fn(async () => {
+        throw new Error("publish failed");
+      })
+    });
+
+    await harness.session.save();
+
+    expect(harness.calls).toEqual(["queue", "saveObjects"]);
+    expect(harness.edit.clearDirty).not.toHaveBeenCalled();
+    expect(harness.edit.saveTone).toBe("error");
+    expect(harness.edit.saveStatus).toBe("publish failed");
   });
 
   it("does not save and reports invalid state when the document cannot be built", async () => {

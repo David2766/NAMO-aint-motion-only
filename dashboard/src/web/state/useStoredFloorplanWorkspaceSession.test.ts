@@ -83,10 +83,33 @@ function createHarness(options: {
 }
 
 describe("stored floorplan workspace session", () => {
-  it("builds the stored image frame style from the document image size", () => {
+  it("builds the stored image frame style from the padded content bounds", () => {
     const { session } = createHarness();
 
-    expect(session.imageFrameStyle()).toContain("aspect-ratio: 200 / 400");
+    expect(session.imageFrameStyle()).toContain("aspect-ratio: 120 / 240");
+  });
+
+  it("crops the stored editor to the outline plus ten percent on each side", () => {
+    const document = documentFixture({
+      outline: {
+        pointsPx: [[50, 100], [150, 100], [150, 200], [50, 200]]
+      }
+    });
+    const { session } = createHarness({ document });
+
+    expect(session.viewBounds()).toEqual({ x: 40, y: 90, width: 120, height: 120 });
+    expect(session.imageFrameStyle()).toContain("aspect-ratio: 120 / 120");
+  });
+
+  it("clamps stored editor padding to the image boundary", () => {
+    const document = documentFixture({
+      outline: {
+        pointsPx: [[0, 0], [100, 0], [100, 100], [0, 100]]
+      }
+    });
+    const { session } = createHarness({ document });
+
+    expect(session.viewBounds()).toEqual({ x: 0, y: 0, width: 110, height: 110 });
   });
 
   it("uses the selected room as the default furniture placement context", () => {

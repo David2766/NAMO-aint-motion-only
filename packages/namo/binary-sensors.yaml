@@ -45,7 +45,31 @@ binary_sensor:
       entity_category: diagnostic
       disabled_by_default: true
 
-  # Software zone presence for automation
+  # Low-noise fusion diagnostics for Home Assistant history.
+  - platform: template
+    name: "Static Assist Armed"
+    id: static_assist_armed_diagnostic
+    entity_category: diagnostic
+    disabled_by_default: true
+    lambda: |-
+      return id(radar_api).presence_fusion_output().static_assist_armed;
+
+  - platform: template
+    name: "Static Assist Active"
+    id: static_assist_active_diagnostic
+    entity_category: diagnostic
+    disabled_by_default: true
+    lambda: |-
+      return id(radar_api).presence_fusion_output().static_assist_active;
+
+  - platform: template
+    name: "Exit Zone Active"
+    id: exit_zone_active_diagnostic
+    entity_category: diagnostic
+    disabled_by_default: true
+    lambda: |-
+      return id(radar_api).software_zone_evidence().exit_zone_active;
+
   - platform: gpio
     pin:
       number: GPIO0

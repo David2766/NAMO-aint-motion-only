@@ -7,8 +7,10 @@ observations and the final presence and motion outputs.
 
 - The tracker path is enabled by default. The legacy lambda path remains an
   explicit fallback through the advanced legacy-presence setting.
-- The 500 ms ESPHome lambda passes filtered LD2450 observations, PIR state,
-  room/exit evidence, and optional LD2410C evidence into C++ components.
+- The 500 ms ESPHome lambda passes the latest filtered LD2450 frame, PIR state,
+  room/exit evidence, and optional LD2410C evidence into C++ components. An
+  LD2450 frame generation is consumed only once, so a stale sensor state is
+  never counted as repeated observations.
 - `PresenceTracker` owns LD2450 track identity, lifecycle, position, velocity,
   direction, room crossing, and exit evidence.
 - `PresenceFusion` combines PIR and tracker evidence and may use an optional
@@ -31,14 +33,43 @@ Tracks move through these states:
 - `idle`: unused slot.
 
 Position and velocity use a constant-velocity Kalman filter with bounded time
-steps, process noise, measurement noise, and covariance. A large teleport-like
-measurement resets the filter instead of dragging the previous estimate across
-the room. Confirmed and coasting tracks use a wider reassociation gate than new
-tentative tracks.
+steps, process noise, measurement noise, and covariance sized for LD2450-class
+coordinate uncertainty. One large teleport-like measurement is retained only
+as a relocation candidate while the displayed track stays at its last accepted
+position. A second nearby measurement within the bounded confirmation window
+reacquires the track and resets its velocity at the new position. Confirmed and
+coasting tracks use a wider reassociation gate than new tentative tracks.
 
 `trackScore` is a bounded diagnostic score derived from recent hits, misses,
 and lifecycle state. It is not a probability or a user-facing confidence
 percentage.
+
+### LD245x receive-first startup
+
+The local LD2450 parser accepts the periodic coordinate frame shared by LD2450
+and LD2454. Startup first waits three seconds for a valid frame, so an already
+streaming radar is not restarted or queried speculatively. If no frame arrives,
+the driver performs one bounded recovery transaction. Both the normal and
+recovery paths use only commands documented by both models: enter configuration,
+enable multi-target mode once when required, read the firmware version, and
+leave configuration. Every command waits for its matching successful ACK before
+the next command is sent. A rejection or timeout sends one best-effort leave
+configuration command and ends without a retry loop. Diagnostics retain raw RX
+bytes and valid, invalid, and parser-reset counts. The API frame guard reports
+missing or stalled input but does not send radar commands.
+
+### Per-target filter admission
+
+Hard filter and calibration-filter decisions are applied to each LD2450 target
+before it can update tracker state. A blocked observation may be associated with
+an existing track so that the correct stale false-positive track is suppressed
+and aged, but it cannot create, update, or publish a track. Other unblocked
+targets in the same frame continue through range admission and tracking.
+
+The frame-level `filter_blocked` guard is true only when at least one target was
+observed and every observed target was blocked. This preserves the existing
+fusion and static-assist veto for fully filtered frames without allowing one
+false positive to suppress a real target.
 
 ## 3. Exit and Room Evidence
 
@@ -50,8 +81,9 @@ Each track records recent exit-zone hits and room-boundary state.
   `lost_after_room_exit`.
 - A disappearance without either signal produces `lost_without_exit` and uses
   the longer non-exit coasting policy.
-- `filter_blocked` remains a missed-observation frame and does not reset every
-  track immediately.
+- A fully filter-blocked frame remains a missed-observation frame and does not
+  reset every track immediately. In a mixed frame, only the blocked track is
+  suppressed and aged.
 
 Current drop events are consumed by `PresenceFusion`. Confirmed exit drops veto
 a new LD2410C hold for that loss event.
@@ -60,7 +92,8 @@ a new LD2410C hold for that loss event.
 
 PIR and LD2450 are complementary acquisition evidence. Either PIR motion or a
 confirmed/coasting tracker result can keep the base presence path active;
-motion is the OR of PIR motion and tracker motion unless filtering blocks it.
+motion is the OR of PIR motion and tracker motion unless the complete frame is
+filter-blocked.
 
 LD2410C assistance follows these rules:
 
@@ -99,7 +132,7 @@ confidence.
 
 - Native tests cover lifecycle, assignment, Kalman smoothing, exit/room drops,
   fusion arming, exit veto, reentry, missing hardware, held-target confidence,
-  and distance stabilization.
+  distance stabilization, and mixed filtered/admitted target handling.
 - Replay logs distinguish raw observations, production-filtered observations,
   tracker output, exit evidence, static-radar input, and fusion state.
 - BLE nearby and sleep schedules are not acquisition inputs.

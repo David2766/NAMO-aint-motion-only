@@ -71,12 +71,17 @@ const text = {
   mergeSelectOneMore: "Merge one more",
   mergeReady: "Merge ready",
   manualNeedPoints: "Manual need points",
-  manualReady: "Manual ready"
+  manualReady: "Manual ready",
+  manualInvalid: "Manual invalid"
 };
 
 function createSession(options: {
   candidates?: RoomCandidate[];
   wallSegments?: FloorplanWallSegment[];
+  manualPointTransform?: (points: Array<[number, number]>, point: { x: number; y: number }) => { x: number; y: number };
+  manualPointValidator?: (points: Array<[number, number]>, point: { x: number; y: number }) => boolean;
+  manualDraftValidator?: (points: Array<[number, number]>) => boolean;
+  onManualRoomFinished?: (candidate: RoomCandidate) => boolean | void;
 } = {}) {
   const state = createCandidateState(options.candidates);
   const edit = {
@@ -90,7 +95,11 @@ function createSession(options: {
     roomCandidateEdit: edit,
     getImageSize: () => ({ width: 300, height: 300 }),
     getWallSegments: () => options.wallSegments ?? [],
-    getText: () => text
+    getText: () => text,
+    getManualPointTransform: () => options.manualPointTransform ?? null,
+    getManualPointValidator: () => options.manualPointValidator ?? null,
+    getManualDraftValidator: () => options.manualDraftValidator ?? null,
+    onManualRoomFinished: options.onManualRoomFinished
   });
   return { state, edit, session };
 }
@@ -114,6 +123,71 @@ describe("room candidate map tools", () => {
       points: [[10, 10], [90, 10], [90, 70]]
     });
     expect(session.manualRoomDraft.active).toBe(false);
+  });
+
+  it("uses the manual floorplan transform and blocks an invalid outer outline", () => {
+    const onFinished = vi.fn();
+    const { state, session } = createSession({
+      candidates: [],
+      manualPointTransform: (_points, point) => ({ x: Math.round(point.x / 10) * 10, y: Math.round(point.y / 10) * 10 }),
+      manualDraftValidator: (points) => points.length >= 4,
+      onManualRoomFinished: onFinished
+    });
+
+    session.startManualRoomDraft();
+    session.addManualRoomPoint({ x: 13, y: 17 });
+    session.addManualRoomPoint({ x: 93, y: 17 });
+    session.addManualRoomPoint({ x: 93, y: 77 });
+
+    expect(session.activeMapToolCanFinish()).toBe(false);
+    session.finishActiveMapTool();
+    expect(state.candidates).toHaveLength(0);
+
+    session.addManualRoomPoint({ x: 13, y: 77 });
+    expect(session.activeMapToolCanFinish()).toBe(true);
+    session.finishActiveMapTool();
+
+    expect(state.candidates[0].points).toEqual([[10, 20], [90, 20], [90, 80], [10, 80]]);
+    expect(state.candidates[0].status).toBe("confirmed");
+    expect(state.selectedCandidateId).toBe("");
+    expect(onFinished).toHaveBeenCalledWith(state.candidates[0]);
+  });
+
+  it("lets the manual floorplan session consume the outer outline without adding it as a room", () => {
+    const onFinished = vi.fn(() => false);
+    const { state, session } = createSession({
+      candidates: [],
+      manualPointTransform: (_points, point) => point,
+      onManualRoomFinished: onFinished
+    });
+
+    session.startManualRoomDraft();
+    session.addManualRoomPoint({ x: 10, y: 10 });
+    session.addManualRoomPoint({ x: 100, y: 10 });
+    session.addManualRoomPoint({ x: 100, y: 100 });
+    session.addManualRoomPoint({ x: 10, y: 100 });
+    session.finishManualRoomDraft();
+
+    expect(onFinished).toHaveBeenCalledTimes(1);
+    expect(state.candidates).toEqual([]);
+    expect(session.manualRoomDraft.active).toBe(false);
+  });
+
+  it("rejects a manual room point before it can leave the outer boundary", () => {
+    const { edit, session } = createSession({
+      candidates: [],
+      manualPointTransform: (_points, point) => point,
+      manualPointValidator: (_points, point) => point.x <= 200
+    });
+
+    session.startManualRoomDraft();
+    session.addManualRoomPoint({ x: 100, y: 100 });
+    session.previewManualRoomPoint({ x: 250, y: 100 });
+    expect(session.manualRoomDraftHover).toBeNull();
+
+    session.addManualRoomPoint({ x: 250, y: 100 });
+    expect(session.manualRoomDraft.points).toEqual([[100, 100]]);
+    expect(edit.pushHistory).toHaveBeenCalledTimes(1);
   });
 
   it("splits a selected room with the existing split logic", () => {

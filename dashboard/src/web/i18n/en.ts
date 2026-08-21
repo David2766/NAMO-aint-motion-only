@@ -14,6 +14,7 @@ export const en: Messages = {
     delete: "Delete",
     reset: "Reset",
     save: "Save",
+    fused: "Fused",
     unsavedChangesConfirm: "You have unsaved changes. Leave without saving?",
     saveStatus: {
       idle: "No changes",
@@ -34,6 +35,16 @@ export const en: Messages = {
   setup: createSetupMessages("en"),
   api: {
     errors: {
+      site_configuration_owner_required:
+        "Edit the shared floorplan on its source device. This device keeps only its local radar placement.",
+      site_configuration_conflict:
+        "Connected devices disagree on the shared configuration. Detection continues, but shared changes are blocked until recovery completes.",
+      site_configuration_continuity_unavailable:
+        "The backup device is not ready with the latest shared floorplan. Detection continues, but shared changes are paused until it reconnects.",
+      floorplan_manifest_invalid:
+        "The shared floorplan could not be published. Check that the image and room layout were saved.",
+      floorplan_delete_requires_standalone:
+        "Disconnect the other NAMO devices before deleting the shared floorplan. You can replace it while they remain connected.",
       invalid_request: "The request is invalid. Check the input and try again.",
       config_not_found: "Saved configuration was not found.",
       config_write_failed: "The device could not save the configuration.",
@@ -52,8 +63,12 @@ export const en: Messages = {
       api_key_unavailable: "The API key service is unavailable.",
       api_key_not_set: "No API key is saved yet.",
       api_key_unsupported: "This build does not support API key lookup.",
+      api_key_random_failed: "Could not generate a secure API key.",
+      api_key_save_failed: "Could not save the new API key.",
       nothing_selected: "Select at least one item to reset.",
-      settings_reset_failed: "Could not reset settings.",
+      space_reset_failed: "Could not reset the floorplan and placement.",
+      detection_reset_failed: "Could not reset detection settings.",
+      connections_reset_failed: "Could not reset connected-device information.",
       stats_reset_failed: "Could not reset statistics.",
       wifi_not_ready: "Wi-Fi configuration is not ready yet.",
       wifi_unavailable: "Wi-Fi is unavailable.",
@@ -61,7 +76,24 @@ export const en: Messages = {
       invalid_password_length: "The Wi-Fi password must be 8 to 63 characters.",
       firmware_upload_failed: "The firmware upload failed.",
       firmware_network_error: "A network error occurred during firmware upload.",
-      firmware_upload_aborted: "The firmware upload was cancelled."
+      firmware_upload_aborted: "The firmware upload was cancelled.",
+      firmware_trust_unavailable: "Firmware verification is unavailable on this device.",
+      firmware_header_invalid: "The firmware package header is invalid.",
+      alpha_firmware_not_allowed: "Alpha firmware installation is not allowed. Enable one installation in Management/Backup first.",
+      alpha_firmware_permission_invalid: "The alpha firmware permission request is invalid.",
+      signed_firmware_required: "Select a signed NAMO firmware package (.namo-ota).",
+      legacy_firmware_bin_required: "This older firmware requires an ESP32 OTA .bin file.",
+      firmware_session_invalid: "The device returned an invalid firmware update session.",
+      busy: "Another firmware update is already in progress.",
+      session_mismatch: "The firmware update session no longer matches.",
+      header_mismatch: "The uploaded firmware does not match the verified package.",
+      trust_rejected: "The firmware signature or trust version was rejected.",
+      offset_mismatch: "Firmware chunks arrived out of order.",
+      size_mismatch: "The firmware package size does not match its signature.",
+      expired: "The firmware upload session expired.",
+      sink_begin_failed: "The firmware update partition could not be opened.",
+      sink_write_failed: "Writing the firmware update failed.",
+      sink_finish_failed: "Final firmware or trust verification failed."
     },
     statuses: {
       setup_wifi_connecting: "Connecting to Wi-Fi.",
@@ -70,7 +102,8 @@ export const en: Messages = {
       ha_handoff_started: "Home Assistant handoff has started.",
       api_client_waiting: "Waiting for the native API client.",
       api_client_connected: "Native API client is connected.",
-      api_client_idle: "Native API client is idle."
+      api_client_idle: "Native API client is idle.",
+      api_service_not_ready: "Native API is not ready yet."
     }
   },
   app: {
@@ -168,6 +201,10 @@ export const en: Messages = {
     connected: "Connected",
     waiting: "Waiting",
     updated: "Updated",
+    fusionActive: (count) => `${count}-sensor fusion`,
+    fusionSending: "Fusion relay",
+    fusionFallback: "Fusion pending",
+    connectedRadar: "Connected radar",
     coreStatus: "Core status",
     presence: "Presence",
     motion: "Motion",
@@ -193,7 +230,9 @@ export const en: Messages = {
     quickNav: "Quick navigation",
     zoneStatus: "Zone status",
     zone: "Zones",
-    filter: "Filter",
+    userZones: (count) => `User zones ${count}`,
+    calibrationZones: (count) => `Correction zones ${count}`,
+    filter: "Blocked",
     reduced: "Reduced",
     disabled: "Excluded",
     exit: "Exit",
@@ -205,6 +244,14 @@ export const en: Messages = {
     storage: "Storage",
     storageUsed: (usage, percent) => `${usage} · ${percent} used`,
     uptime: "Uptime",
+    platformStatus: "Platform",
+    platformReady: "Ready",
+    platformUnavailable: "Unavailable",
+    platformMode: "Mode",
+    platformStandalone: "Standalone",
+    platformEnrolled: "Connected",
+    nodeId: "Node ID",
+    siteId: "Site ID",
     checking: "Checking",
     notConnected: "Not connected",
     wifiExcellent: "Excellent",
@@ -228,6 +275,371 @@ export const en: Messages = {
     controlStatusFailed: (error) => `Failed to read control status. ${error}`,
     statusLedControl: "Status LED control",
     diagnostics: "Diagnostics",
+    pairingButton: "Pair devices",
+    pairing: {
+      title: "Pair NAMO devices",
+      description: "Securely connect nearby NAMO devices, then choose their shared floorplan and align their positions.",
+      unavailable: "Secure device pairing is not available in this build or demo.",
+      localDevice: "This device",
+      localDeviceDescription: "Current connection status for this device.",
+      state: "Pairing state",
+      floorplanUsage: "Floorplan use",
+      floorplanUsageStates: {
+        none: "No saved floorplan",
+        local: "Used only on this device",
+        shared: "Sharing this device's floorplan",
+        received: "Using a connected device's floorplan"
+      },
+      peer: "Other device",
+      states: {
+        idle: "Not started",
+        prepared: "Waiting for the other device",
+        exchanged: "Verifying the secure link",
+        verified: "Code ready for confirmation",
+        committed: "Securely connected · setup needed"
+      },
+      codeLabel: "Confirmation code",
+      codeHelp: "Check that the device where you started setup shows the same code.",
+      confirmed: "This device stored the secure relationship.",
+      receiveTitle: "Allow another device to connect",
+      receiveDescription: "Press this first so another NAMO device can find and connect to this device.",
+      allowIncoming: "Allow pairing for 3 minutes",
+      incomingRequestTitle: "Device connection request",
+      incomingRequestDescription: "A NAMO device on this network wants to connect. Allow it only if you recognize the request.",
+      incomingProgressTitle: "Connecting devices securely",
+      incomingProgressDescription: "Continue the next step on the device that started the connection.",
+      rejectIncoming: "Reject",
+      connectTitle: "Add another device",
+      ownerRequiredTitle: "Add from the configuration source",
+      ownerRequiredDescription: "Adding a device changes the shared floorplan and connection list, so it must be started on the configuration source device.",
+      ownerUnavailable: "The configuration source is currently offline. Try again after it reconnects or automatic takeover completes.",
+      openOwnerDevice: "Open configuration source",
+      connectionNotReadyTitle: "Checking connection information",
+      connectionNotReadyDescription: "A new device can be added after connected devices confirm the latest shared configuration. Detection continues meanwhile.",
+      resumeSetup: "Continue connection setup",
+      setupResumed: "The shared configuration was delivered to the new device. Position alignment can continue.",
+      nearbyDevices: "Nearby NAMO devices",
+      nearbyDescription: "Already connected devices stay in the list above and are not offered again.",
+      searching: "Searching nearby devices...",
+      noDevices: "No compatible NAMO devices were found.",
+      noDevicesDescription: "Allow pairing on the other device, then search again or enter its address manually.",
+      refreshDevices: "Search again",
+      manualAddress: "Enter an address manually",
+      manualAddressDescription: "Use this fallback when multicast discovery is unavailable on the network.",
+      address: "Other device address",
+      connect: "Connect securely",
+      confirm: "Confirm on this device",
+      cancel: "Cancel pairing",
+      connectedDevices: "Connected devices",
+      connectedDescription: "NAMO devices securely connected here. They can work together after position alignment.",
+      pendingSetupTitle: (count) => `${count} ${count === 1 ? "device needs" : "devices need"} setup`,
+      pendingSetupDescription: (count) =>
+        `${count} ${count === 1 ? "device is" : "devices are"} securely connected but not yet included in fusion because position alignment is incomplete. Finish them later in any order; adding another device now will not replace the existing connections.`,
+      pendingSetupAddDescription: "Devices that still need setup remain connected. You can add this device first; each device joins fusion after its position is aligned.",
+      sharedFloorplan: "Shared floorplan",
+      sharedFloorplanDescription: "Devices connected here use the same image and room layout. Each device keeps its own radar position and detection zones.",
+      sharedFloorplanOwner: "Device providing the floorplan",
+      sharedFloorplanRevision: "Geometry revision",
+      sharedFloorplanClaimOwner: "Share this device's floorplan",
+      sharedFloorplanOwnerClaimed: "Connected devices will use this device's floorplan.",
+      sharedFloorplanCommit: "Apply this floorplan to connected devices",
+      sharedFloorplanSync: "Download the shared floorplan again",
+      sharedFloorplanNotCommitted: "No floorplan selected for connected devices",
+      sharedFloorplanCommitted: "Using the same floorplan",
+      sharedFloorplanCommitDone: "Connected devices will use the current floorplan.",
+      sharedFloorplanSyncStarted: "Authenticated floorplan sync started.",
+      sharedFloorplanAutoWaiting: (seconds) => `Waiting for automatic sync slot · ${seconds}s`,
+      replicationState: (state, result) => {
+        if (state === "complete" && result === "ok") return "Floorplan is up to date";
+        if (state === "requesting" || state === "receiving" || state === "committing") return "Updating floorplan";
+        if (state === "conflict") return "Floorplan selection needs review";
+        if (state === "failed") return "Could not update the floorplan";
+        return "Waiting to update";
+      },
+      noConnectedDevices: "No connected devices",
+      noConnectedDescription: "Nearby devices that allow pairing will appear below.",
+      connectedCount: (count) => `${count} connected`,
+      returnToMainDevice: "Return to the device managing this connection",
+      membership: "State",
+      readiness: "Setup",
+      networkState: "Network",
+      networkOnline: "Online",
+      networkUnavailable: "No response",
+      deviceAddress: "Address",
+      deviceName: "Name",
+      automaticFallback: "Automatic fallback",
+      automaticFallbackAllowed: "Allowed",
+      automaticFallbackNotAllowed: "Not allowed",
+      automaticFallbackAllow: "Allow automatic fallback",
+      automaticFallbackDisable: "Disable automatic fallback",
+      automaticFallbackDescription: "Allow this device to take over coordination when another device stops responding. Each device's local presence detection continues regardless of this setting.",
+      automaticFallbackEnabledNotice: "This device can now take over coordination when needed.",
+      automaticFallbackDisabledNotice: "Automatic fallback was disabled for this device.",
+      automaticFallbackPreparedNotice: "Position alignment is complete, and this device can now take over coordination when needed.",
+      automaticFallbackPreparationFailed: "Position alignment is complete, but automatic fallback could not be enabled. Use Allow automatic fallback in the connected device list to try again.",
+      singleFallbackWarning: "Only one online device can currently coordinate the connected system. Allow automatic fallback on another connected device so it can take over after a failure.",
+      ready: "Ready",
+      notReady: "Needs setup",
+      memberships: {
+        quarantined: "Connected · setup needed",
+        active: "In use",
+        revoked: "Removal pending"
+      },
+      pendingDisconnects: "Pending disconnects",
+      pendingDisconnectsDescription: "These peers are blocked locally. Bilateral removal can finish when the peer responds.",
+      finishDisconnect: "Finish removal",
+      disconnect: "Disconnect",
+      disconnectTitle: "Disconnect both devices",
+      disconnectDescription: (participantId) => `Remove the relationship with ${participantId} from both devices.`,
+      pendingDisconnectDescription: (participantId) => `Clean up the remaining relationship with ${participantId}.`,
+      disconnectAddressHelp: "The peer must be online. Its identity is verified before either local record is removed.",
+      disconnectConfirm: "Disconnect both",
+      retryDisconnect: "Retry both devices",
+      blockAndWait: "Block on this device",
+      disconnectPendingNotice: "This device blocked the peer credential. Bilateral removal can be completed later.",
+      deleteLocalRecord: "Delete local record",
+      localDeleteWarning: "Deleting the local record prevents this device from cleaning up a relationship that remains on the peer.",
+      localRecordDeleted: "The remaining relationship was deleted from this device.",
+      disconnecting: "Disconnecting...",
+      disconnected: "The relationship was removed from both devices.",
+      siteMemberRemoveTitle: "Remove connected device",
+      siteMemberRemoveDescription: (participantId) => `Block ${participantId}, reset its connection state to standalone, and remove it from the shared roster.`,
+      siteMemberRemoveAddressHelp: "The target identity is verified before only its connection state is reset. Floorplan, radar position, zones, and tuning remain saved.",
+      siteMemberRemoveConfirm: "Remove device",
+      siteMemberRemoving: "Removing device...",
+      siteMemberRemoved: "The target is now standalone and has been removed from the shared roster.",
+      siteMemberForceRemove: "Force remove from list",
+      siteMemberForceRemoveWarning: "Force removal deletes this shared roster entry even when the target could not be reset. The target may retain stale connection state. When it becomes reachable, reset device-to-device security connections under Management and backup before pairing it again.",
+      siteMemberForceRemoved: "The target was forcibly removed from the shared roster.",
+      leaveSite: "Leave connected site",
+      leaveSiteTitle: "Leave this connected site",
+      leaveSiteDescription: "The configuration owner will remove this device, then this device will restart as a standalone sensor. Floorplan, radar position, zones, and tuning remain saved.",
+      leaveSiteAddressHelp: "The configuration owner must be online so it can confirm this device is no longer in the shared roster.",
+      leaveSiteConfirm: "Leave site",
+      leavingSite: "Leaving site...",
+      leftSite: "This device was removed from the connected site and is restarting in standalone mode.",
+      setup: {
+        title: "Connect another NAMO device",
+        description: "Follow these steps here. You only need to open the other device once to allow the connection.",
+        close: "Close setup",
+        currentStep: "Current step",
+        steps: {
+          device: "Choose device",
+          select: "Choose device",
+          verify: "Check code",
+          floorplan: "Choose floorplan",
+          complete: "Finish"
+        },
+        selectTitle: "Choose a device to add",
+        selectDescription: "Select a nearby device, or enter its local address when automatic discovery is unavailable.",
+        otherDevice: "Nearby device",
+        manualAddress: "Device address",
+        selectContinue: "Continue",
+        waitTitle: (name) => `Allow the connection on ${name}`,
+        waitDescription: (seconds) => `Waiting for up to ${seconds} seconds. You can cancel at any time.`,
+        openOtherDevice: "Open the other device",
+        waiting: "Waiting for permission",
+        waitingHelp: "On the other device, press “Allow pairing for 3 minutes.” The rest of setup continues here.",
+        verifyTitle: "Check the confirmation code",
+        verifyDescription: "Continue only when the other device shows the same code.",
+        code: "Confirmation code",
+        codeMatches: "The codes match",
+        floorplanTitle: "Choose the floorplan to share",
+        floorplanDescription: "When both devices already have a floorplan, choose the room layout that both devices should use.",
+        mockFloorplanRequired: "Create a floorplan first.",
+        existingSiteFloorplan: "The floorplan already used by this Site will be delivered to the new device automatically.",
+        sameFloorplan: "Both devices already contain the same floorplan.",
+        thisFloorplan: "Use this device's floorplan",
+        otherFloorplan: (name) => `Use ${name}'s floorplan`,
+        noFloorplan: "No saved floorplan",
+        floorplanSummary: (bytes) => `${Math.max(1, Math.round(bytes / 1024))} KB saved`,
+        radarPositionKept: "Each device keeps its own radar position",
+        radarPositionHelp: "Only the image and room layout are shared. Detection zones and each device's radar placement are not replaced.",
+        fallbackTitle: "Prepare an automatic fallback device?",
+        fallbackDescription: "Only this device can currently coordinate the connected system. Allowing the new device to take over after position alignment is strongly recommended.",
+        fallbackAccept: "Prepare automatic fallback",
+        fallbackDecline: "Continue without fallback",
+        fallbackDeclineTitle: "Continuing without fallback is not recommended",
+        fallbackDeclineDescription: "One device may have to carry several critical roles. A power or network failure can interrupt shared detection, coordinate fusion, and configuration management. Sustained resource pressure can also make the device unstable or cause it to restart.",
+        fallbackGoBack: "Prepare fallback instead",
+        fallbackContinueWithout: "Continue anyway",
+        applying: "Applying...",
+        apply: "Use this floorplan",
+        completeTitle: "Devices connected",
+        completeDescription: "The shared floorplan has been delivered. Align the two sensors from this device before using them together.",
+        startCalibration: "Start position alignment",
+        later: "Do this later",
+        manageExisting: "Review existing connections on the other device",
+        done: "Done",
+        error: (code) => {
+          if (code === "peer_manages_existing_devices") {
+            return "The selected device already manages other connected devices. Review those connections on that device before moving it.";
+          }
+          if (code === "floorplan_required") {
+            return "Create a floorplan on at least one of the two devices before connecting them.";
+          }
+          if (code === "site_conflict") {
+            return "The selected device still belongs to another device group. Open it and review its existing connections.";
+          }
+          if (code === "site_configuration_owner_required") {
+            return "Start the new device connection from the configuration source device.";
+          }
+          if (code === "owner_mismatch") {
+            return "The confirmed source is no longer the configuration source. Restart setup from the current source device.";
+          }
+          if (code === "local_member_missing") {
+            return "The new device is missing from the current Site connection list. Review the connection on the configuration source.";
+          }
+          if (code === "site_mismatch") {
+            return "The new device still contains another Site assignment. Review its existing connections first.";
+          }
+          if (code === "revision_conflict") {
+            return "The devices contain conflicting shared configurations that cannot be merged automatically. Review the connected devices.";
+          }
+          if (code === "pairing_confirmation_uncertain") {
+            return "The secure connection response could not be confirmed. Saved connection records were kept; leave both devices on and try again.";
+          }
+          if (code === "site_state_invalid") {
+            return "The selected device has incomplete connection state. Restart it and try the connection again.";
+          }
+          if (code === "peer_rejected") {
+            return "The other device rejected the connection request.";
+          }
+          if (code === "site_owner_not_local") {
+            return "This device could not confirm the floorplan source. Review its existing connections, then try again.";
+          }
+          if (code === "site_configuration_sync_timeout") {
+            return "The other device did not finish floorplan synchronization in time. Check both devices' network connections, then try again.";
+          }
+          if (code === "site_configuration_continuity_unavailable") {
+            return "The devices did not finish aligning their connection records. Leave both devices on, then try again.";
+          }
+          if (code === "site_configuration_conflict") {
+            return "The devices report conflicting shared connection records. Review the existing connections before trying again.";
+          }
+          if (code === "site_reconciliation_pending") {
+            return "This device is cleaning up its previous connection state. Try again shortly.";
+          }
+          if (code === "site_reconciliation_failed") {
+            return "This device could not save the cleaned-up connection state. Restart it, then try again.";
+          }
+          if (code === "site_leave_owner_mismatch") {
+            return "The selected device is no longer the configuration owner for this Site. Refresh the connection list and try again.";
+          }
+          if (code === "site_leave_owner_still_lists_node") {
+            return "The configuration owner could not finish removing this device. Leave both devices online and try again.";
+          }
+          if (code === "group_full") {
+            return "This space already has the maximum of seven connected sensing devices.";
+          }
+          return "Could not complete device setup. Please try again.";
+        }
+      },
+      calibration: {
+        start: "Calibrate and activate",
+        preparing: "Preparing position alignment",
+        recalibrate: "Recalibrate",
+        title: "Align device positions",
+        description: (participantId) => `Capture the same person on this device and ${participantId}, then review the correction before activation.`,
+        firstPosition: "First position",
+        firstPositionHelp: "Have one person stand still where both radars can see them, then capture once.",
+        secondPosition: "Optional second position",
+        secondPositionHelp: "Move at least 0.8 m sideways and capture again to correct rotation as well as position.",
+        ready: "Correction ready",
+        readyHelp: "Review the bounded correction below. Neither device's saved radar placement is rewritten.",
+        steps: {
+          check: "Check detection",
+          first: "First position",
+          second: "Second position",
+          review: "Review and activate"
+        },
+        views: {
+          together: "Together",
+          reference: "This device",
+          peer: "Other device"
+        },
+        thisDevice: "This device",
+        placementRequiredTitle: "Radar placement required",
+        placementRequiredDescription: (deviceNames) =>
+          `Saved radar placement is missing on: ${deviceNames}. A position may appear on the floorplan before it has been saved. Open each listed device, move the radar slightly, then save.`,
+        placementCheckFailed:
+          "Could not verify the saved radar position. Check both devices' connections, then try again.",
+        openRadarPlacement: (deviceName) => `Place radar on ${deviceName}`,
+        liveStatus: "Live detection",
+        liveStatusHelp: "Check that both colored points represent the same person.",
+        deviceOnline: "Online",
+        deviceOffline: "No response",
+        targetCount: (count) => `${count} target${count === 1 ? "" : "s"}`,
+        targetSeparation: (millimeters) => `Detection gap ${millimeters} mm`,
+        waitingForTargets: "Capture becomes available when each device sees exactly one person.",
+        mapAria: "Calibration floorplan overlaying both radar positions and detected targets",
+        minimumBaseline: "Move outside this circle",
+        captureFirst: "Capture snapshot",
+        captureSecond: "Capture second snapshot",
+        working: "Working...",
+        samples: "Snapshots",
+        translation: "Position correction",
+        rotation: "Angle correction",
+        residual: "Residual error",
+        room: "Shared room",
+        reset: "Start over",
+        approveAndActivate: "Approve and activate",
+        activated: "Both devices were calibrated and activated.",
+        error: (code) => {
+          if (code === "calibration_pose_missing") {
+            return "A device has no saved radar position. Close calibration and save its radar placement on that device.";
+          }
+          if (code === "calibration_pose_contract_invalid") {
+            return "The calibration position revisions are inconsistent. Close calibration and open it again.";
+          }
+          if (code === "calibration_scale_invalid") {
+            return "Calibration failed because the saved floorplan scale is incomplete or inconsistent.";
+          }
+          if (code === "calibration_floorplan_mismatch") {
+            return "Calibration failed because the two devices are not using the same floorplan revision.";
+          }
+          if (code === "calibration_membership_inconsistent") {
+            return "The two devices do not agree on whether this connection is active. Review the connection state before calibrating again.";
+          }
+          if (code === "group_full") {
+            return "This space already has the maximum of seven connected sensing devices.";
+          }
+          if (code === "calibration_rollback_incomplete") {
+            return "Calibration stopped, but one device did not confirm that the connection was made inactive. Check both devices before retrying.";
+          }
+          return `Calibration failed: ${code}`;
+        }
+      },
+      error: (code) => {
+        if (code === "site_configuration_owner_required") {
+          return "Start the new device connection from the configuration source device.";
+        }
+        if (code === "site_conflict") {
+          return "This device is still responsible for another connection. Review its connected devices first.";
+        }
+        if (code === "pairing_confirmation_uncertain") {
+          return "The other device's secure connection could not be confirmed. Existing connection records were preserved.";
+        }
+        if (code === "owner_mismatch") return "The configuration source changed. Try again from the current source device.";
+        if (code === "local_member_missing") return "This device is not in the Site connection list and cannot receive the shared configuration.";
+        if (code === "site_mismatch") return "The two devices belong to different Sites.";
+        if (code === "floorplan_manifest_invalid") {
+          return "Save a complete floorplan before sharing it with connected devices.";
+        }
+        if (code === "owner_offline") return "The device providing the floorplan is not responding.";
+        if (code === "peer_not_ready") return "The other device has not allowed the connection yet.";
+        if (code === "group_full") return "This space already has the maximum of seven connected sensing devices.";
+        if (code === "direct_pair_not_found") return "This entry is a shared Site member, not a direct pairing record. Remove it from the configuration owner.";
+        if (code === "site_member_removal_owner_changed") return "The configuration owner changed during removal. Continue from the current configuration owner.";
+        if (code === "site_member_removal_superseded") return "The shared roster changed during removal. Review the current list and retry.";
+        if (code === "site_member_removal_replication_pending") return "The block has not reached enough connected devices yet. Retry shortly or force-remove the roster entry.";
+        if (code === "site_member_removal_site_mismatch") return "The device at this address no longer belongs to the expected shared Site, so its connections were not reset.";
+        if (code === "site_member_not_canonical") return "The selected device is no longer in the shared roster. Refresh the list.";
+        if (code === "site_member_revoke_incomplete") return "The removal block could not be stored. Retry the operation.";
+        if (code === "site_member_reset_unconfirmed") return "The target could not be confirmed as standalone. Check that it is online, retry, or force-remove the roster entry.";
+        return "Could not complete the device connection. Please try again.";
+      }
+    },
     changing: "Changing...",
     haMode: "Switch to HA",
     edgeMode: "Switch to Edge",
@@ -311,7 +723,12 @@ export const en: Messages = {
     staticRadarApplying: "Applying",
     staticRadarApplyFailed: "Could not apply the assist sensor sensitivity.",
     staticRadarLoadFailed: "Could not load assist sensor telemetry.",
-    exitPoint: "Exit point",
+    staticRadarFactoryReset: "Restore factory sensitivity",
+    staticRadarFactoryResetTitle: "Reset LD2410C settings",
+    staticRadarFactoryResetDescription: "This restores all LD2410C settings to factory defaults, including G0-G8 sensitivity, maximum range, absence timeout, distance resolution, and Bluetooth.",
+    staticRadarFactoryResetConfirm: "Reset",
+    staticRadarFactoryResetting: "Resetting",
+    staticRadarFactoryResetFailed: "Could not complete the LD2410C factory reset.",
     zonePanelTitle: "Zones",
     zonesLoading: "Loading zone data.",
     zonesEmpty: "No zones are configured yet. Add a zone to create a detection, exclusion, or exit area.",
@@ -323,11 +740,19 @@ export const en: Messages = {
     zoneNamePlaceholder: "e.g. Bed, desk, curtain",
     deleteZone: "Delete zone",
     selectOrAddZone: "Add or select a zone.",
+    zoneTypePlaceholder: "Select a zone type",
+    zoneValidationTitle: "Check zone settings",
+    zoneValidationInstruction: "Select Detection, Exclusion, Reduced sensitivity, Exit, or Disabled, then save again.",
+    zoneValidationItem: (name) => `${name}: No zone type is selected.`,
+    ownerRequiredTitle: "Edit on the source device",
+    ownerRequiredDescription: "Detection zones are shared by connected devices and can only be edited on the configuration source device.",
+    ownerUnavailable: "The configuration source device is currently offline.",
+    openOwnerDevice: "Open source device",
     typeLabels: {
       detection: "Detection",
-      filter: "Filter",
-      reduced: "Reduced",
-      disabled: "Excluded",
+      filter: "Exclusion",
+      reduced: "Reduced sensitivity",
+      disabled: "Disabled",
       exit: "Exit"
     },
     calibrationPanelTitle: "False-positive correction",
@@ -363,6 +788,7 @@ export const en: Messages = {
     calibrationPirActiveCannotStart: "Cannot start while PIR motion is detected.",
     calibrationMaxZonesReached: (max) => `Up to ${max} correction zones can be saved.`,
     calibrationSavedCount: (count, max) => `Saved correction zones ${count}/${max}`,
+    calibrationStaticRadarOnlyAvailable: "Spatial correction zones are full. LD2410C assist sensor correction is still available.",
     geometryMessages: {
       polygonMaxPoints: (maxPoints) => `Up to ${maxPoints} vertices can be added.`,
       polygonMinPoints: (minPoints) => `A polygon needs at least ${minPoints} vertices.`,
@@ -371,6 +797,16 @@ export const en: Messages = {
       zoneMinPoints: (minPoints) => `A polygon needs at least ${minPoints} vertices.`
     },
     calibrationStatus: {
+      staticRadarStarted: "Started collecting LD2410C assist radar samples",
+      staticRadarFailed: "LD2410C assist radar correction could not be completed.",
+      staticRadarTargetAppeared: "Correction was cancelled because an LD2450 target appeared during assist-radar-only correction.",
+      staticRadarAdjusted: (gate, fromSensitivity, toSensitivity) =>
+        `LD2410C G${gate} sensitivity ${fromSensitivity} -> ${toSensitivity}`,
+      staticRadarStillDetected: "LD2410C still detects presence after automatic correction. Check its placement or adjust sensitivity manually.",
+      staticRadarSamples: (count) => `LD2410C samples: ${count}`,
+      completed: (zoneCount, gateCount) =>
+        `Created ${zoneCount} correction zones and adjusted ${gateCount} LD2410C gates.`,
+      noPersistentFalsePositive: "No persistent false positive required correction.",
       startRequested: "Correction start requested",
       pirPassed: "PIR condition passed",
       sampleCollectionStarted: "Started collecting target samples",
@@ -412,6 +848,7 @@ export const en: Messages = {
       runningDescription: "Collecting correction data.",
       doneDescription: "Correction has finished.",
       createdZones: (count) => `Created correction zones: ${count}`,
+      adjustedStaticRadarGates: (count) => `Adjusted LD2410C gates: ${count}`,
       workItems: "Work items",
       errorLog: "Error log",
       debugLog: "Debug log",
@@ -577,21 +1014,29 @@ export const en: Messages = {
     apiKeyHidden: "API key hidden.",
     apiKeyDemoTitle: "API key is not available in demo mode.",
     apiKeyDemoMessage: "API key viewing is available only on a real device.",
-    apiKeyAutoHide: (seconds) => `It will be hidden automatically after ${seconds} seconds.`,
+    apiKeyAutoHide: (seconds) => `This window will close automatically after ${seconds} seconds.`,
     apiKeyLoadFailed: "Could not load API key.",
     apiKeyNotSet: "No API key is stored. Generate or reissue an API key.",
     apiKeyCopied: "API key copied.",
     apiKeyCopyFailed: "Could not copy. Please check it again.",
     apiKeyReveal: "Show API key",
     apiKeyRegenerate: "Reissue API key",
+    apiKeyDescription: "This key is used to connect Home Assistant. Keep it private.",
+    apiKeyRegenerateConfirmTitle: "Reissue the API key?",
+    apiKeyRegenerateConfirmDescription: "The existing Home Assistant connection will be disconnected. Enter the new key in Home Assistant to connect again.",
+    apiKeyRegenerateConfirm: "Reissue",
+    apiKeyRegenerating: "Reissuing...",
+    apiKeyRegeneratedTitle: "New API key issued",
+    apiKeyRegenerateFailed: "Could not reissue the API key.",
     restoreDemoTitle: "Restore is disabled in demo mode.",
     restoreDemoOpenMessage: "The demo page blocks restore actions so it cannot overwrite a real device.",
     restoreDemoFileMessage: "Backup validation and restore API calls are available only on a real device.",
     restoreDemoConfirmMessage: "Selected backup data can be imported only on a real device.",
     firmwareUpdateTitle: "Firmware update",
-    firmwareUpdateDescription: "Update the device firmware. Automatic updates will be connected after the release flow is finalized.",
+    firmwareUpdateDescription: "Verify and install a signed NAMO firmware package on this device.",
     firmwareUpdateButton: "Firmware update",
-    firmwareManualDescription: "Upload an ESPHome-generated firmware file directly to the device.",
+    firmwareManualDescription: "Upload a NAMO firmware package directly to the device.",
+    firmwareTarget: "Install target",
     firmwareUploading: "Uploading",
     firmwareVerifying: "Checking response",
     firmwareUpload: "Upload",
@@ -599,6 +1044,9 @@ export const en: Messages = {
     firmwareUploadingTitle: "Uploading firmware",
     firmwareVerifyingTitle: "Checking device response",
     firmwareSuccessTitle: "Update complete",
+    firmwareCompletionDescription: "The new firmware was applied and the device responded normally after reboot.",
+    firmwarePreviousVersion: "Previous firmware",
+    firmwareInstalledVersion: "Installed firmware",
     firmwareVerifyFailedTitle: "Response check failed",
     firmwareFailedTitle: "Update failed",
     firmwareReadyTitle: "Upload ready",
@@ -610,8 +1058,8 @@ export const en: Messages = {
     firmwareVerifyFailedHint: "The update may still have been applied. If the device works normally, refresh manually.",
     firmwareFailedHint: "Check the file and OTA spare space, then try again.",
     firmwareReadyHint: (fileText) => `${fileText} · Press upload to start updating the device.`,
-    firmwareReadyWithOta: (otaSpace) => `Choose a .bin file to upload. OTA spare space is ${otaSpace}.`,
-    firmwareReadyWithoutOta: "Choose a .bin file to upload. OTA spare space can be checked after system information is loaded.",
+    firmwareReadyWithOta: (otaSpace) => `Choose a NAMO firmware file. OTA spare space is ${otaSpace}.`,
+    firmwareReadyWithoutOta: "Choose a NAMO firmware file. OTA spare space can be checked after system information is loaded.",
     firmwareRebooting: "Device is rebooting.",
     firmwareWaitingResponse: "Waiting for device response.",
     firmwareCheckingApplied: "Checking whether the new firmware was applied.",
@@ -622,13 +1070,25 @@ export const en: Messages = {
     firmwareDemoTitle: "Updates are disabled in demo mode.",
     firmwareDemoOpenMessage: "Firmware upload can reboot the device, so demo mode blocks all related API calls.",
     firmwareDemoFileMessage: "The selected firmware file was not uploaded. Updates can be performed only on a real device.",
-    firmwareBinOnly: "Only .bin firmware files generated by ESPHome can be uploaded.",
+    firmwareBinOnly: "Choose a signed NAMO firmware (.namo-ota) or a development .bin file.",
+    firmwareImageInvalid: "The file does not contain valid NAMO firmware metadata for ESP32.",
     firmwareFileTooLarge: (fileSize, otaSpace) => `The file is larger than the OTA spare space. ${fileSize} / ${otaSpace}`,
     firmwareApiNotReady: "Firmware upload API is not ready.",
     firmwareFileReady: "File checked. Press upload to start the update.",
     firmwareUploadingMessage: "Uploading firmware. Do not power off during the update.",
     firmwareUploadResponseLost: "Upload response was lost. Checking device response.",
+    firmwareUploadInterrupted: "The upload or reboot check was interrupted. Select the firmware file and try again.",
     firmwareUpdateFailedMessage: "Firmware update failed.",
+    firmwareUpdatedVersion: (before, after) => `Firmware updated: ${before} → ${after}`,
+    firmwareRebuiltVersion: (version) => `Firmware ${version} was reinstalled with a newer build.`,
+    firmwareReinstalledVersion: (version) => `Firmware ${version} was reinstalled successfully.`,
+    alphaFirmwareAllow: "Allow alpha firmware installation",
+    alphaFirmwareArmed: (seconds) => `One alpha installation allowed · within ${Math.ceil(seconds / 60)} min`,
+    alphaFirmwareUnavailable: "Signed alpha installation permission is unavailable in this firmware.",
+    alphaFirmwareConfirmTitle: "Allow alpha firmware?",
+    alphaFirmwareConfirmDescription: "Alpha firmware is a less-tested development build. It may cause unstable behavior, configuration damage, or repeated reboots. This permits one alpha installation on this device for the next 10 minutes.",
+    alphaFirmwareConfirm: "Allow once for 10 minutes",
+    alphaFirmwareUpdateFailed: "Could not change alpha firmware installation permission.",
     dangerZoneTitle: "Danger zone",
     dangerZoneDescription: "Device connection, security key, and saved settings can be reset here. Create a backup first if needed.",
     rebootButton: "Restart",
@@ -655,9 +1115,12 @@ export const en: Messages = {
     resetScopeTitle: "Reset scope",
     resetScopeDescription: "Press reset, choose items below, then confirm in the final dialog.",
     resetItemsTitle: "Items to reset",
-    resetSettingsData: "Settings data: API key, software/hardware zones, calibration/filter zones, floorplan, furniture layout, advanced settings",
-    resetWifiData: "Wi-Fi reset: delete saved Wi-Fi information and return to setup AP",
-    resetStatsData: "Statistics / heatmap data",
+    resetSelectAll: "Select all",
+    resetSpaceData: "Floorplan image and room layout, furniture placement, and radar position",
+    resetDetectionData: "User detection areas, false-positive correction areas, excluded or reduced areas, and environment and general settings",
+    resetConnectionsData: "Connected devices, secure connections, position alignment and fusion, automatic replacement, and shared space information",
+    resetWifiData: "Saved Wi-Fi information",
+    resetStatsData: "Statistics history",
     resetSelected: "Reset selected items",
     resetIdleTitle: "Waiting for reset",
     resetIdleDescription: "Press the reset button on the left to choose the reset scope.",
@@ -765,7 +1228,7 @@ export const en: Messages = {
       estimatedPixelBasis: (widthPx, heightPx) => `Based on ${widthPx} x ${heightPx}px`,
       width: "Width",
       height: "Height",
-      noCandidates: "No room candidates have been created yet.",
+      noCandidates: "No rooms have been created yet.",
       status: {
         candidate: "Candidate",
         confirmed: "Confirmed",
@@ -805,7 +1268,8 @@ export const en: Messages = {
       title: "Editing tools",
       split: "Split room",
       merge: "Merge rooms",
-      snap: "Snap to walls"
+      snap: "Snap to walls",
+      door: "Add door"
     },
     radarStep: {
       title: "Radar placement",
@@ -818,10 +1282,14 @@ export const en: Messages = {
       zoomInAria: "Zoom radar map in",
       scaleHint: "Adjustment is limited to 95-105% of the automatic scale.",
       nextWork: "Next: set the radar position and direction on the floorplan.",
-      occlusionEditOn: "Edit occlusion edges",
-      occlusionEditOff: "Stop editing occlusion edges",
-      occlusionActiveHint: "Click a room boundary on the floorplan to ignore radar occlusion for that edge.",
-      occlusionIgnored: (count) => `${count} ignored occlusion edges`,
+      advancedOptions: "Advanced options",
+      occlusionTitle: "Radar occlusion exceptions",
+      occlusionDescription: "Exclude only physical walls that the radar can actually see through.",
+      occlusionEditOn: "Edit occlusion exceptions",
+      occlusionEditOff: "Finish editing exceptions",
+      occlusionActiveHint: "Click a physical wall on the floorplan to toggle its occlusion behavior.",
+      occlusionIgnored: (count) => `${count} occlusion exceptions`,
+      occlusionReset: "Reset all exceptions",
       previousStep: "Previous step",
       roomsScale: "Room names / scale",
       nextStep: "Next step",
@@ -1042,6 +1510,44 @@ export const en: Messages = {
       clearImage: "Clear image",
       converting: "Converting",
       selectImage: "Select image",
+      drawFloorplan: "Draw floorplan",
+      drawFloorplanHint: "Draw the full outer boundary, then split it into rooms.",
+      manualFloorplanName: "Manually drawn floorplan",
+      manualOutlineRequired: "Finish the outer boundary before continuing.",
+      manualRoomRequired: "Add at least one room before placing the radar.",
+      manualOutlineTitle: "Draw the full outer boundary",
+      manualOutlineHint: "Mark the outside corners of the entire home. Points snap to the 0.5 m grid and existing corner lines, while lengths are shown to 0.1 m.",
+      manualOutlineCancelled: "The unfinished boundary was cleared. Start again when you are ready.",
+      manualStartOutline: "Draw outer boundary",
+      manualOutlineNeedPoints: "Click at least three outside corners of the entire home.",
+      manualOutlineReady: "Check the closing edge, then press Done. Rooms are added separately in the next step.",
+      manualOutlineInvalid: "The boundary cannot cross itself or reuse the same corner. Adjust the points before finishing.",
+      manualRoomsTitle: "Add rooms inside the boundary",
+      manualRoomsHint: "The outer boundary is ready. Add each room as a separate polygon inside it.",
+      manualRoomsReady: (count) => `${count} room${count === 1 ? "" : "s"} added. Add another room or continue to radar placement.`,
+      manualAddRoom: "Add room",
+      manualEditOutline: "Edit outer boundary",
+      manualOutlineEditTitle: "Edit outer boundary",
+      manualOutlineEditHint: "Drag corners, click an edge to add a corner, or double-click a corner to remove it.",
+      manualOutlineEditReady: "The boundary and every room are valid. Press Done to keep these changes.",
+      manualOutlineEditInvalid: "Keep every room inside a simple outer boundary before finishing.",
+      manualRoomInvalid: "Keep the room inside the outer boundary and make sure its edges do not cross.",
+      manualFloorplanLocked: "The saved drawing is locked. Delete this floorplan and draw it again to change its boundary or rooms.",
+      manualDoorsTitle: "Doors",
+      manualDoorType: "Door type",
+      manualAddDoor: "Add door",
+      manualHingedDoor: "Hinged door",
+      manualSlidingDoor: "Sliding door",
+      manualDoorPlacementTitle: "Place doors on walls",
+      manualDoorPlacementHint: "Move near a wall to snap the door into place. Drag the door along the same wall, or drag either end to resize it. Saving registers the opening as an exit point.",
+      manualDoorWallRequired: "That point is too far from a wall. Click the wall where the door should go.",
+      manualDoorWallTooShort: "The selected wall is too short for this door.",
+      manualDoorOverlap: "Another door already occupies this position. Choose a clear section of wall.",
+      manualNoDoors: "No doors have been added yet.",
+      manualDoorExitZoneLimit: "There is not enough room to register every door as an exit point. Up to six software zones, including exit points, are supported.",
+      manualDoorExitSaveUnavailable: "The door exit points cannot be saved right now. Try again shortly.",
+      manualDeleteDoor: "Delete door",
+      manualPlaceDoorAria: "Place a door on a wall",
       statusPassed: "Passed",
       statusCheckRequired: "Check required",
       statusWaiting: "Waiting",
@@ -1088,6 +1594,7 @@ export const en: Messages = {
       mergeReady: "Press Done to merge the selected two rooms.",
       manualNeedPoints: "Click at least three room corner points on the floorplan.",
       manualReady: "Press Done to add the new room. You can still add more corner points.",
+      manualInvalid: "Adjust the points so the polygon is valid before finishing.",
       defaultRoomName: (index) => `Room ${index}`,
       defaultRoomCandidateName: (index) => `Room candidate ${index}`,
       storedLoading: "Loading",
@@ -1105,29 +1612,40 @@ export const en: Messages = {
       storedView: "View",
       storedEdit: "Edit",
       storedCreateNew: "Create new",
+      storedReplace: "Replace floorplan",
+      storedDelete: "Delete floorplan",
+      storedReplaceCancel: "Cancel replacement",
+      floorplanOwnerRequiredTitle: "Change the floorplan on the configuration owner",
+      floorplanOwnerRequiredDescription: "This floorplan is shared by connected NAMO devices. Open the configuration owner to replace or manage it.",
+      floorplanOpenOwner: "Open configuration owner",
+      floorplanOwnerUnavailable: "The configuration owner's address is not available. Check that device's network connection.",
+      floorplanDeleteConnectedTitle: "Disconnect devices before deleting the floorplan",
+      floorplanDeleteConnectedDescription: "A connected Site needs its floorplan for shared coordinates and fusion. You can replace it now, or disconnect the other devices before deleting it.",
+      floorplanRadarRelocatedTitle: "Some radar positions need to be set again",
+      floorplanRadarRelocatedDescription: (count) => `${count} radar position${count === 1 ? " was" : "s were"} outside the new coordinate frame and moved to its center. Open each device and set its radar position again.`,
+      floorplanRadarRelocatedDevice: (address) => `Open ${address}`,
+      floorplanRadarRelocatedUnavailable: "This device is offline or has no known address.",
       storedSaving: "Saving",
       storedSaveChanges: "Save changes",
       storedSave: "Save",
       storedRoomEdit: "Edit rooms",
       storedRadarPosition: "Change radar position",
-      storedZoneEdit: "Edit detection zones",
-      storedExitPointEdit: "Edit exit point",
+      storedZoneEdit: "Edit zones",
       storedCalibrationEdit: "Edit correction zones",
       storedFurniture: "Furniture layout",
       storedScaleRecalculated: "Recalculated the full size and estimated room dimensions.",
       storedSaveInProgress: "Saving floorplan configuration to the ESP32.",
       storedSaveDone: "Saved floorplan configuration.",
       storedSaveComplete: "Saved",
-      storedAddZoneUnavailable: "A detection zone cannot be added.",
-      storedZoneAdded: "Added a detection zone.",
-      storedExitPointAdded: "Added an exit point.",
+      storedAddZoneUnavailable: "A zone cannot be added.",
+      storedZoneAdded: "Added a zone.",
       storedZoneDeleted: "Deleted the zone.",
-      storedZoneRectified: "Converted the detection zone to a rectangle.",
+      storedZoneRectified: "Converted the zone to a rectangle.",
       storedAddPointUnavailable: "A point cannot be added.",
-      storedZonePointAdded: "Added a detection-zone point.",
+      storedZonePointAdded: "Added a zone point.",
       storedCalibrationUpdated: "Updated the correction area.",
-      storedZoneUpdated: "Updated the detection zone.",
-      storedZonePointDeleted: "Deleted the detection-zone point.",
+      storedZoneUpdated: "Updated the zone.",
+      storedZonePointDeleted: "Deleted the zone point.",
       storedFurnitureChanged: "Changed the furniture layout.",
       storedFurnitureAdded: "Added furniture.",
       storedFurnitureRotated: "Rotated furniture.",
@@ -1139,25 +1657,23 @@ export const en: Messages = {
         sofa: "Sofa",
         tv_console: "TV console"
       })[id] ?? fallback,
-      storedZoneEditorTitle: (source) => source === "calibration" ? "Edit correction zones" : source === "exit" ? "Edit exit points" : "Edit detection zones",
+      storedZoneEditorTitle: (source) => source === "calibration" ? "Edit correction zones" : "Edit zones",
       storedZoneEditorDescription: "Drag zones on the floorplan or move their points. Double-click a detection-zone edge to add a point.",
-      storedExitPointEditorDescription: "Drag the exit line or move either endpoint to align it with the real doorway or exit path.",
       storedAddZone: "Add zone",
-      storedAddExitPoint: "Add exit point",
-      storedNoZones: (source) => source === "calibration" ? "No correction zones are registered." : source === "exit" ? "No exit points are registered." : "No detection zones are registered.",
+      storedNoZones: (source) => source === "calibration" ? "No correction zones are registered." : "No zones are registered.",
       storedZonePointCount: (count) => `${count}-point polygon`,
       storedExitLineShape: "Exit line",
       storedRectShape: "Rectangle",
       storedZoneName: "Zone name",
       storedZoneNamePlaceholder: "e.g. Bed, Desk",
       storedDetection: "Detection",
-      storedFilter: "Exclude",
+      storedFilter: "Exclusion",
       storedDisabled: "Disabled",
       storedExit: "Exit",
       storedConvertRect: "Convert to rectangle",
       storedDeletePoint: "Delete selected point",
       storedBlock: "Block",
-      storedReduced: "Reduce",
+      storedReduced: "Reduced sensitivity",
       storedOff: "Off",
       storedDeleteZone: "Delete selected zone",
       storedFurnitureTitle: "Furniture layout",

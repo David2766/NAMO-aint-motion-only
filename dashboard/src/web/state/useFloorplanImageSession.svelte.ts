@@ -55,6 +55,13 @@ interface FloorplanImageSessionOptions {
   onLoaded?: (result: PreparedFloorplanCandidate) => void;
 }
 
+interface GeneratedFloorplanCandidate {
+  blob: Blob;
+  name: string;
+  width: number;
+  height: number;
+}
+
 export function createFloorplanImageSession({
   getText,
   formatError,
@@ -116,6 +123,28 @@ export function createFloorplanImageSession({
     statusText = getText().selectImageStatus;
   }
 
+  function setGeneratedCandidate(candidate: GeneratedFloorplanCandidate): void {
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
+    imageUrl = URL.createObjectURL(candidate.blob);
+    imageBlob = candidate.blob;
+    originalImageBlob = null;
+    imageName = candidate.name;
+    imageMeta = `${formatBytes(candidate.blob.size, {
+      unitSeparator: " ",
+      minUnit: "KB",
+      mbPrecision: 2
+    })} · ${candidate.width} x ${candidate.height}px · WebP`;
+    statusTone = "ok";
+    statusText = getText().canUseEsp32Candidate;
+    debugInfo = {
+      width: candidate.width,
+      height: candidate.height,
+      size: candidate.blob.size,
+      type: candidate.blob.type,
+      ok: true
+    };
+  }
+
   function destroy(): void {
     if (imageUrl) URL.revokeObjectURL(imageUrl);
     imageUrl = "";
@@ -159,6 +188,7 @@ export function createFloorplanImageSession({
       return originalImageBlob;
     },
     handleFileChange,
+    setGeneratedCandidate,
     clear,
     destroy,
     ensureDefaultStatus,

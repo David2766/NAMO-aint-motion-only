@@ -18,8 +18,19 @@ binary_sensor:
     id: moving_target_filtered
     device_class: motion
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        for (const auto &target : fusion.targets) {
+          if (target.valid &&
+              std::hypot(target.vx_mm_s, target.vy_mm_s) >
+                  id(dir_stationary_speed) * 10.0f) {
+            return true;
+          }
+        }
+        return false;
+      }
       if (id(radar_api).tracker_assist_presence_enabled() &&
-          !id(target_1_filter_blocked) && !id(target_2_filter_blocked) && !id(target_3_filter_blocked)) {
+          !id(target_admission_fully_blocked)) {
         return id(radar_api).tracker_output().moving_track_count > 0;
       }
       return
@@ -34,8 +45,19 @@ binary_sensor:
     id: still_target_filtered
     device_class: occupancy
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        for (const auto &target : fusion.targets) {
+          if (target.valid &&
+              std::hypot(target.vx_mm_s, target.vy_mm_s) <=
+                  id(dir_stationary_speed) * 10.0f) {
+            return true;
+          }
+        }
+        return false;
+      }
       if (id(radar_api).tracker_assist_presence_enabled() &&
-          !id(target_1_filter_blocked) && !id(target_2_filter_blocked) && !id(target_3_filter_blocked)) {
+          !id(target_admission_fully_blocked)) {
         return id(radar_api).tracker_output().still_track_count > 0;
       }
       return
@@ -106,8 +128,10 @@ sensor:
     update_interval: 500ms
     accuracy_decimals: 0
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) return fusion.target_count;
       if (id(radar_api).tracker_assist_presence_enabled()) {
-        if (id(target_1_filter_blocked) || id(target_2_filter_blocked) || id(target_3_filter_blocked)) return 0;
+        if (id(target_admission_fully_blocked)) return 0;
         const auto &tracker = id(radar_api).tracker_output();
         return tracker.confirmed_track_count + tracker.coasting_track_count;
       }

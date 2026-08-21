@@ -102,6 +102,7 @@ uint8_t tracker_reason_code(const char *value) {
   if (std::strcmp(reason, "lost_without_exit") == 0) return 14;
   if (std::strcmp(reason, "coasting_after_room_exit") == 0) return 15;
   if (std::strcmp(reason, "lost_after_room_exit") == 0) return 16;
+  if (std::strcmp(reason, "tentative_reduced_zone") == 0) return 17;
   return 255;
 }
 
@@ -129,16 +130,20 @@ bool parse_replay_line(const std::string &line, PresenceTrackerInput &input, uin
   input.filter_blocked = static_cast<int>(filter_values[0]) != 0;
 
   std::vector<double> target_values;
-  if (!extract_array_numbers(line, "\"tg\":", target_values) || target_values.size() != 15)
+  if (!extract_array_numbers(line, "\"tg\":", target_values) ||
+      (target_values.size() != 15 && target_values.size() != 18 && target_values.size() != 21))
     return false;
 
+  const int tuple_size = static_cast<int>(target_values.size() / 3);
   for (int i = 0; i < 3; i++) {
-    const int base = i * 5;
+    const int base = i * tuple_size;
     input.targets[i].valid = static_cast<int>(target_values[base]) != 0;
     input.targets[i].x_mm = static_cast<float>(target_values[base + 1]);
     input.targets[i].y_mm = static_cast<float>(target_values[base + 2]);
     input.targets[i].speed_cm_s = static_cast<float>(target_values[base + 3]);
     input.targets[i].distance_mm = static_cast<float>(target_values[base + 4]);
+    input.targets[i].reduced_zone = tuple_size >= 6 && static_cast<int>(target_values[base + 5]) != 0;
+    input.targets[i].filter_blocked = tuple_size == 7 && static_cast<int>(target_values[base + 6]) != 0;
   }
 
   return true;

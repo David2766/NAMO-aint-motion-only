@@ -38,7 +38,16 @@ interface RoomCandidateEditSessionOptions {
   setManualRoomDraft: (draft: ManualRoomDraft) => void;
   getManualRoomDraftHover: () => ManualRoomDraftHover | null;
   setManualRoomDraftHover: (hover: ManualRoomDraftHover | null) => void;
-  snapPoint: (point: { x: number; y: number }) => { x: number; y: number };
+  snapPoint: (
+    point: { x: number; y: number },
+    points: Array<[number, number]>,
+    index: number
+  ) => { x: number; y: number };
+  snapInsertedPoint?: (
+    point: { x: number; y: number },
+    points: Array<[number, number]>,
+    index: number
+  ) => { x: number; y: number };
   markStoredRoomsChanged: () => void;
   markStoredRoomNameChanged: (id: string, name: string) => void;
   canDeleteSelectedVertex: () => boolean;
@@ -54,6 +63,7 @@ export function createRoomCandidateEditSession({
   getManualRoomDraftHover,
   setManualRoomDraftHover,
   snapPoint,
+  snapInsertedPoint,
   markStoredRoomsChanged,
   markStoredRoomNameChanged,
   canDeleteSelectedVertex,
@@ -164,7 +174,8 @@ export function createRoomCandidateEditSession({
     if (!candidate?.points?.length || edgeIndex < 0) return;
     const editableCandidate = { ...candidate, points: clonePoints(candidate.points) };
     const size = getImageSize();
-    const result = insertPolygonObjectPoint(editableCandidate, edgeIndex, point, {
+    const snapped = snapInsertedPoint?.(point, editableCandidate.points, edgeIndex + 1) ?? point;
+    const result = insertPolygonObjectPoint(editableCandidate, edgeIndex, snapped, {
       bounds: { width: size?.width, height: size?.height }
     });
     if (!result.changed) return;
@@ -192,8 +203,8 @@ export function createRoomCandidateEditSession({
   function moveVertex(id: string, index: number, point: { x: number; y: number }): void {
     const candidate = roomCandidates.candidates.find((item) => item.id === id);
     if (!candidate?.points || index < 0 || index >= candidate.points.length) return;
-    const snapped = snapPoint(point);
     const editableCandidate = { ...candidate, points: clonePoints(candidate.points) };
+    const snapped = snapPoint(point, editableCandidate.points, index);
     const size = getImageSize();
     const result = movePolygonObjectPoint(editableCandidate, index, snapped, {
       bounds: { width: size?.width, height: size?.height }
@@ -215,8 +226,8 @@ export function createRoomCandidateEditSession({
     pushHistory();
   }
 
-  function endVertexMove(id: string): void {
-    cleanup(id, false);
+  function endVertexMove(id: string, cleanupCandidate = true): void {
+    if (cleanupCandidate) cleanup(id, false);
     markStoredRoomsChanged();
   }
 

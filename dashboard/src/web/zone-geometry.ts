@@ -194,6 +194,23 @@ export function addSoftwareZone(
   };
 }
 
+export function addSoftwareZoneDraft(
+  config: WebDeviceConfig,
+  labels: Pick<ZoneNameLabels, "zoneLabel" | "exitPointLabel">
+): ZoneMutationResult {
+  const result = addSoftwareZone(config, "detection", labels);
+  if (!result.changed || !result.selectedZoneId) return result;
+  return {
+    ...result,
+    config: {
+      ...result.config,
+      zones: result.config.zones.map((zone) =>
+        zone.id === result.selectedZoneId ? { ...zone, placeholder: true } : zone
+      )
+    }
+  };
+}
+
 export function exitLineFromZone(zone: Pick<WebZone, "points">): ExitLine {
   const points = zone.points;
   if (points.length >= 4) {
@@ -297,7 +314,11 @@ export function setZoneType(config: WebDeviceConfig, zoneId: string, type: WebZo
   return {
     config: {
       ...config,
-      zones: config.zones.map((zone) => zone.id === zoneId ? { ...zone, type } : zone)
+      zones: config.zones.map((zone) => {
+        if (zone.id !== zoneId) return zone;
+        const { placeholder: _placeholder, ...rest } = zone;
+        return { ...rest, type };
+      })
     },
     changed: true
   };

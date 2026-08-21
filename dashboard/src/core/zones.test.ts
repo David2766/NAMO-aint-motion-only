@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localizedZoneDisplayName, normalizeSoftwareConfig, normalizeZoneType } from "./zones";
+import { localizedZoneDisplayName, normalizeSoftwareConfig, normalizeZoneType, stripPlaceholders } from "./zones";
 import type { WebDeviceConfig, WebZone } from "./types";
 
 const zoneBase = {
@@ -63,6 +63,31 @@ describe("normalizeSoftwareConfig", () => {
 
     expect(normalized.zones[0]?.type).toBe("filter");
   });
+
+  it("preserves user-created reduced zones for device saves", () => {
+    const normalized = normalizeSoftwareConfig(configWithZone({ type: "reduced" }));
+
+    expect(normalized.zones[0]?.type).toBe("reduced");
+  });
+
+  it("migrates a legacy local radar placement to pose version one", () => {
+    const normalized = normalizeSoftwareConfig({
+      version: 1,
+      zones: [],
+      floorplan: {
+        enabled: true,
+        hasImage: true,
+        radar: {
+          originX: 100,
+          originY: 120,
+          rotation: 15,
+          scale: 1
+        }
+      }
+    });
+
+    expect(normalized.floorplan?.radar?.poseVersion).toBe(1);
+  });
 });
 
 describe("localizedZoneDisplayName", () => {
@@ -78,5 +103,21 @@ describe("localizedZoneDisplayName", () => {
 
   it("uses the zone type when an unnamed zone needs a fallback label", () => {
     expect(localizedZoneDisplayName({ ...zoneBase, type: "exit", name: "" }, englishLabels)).toBe("Exit Point 1");
+  });
+});
+
+describe("stripPlaceholders", () => {
+  it("removes transient drafts and shared display zones from device payloads", () => {
+    const payload = stripPlaceholders({
+      version: 1,
+      zones: [
+        { ...zoneBase, id: "draft", type: "detection", placeholder: true },
+        { ...zoneBase, id: "shared", type: "detection", shared: true },
+        { ...zoneBase, id: "local", type: "filter" }
+      ],
+      calibrationZones: []
+    });
+
+    expect(payload.zones.map((zone) => zone.id)).toEqual(["local"]);
   });
 });

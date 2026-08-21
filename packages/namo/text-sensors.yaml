@@ -7,10 +7,7 @@ text_sensor:
   - platform: ld2450
     ld2450_id: ld2450_radar
     version:
-      name: "LD2450 Firmware"
-      entity_category: diagnostic
-    mac_address:
-      name: "LD2450 BT MAC"
+      name: "LD245x Firmware"
       entity_category: diagnostic
     target_1:
       direction:

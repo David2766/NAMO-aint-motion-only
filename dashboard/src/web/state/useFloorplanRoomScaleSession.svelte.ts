@@ -39,12 +39,14 @@ interface RoomScaleText {
 
 interface FloorplanRoomScaleSessionOptions {
   getRoomCandidates: () => RoomCandidate[];
+  getOuterBounds?: () => { x: number; y: number; width: number; height: number } | null;
   getText: () => RoomScaleText;
   outerBoundsTouchTolerancePx: number;
 }
 
 export function createFloorplanRoomScaleSession({
   getRoomCandidates,
+  getOuterBounds = () => null,
   getText,
   outerBoundsTouchTolerancePx
 }: FloorplanRoomScaleSessionOptions) {
@@ -89,6 +91,8 @@ export function createFloorplanRoomScaleSession({
   }
 
   function outerBounds() {
+    const providedBounds = getOuterBounds();
+    if (providedBounds) return providedBounds;
     const points = getRoomCandidates().flatMap(roomCandidatePoints);
     if (!points.length) return null;
     return rectFromPoints(points);

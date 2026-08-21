@@ -5,7 +5,7 @@
 This directory contains the reference hardware information and manufacturing files for NAMO.
 
 > [!IMPORTANT]
-> The current dual-radar PCB manufacturing package and schematic are now published under [`pcb/dual_sensor/`](pcb/dual_sensor/). The enclosure files and assembled-device photos still belong to the earlier single-radar generation. A dual-radar enclosure is being refined and is not yet published; do not print the legacy enclosure for the current dual-radar board.
+> The current dual-radar PCB manufacturing package and schematic are published under [`pcb/dual_sensor/`](pcb/dual_sensor/), and the matching `top_dual.3mf` and `bottom_dual.3mf` are published under [`enclosure/`](enclosure/). The `_dual` top and bottom use a revised locking interface and must be printed as a pair. The legacy single-sensor `bottom.3mf` is not compatible with `top_dual.3mf`. Most assembled-device photos below still show the earlier hardware generation.
 
 ## Build Gallery
 
@@ -19,7 +19,7 @@ This directory contains the reference hardware information and manufacturing fil
 | 5. Rear view before closing the enclosure | 6. Final assembly |
 | ![NAMO assembled hardware before closing the rear enclosure](../docs/img/hardware/5.jpg) | ![NAMO final assembly](../docs/img/hardware/6.jpg) |
 
-Photo 1 shows the earlier single-radar PCB, while photo 1-1 shows the current dual-radar PCB. Photos 2-6 document components and assembly from the earlier build, and photo 4-1 shows the optional LD2410C used by the current design. Updated dual-radar enclosure and final-assembly photos will be added after the enclosure is finalized.
+Photo 1 shows the earlier single-radar PCB, while photo 1-1 shows the current dual-radar PCB. Photos 2-6 document components and assembly from the earlier build, and photo 4-1 shows the optional LD2410C used by the current design. The current dual-radar enclosure files are available below; updated final-assembly photos have not yet been added.
 
 ## Supported Hardware
 
@@ -77,14 +77,14 @@ Review the selected manufacturing archive, schematic, supply voltages, connector
 
 ## Enclosure Models
 
-The following enclosure files fit the earlier single-radar hardware generation. The updated enclosure for the dual-radar layout is still being refined and is not yet published.
+Choose the enclosure pair that matches the PCB generation.
 
-- [Top enclosure](enclosure/top.3mf)
-- [Bottom enclosure](enclosure/bottom.3mf)
+- Current dual-sensor enclosure: [top_dual.3mf](enclosure/top_dual.3mf) · [bottom_dual.3mf](enclosure/bottom_dual.3mf)
+- Legacy single-sensor enclosure: [top.3mf](enclosure/top.3mf) · [bottom.3mf](enclosure/bottom.3mf)
 
 Open the 3MF files in your slicer and verify scale, orientation, supports, and material settings before printing. Printer calibration and material shrinkage can affect the final fit.
 
-These legacy models are not expected to fit the current dual-radar PCB and sensor arrangement without modification.
+Print `top_dual.3mf` and `bottom_dual.3mf` together for the current build. Their locking geometry differs from the legacy single-sensor enclosure, so `bottom.3mf` cannot lock correctly to `top_dual.3mf` and must not be reused.
 
 ## DIY Build Notes
 

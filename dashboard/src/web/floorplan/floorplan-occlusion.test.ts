@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBoundaryOcclusionSegments,
   nextIgnoredOcclusionEdges,
+  radarVisiblePolygonPoints,
   wallSegmentGeometryKey
 } from "./floorplan-occlusion";
 
@@ -57,5 +58,39 @@ describe("floorplan occlusion helpers", () => {
     expect(ignored).toEqual(["wall:0,0-50,0", "wall:50,0-100,0"]);
 
     expect(nextIgnoredOcclusionEdges(ignored, segments[1], segments)).toEqual([]);
+  });
+
+  it("stops radar visibility at the nearest physical wall", () => {
+    const segments = buildBoundaryOcclusionSegments([{
+      id: "outer",
+      segmentPrefix: "wall",
+      points: [[0, 0], [100, 0], [100, 100], [0, 100]]
+    }]);
+
+    expect(radarVisiblePolygonPoints(
+      { x: 50, y: 50 },
+      [{ x: 150, y: 50 }, { x: 50, y: -50 }],
+      segments
+    )).toEqual([
+      { x: 50, y: 50 },
+      { x: 100, y: 50 },
+      { x: 50, y: 0 }
+    ]);
+  });
+
+  it("lets a ray pass only when that physical wall is explicitly ignored", () => {
+    const segments = buildBoundaryOcclusionSegments([{
+      id: "outer",
+      segmentPrefix: "wall",
+      points: [[0, 0], [100, 0], [100, 100], [0, 100]]
+    }]);
+    const rightWall = segments.find((segment) => segment.x1 === 100 && segment.x2 === 100);
+
+    expect(radarVisiblePolygonPoints(
+      { x: 50, y: 50 },
+      [{ x: 150, y: 50 }],
+      segments,
+      rightWall ? [rightWall.occlusionKey] : []
+    )).toEqual([{ x: 50, y: 50 }, { x: 150, y: 50 }]);
   });
 });

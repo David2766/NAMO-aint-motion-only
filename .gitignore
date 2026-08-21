@@ -1,6 +1,7 @@
 .esphome/
 secrets.yaml
 *.local.yaml
+*.local.ps1
 .env
 .env.*
 **/node_modules/

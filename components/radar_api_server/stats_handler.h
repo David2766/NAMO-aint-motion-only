@@ -12,8 +12,8 @@ class StatsHandler {
  public:
   StatsHandler(StatsStore *stats_store, RadarStorage *storage) : stats_store_(stats_store), storage_(storage) {}
 
-  bool can_handle(AsyncWebServerRequest *request) const;
-  bool handle(AsyncWebServerRequest *request);
+  bool can_handle(AsyncWebServerRequest *request, StringRef url) const;
+  bool handle(AsyncWebServerRequest *request, StringRef url);
 
  private:
   StatsStore *stats_store_;

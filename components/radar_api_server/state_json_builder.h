@@ -1,8 +1,11 @@
 #pragma once
 
 #include "device_config_cache.h"
+#include "fixed_text_buffer.h"
+#include "fusion_automation.h"
 #include "presence_fusion.h"
 #include "software_zone_evidence.h"
+#include "shared_automation_area.h"
 
 #include <cstdint>
 #include <string>
@@ -17,7 +20,18 @@ struct StateJsonTarget {
   float x{0.0f};
   float y{0.0f};
   bool active{false};
+  bool fused{false};
+  uint8_t source_count{0};
 };
+
+struct StateJsonLocalTarget {
+  float x{0.0f};
+  float y{0.0f};
+  bool active{false};
+};
+
+static_assert(sizeof(StateJsonLocalTarget) <= 12,
+              "local state target exceeded its embedded budget");
 
 struct DeviceStateJsonInput {
   uint32_t now_ms{0};
@@ -29,6 +43,14 @@ struct DeviceStateJsonInput {
   int target_count{0};
   int moving_target_count{0};
   int still_target_count{0};
+  bool fusion_build_enabled{false};
+  bool fusion_authoritative{false};
+  const char *fusion_state{"disabled"};
+  const FusionAutomationSnapshot *automation{nullptr};
+  const SharedAutomationAreaCache *shared_automation_areas{nullptr};
+  bool local_presence{false};
+  bool local_motion{false};
+  int local_target_count{0};
   float temperature_c{0.0f};
   float humidity_percent{0.0f};
   float illuminance_lux{0.0f};
@@ -64,11 +86,18 @@ struct DeviceStateJsonInput {
   bool static_assist_exit_veto{false};
   uint32_t static_assist_arm_elapsed_ms{0};
   StaticAssistHeldTarget static_assist_held_target{};
+  StateJsonLocalTarget local_targets[3]{};
   StateJsonTarget targets[3]{};
 };
 
 std::string build_device_state_json(const DeviceConfigCache &config_cache, const SoftwareZoneEvidence &zone_evidence,
                                     const std::string &tracker_debug_json, const DeviceStateJsonInput &input);
+
+bool build_device_state_json(FixedTextBuffer &output,
+                             const DeviceConfigCache &config_cache,
+                             const SoftwareZoneEvidence &zone_evidence,
+                             const char *tracker_debug_json,
+                             const DeviceStateJsonInput &input);
 
 }  // namespace radar_api_server
 }  // namespace esphome

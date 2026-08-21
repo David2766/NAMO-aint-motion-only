@@ -9,7 +9,10 @@ export interface DeviceApi {
   getConfig(): Promise<WebDeviceConfig>;
   getStats(): Promise<WebDeviceStats>;
   getSystemStatus?(): Promise<WebSystemStatus>;
+  getFirmwareTrust?(): Promise<WebFirmwareTrustStatus>;
+  setAlphaFirmwareInstallAllowed?(enabled: boolean): Promise<WebFirmwareTrustStatus>;
   getApiKey?(): Promise<WebApiKeyResult>;
+  rotateApiKey?(): Promise<WebApiKeyResult>;
   completeHaSetupHandoff?(): Promise<WebHaSetupHandoffResult>;
   getControlStatus?(): Promise<WebControlStatus>;
   getStaticRadarTuningStatus?(): Promise<WebStaticRadarTuningStatus>;
@@ -24,6 +27,7 @@ export interface DeviceApi {
   setTimezone?(timezone: string): Promise<void>;
   setStaticRadarTuningSession?(active: boolean): Promise<void>;
   setStaticRadarGateSensitivity?(gate: number, sensitivity: number): Promise<void>;
+  resetStaticRadarFactoryDefaults?(): Promise<void>;
   saveFloorplan?(document: FloorplanStorageDocument, image: Blob): Promise<void>;
   uploadFirmware?(file: File, onProgress: (progress: FirmwareUploadProgress) => void): Promise<void>;
   resetSystem?(options: WebSystemResetOptions): Promise<WebSystemResetResult>;
@@ -45,6 +49,7 @@ export interface WebHaSetupHandoffResult {
   ok: boolean;
   message?: string;
   waitSeconds?: number;
+  rebootExpected?: boolean;
   statusInfo?: WebApiStatusInfo;
 }
 
@@ -52,6 +57,21 @@ export interface FirmwareUploadProgress {
   loaded: number;
   total: number;
   percent: number;
+}
+
+export interface WebFirmwareTrustStatus {
+  ok: boolean;
+  mode: "signed" | "legacy" | string;
+  ready: boolean;
+  trustRevision?: number;
+  securityEpoch?: number;
+  generation?: number;
+  releaseKeyId?: string;
+  developerKeyId?: string;
+  sessionActive?: boolean;
+  alphaInstallSupported: boolean;
+  alphaInstallAllowed: boolean;
+  alphaInstallRemainingSeconds: number;
 }
 
 export interface WebControlStatus {
@@ -80,22 +100,57 @@ export interface WebStaticRadarGateTuning {
   stillEnergy: number;
 }
 
+export interface WebStaticRadarGateOperation {
+  id: number;
+  state: "idle" | "pending" | "write_sent" | "verifying" | "applied" | "failed";
+  result: string;
+  gate: number;
+  sensitivity: number;
+  moveThreshold: number | null;
+  stillThreshold: number | null;
+}
+
 export interface WebStaticRadarTuningStatus {
   ok: boolean;
   available: boolean;
+  recovering?: boolean;
   active: boolean;
+  phase?: "idle" | "starting" | "active" | "stopping" | "failed";
+  result?: string;
   resolutionMm: number;
   gates: WebStaticRadarGateTuning[];
+  operation?: WebStaticRadarGateOperation;
 }
 
 export interface WebSystemStatus {
   ok: boolean;
+  platform?: {
+    schemaVersion?: number;
+    identityReady?: boolean;
+    siteId?: string;
+    nodeId?: string;
+    mode?: string;
+    maxParticipants?: number;
+    registryReady?: boolean;
+    remoteParticipantCount?: number;
+    connectedRemoteParticipantCount?: number;
+    activeRemoteParticipantCount?: number;
+    readinessReady?: boolean;
+    configuredRemoteParticipantCount?: number;
+    fusionEnabled?: boolean;
+    pairingSupported?: boolean;
+    pairingEnabled?: boolean;
+  };
   firmware?: {
     version?: string;
     buildTime?: string;
     uptimeSeconds?: number;
   };
   api?: {
+    enabled?: boolean;
+    keyConfigured?: boolean;
+    serviceReady?: boolean;
+    clientConnected?: boolean;
     connected?: boolean;
     warning?: boolean;
     statusInfo?: WebApiStatusInfo;
@@ -103,6 +158,7 @@ export interface WebSystemStatus {
   boot?: {
     initialGuardActive?: boolean;
     guardSeconds?: number;
+    remainingSeconds?: number;
   };
   dashboard?: {
     version?: string;
@@ -119,6 +175,16 @@ export interface WebSystemStatus {
     internalTotalBytes?: number;
     internalFreeBytes?: number;
     internalMinFreeBytes?: number;
+    internalLargestFreeBlockBytes?: number;
+    httpdStackMinFreeBytes?: number;
+    httpdStackLowestEndpoint?: string;
+    httpdStackLowestPhase?: string;
+    httpdStackLowestEndpointFreeBytes?: number;
+    internalMinFreeSource?: string;
+    internalMinFreePhase?: string;
+    internalMinFreeObservedAtMs?: number;
+    internalMinFreeEventCount?: number;
+    internalMinLargestFreeBlockBytes?: number;
     psramTotal?: number;
     psramFree?: number;
     externalTotalBytes?: number;
@@ -155,7 +221,9 @@ export interface WebSystemStatus {
 }
 
 export interface WebSystemResetOptions {
-  settings: boolean;
+  space: boolean;
+  detection: boolean;
+  connections: boolean;
   wifi: boolean;
   stats: boolean;
 }
@@ -163,14 +231,16 @@ export interface WebSystemResetOptions {
 export interface WebSystemResetResult {
   ok: boolean;
   reset?: {
-    settings?: boolean;
+    space?: boolean;
+    detection?: boolean;
+    connections?: boolean;
     wifi?: boolean;
     stats?: boolean;
   };
   details?: {
-    apiKey?: boolean;
     floorplan?: boolean;
     deviceConfig?: boolean;
+    connections?: boolean;
     stats?: boolean;
     wifiScheduled?: boolean;
   };
@@ -191,6 +261,7 @@ export interface CalibrationResult {
   title: string;
   tone: "ok" | "warn" | "error";
   createdCount: number;
+  adjustedStaticRadarGates?: number;
   reason: string;
   metrics?: CalibrationMetrics;
   logs?: string[];

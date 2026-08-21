@@ -1,0 +1,5 @@
+__pycache__/
+native/_build_virtual_node.cmd
+native/virtual_node
+native/virtual_node.exe
+

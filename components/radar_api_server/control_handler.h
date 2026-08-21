@@ -10,8 +10,8 @@ class ControlHandler {
  public:
   explicit ControlHandler(ControlState *control_state) : control_state_(control_state) {}
 
-  bool can_handle(AsyncWebServerRequest *request) const;
-  bool handle(AsyncWebServerRequest *request);
+  bool can_handle(AsyncWebServerRequest *request, StringRef url) const;
+  bool handle(AsyncWebServerRequest *request, StringRef url);
 
  private:
   ControlState *control_state_;
@@ -26,6 +26,7 @@ class ControlHandler {
   void handle_static_radar_tuning_status_(AsyncWebServerRequest *request);
   void handle_static_radar_tuning_session_(AsyncWebServerRequest *request);
   void handle_static_radar_tuning_gate_(AsyncWebServerRequest *request);
+  void handle_static_radar_factory_reset_(AsyncWebServerRequest *request);
 };
 
 }  // namespace radar_api_server

@@ -6,23 +6,14 @@
 namespace esphome {
 namespace radar_api_server {
 
-bool DashboardHandler::can_handle(AsyncWebServerRequest *request) const {
+bool DashboardHandler::can_handle(AsyncWebServerRequest *request, StringRef url) const {
   if (request->method() != HTTP_GET)
     return false;
-
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
   return url == "/dashboard" || url == "/dashboard/" || url == "/dashboard/assets/dashboard.js" ||
          url == "/dashboard/assets/dashboard.css";
 }
 
-bool DashboardHandler::handle(AsyncWebServerRequest *request) const {
-  if (!this->can_handle(request))
-    return false;
-
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
-
+bool DashboardHandler::handle(AsyncWebServerRequest *request, StringRef url) const {
   if (url == "/dashboard/assets/dashboard.js") {
     http_response::send_gzip_asset(request, dashboard_assets::DASHBOARD_JS_CONTENT_TYPE,
                                    dashboard_assets::DASHBOARD_JS_GZ, dashboard_assets::DASHBOARD_JS_GZ_SIZE);

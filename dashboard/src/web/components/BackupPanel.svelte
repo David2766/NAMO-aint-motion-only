@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import type { BackupIssue, BackupValidationResult } from "../../core/config-backup";
   import { apiErrorCode, apiErrorMessage } from "../api/api-message";
   import type { Messages } from "../i18n/types";
   import type { BackupRestoreProgressStep, BackupRestoreStage } from "../state/useBackupRestore.svelte";
   import { useDeviceStorageStatus } from "../state/useDeviceStorageStatus.svelte";
+  import { firmwareUpdateStore } from "../state/firmware-update-store";
   import { formatCompactBytes as formatBytes } from "../utils/formatters";
   import type {
     FirmwareUploadProgress,
     WebApiKeyResult,
+    WebFirmwareTrustStatus,
     WebSystemRebootResult,
     WebSystemResetOptions,
     WebSystemResetResult,
@@ -35,6 +37,7 @@
     systemStatus: WebSystemStatus | null;
     systemStatusLoading: boolean;
     systemStatusError: string;
+    bootGuardRemainingSeconds: number;
     demoMode?: boolean;
     issueText: (issue: BackupIssue) => string;
     onExport: () => void;
@@ -45,16 +48,14 @@
     onConfirmImport: () => void | Promise<void>;
     onCancelImport: () => void;
     onGetSystemStatus?: () => Promise<WebSystemStatus>;
+    onGetFirmwareTrust?: () => Promise<WebFirmwareTrustStatus>;
+    onSetAlphaFirmwareInstallAllowed?: (enabled: boolean) => Promise<WebFirmwareTrustStatus>;
     onUploadFirmware?: (file: File, onProgress: (progress: FirmwareUploadProgress) => void) => Promise<void>;
     onGetApiKey?: () => Promise<WebApiKeyResult>;
+    onRotateApiKey?: () => Promise<WebApiKeyResult>;
     onResetSystem?: (options: WebSystemResetOptions) => Promise<WebSystemResetResult>;
     onRebootSystem?: () => Promise<WebSystemRebootResult>;
   };
-
-  type FirmwareStatusSnapshot = {
-    version?: string;
-    buildTime?: string;
-  } | null;
 
   let {
     messages,
@@ -76,6 +77,7 @@
     systemStatus,
     systemStatusLoading,
     systemStatusError,
+    bootGuardRemainingSeconds,
     demoMode = false,
     issueText,
     onExport,
@@ -86,8 +88,11 @@
     onConfirmImport,
     onCancelImport,
     onGetSystemStatus,
+    onGetFirmwareTrust,
+    onSetAlphaFirmwareInstallAllowed,
     onUploadFirmware,
     onGetApiKey,
+    onRotateApiKey,
     onResetSystem,
     onRebootSystem
   }: Props = $props();
@@ -96,23 +101,20 @@
 
   let fileInput: HTMLInputElement | null = $state(null);
   let firmwareFileInput: HTMLInputElement | null = $state(null);
-  let firmwareFile: File | null = $state(null);
-  let firmwareFileName = $state("");
-  let firmwareFileSize = $state(0);
-  let firmwareUploadStage = $state<"idle" | "selected" | "uploading" | "verifying" | "success" | "error" | "verify-error">("idle");
-  let firmwareUploadPercent = $state(0);
-  let firmwareUploadLoaded = $state(0);
-  let firmwareUploadTotal = $state(0);
-  let firmwareUploadMessage = $state("");
   let resetOptionsOpen = $state(false);
-  let resetIncludeSettings = $state(true);
+  let resetIncludeSpace = $state(true);
+  let resetIncludeDetection = $state(true);
+  let resetIncludeConnections = $state(false);
   let resetIncludeWifi = $state(false);
   let resetIncludeStats = $state(false);
+  let resetSelectAllInput: HTMLInputElement | null = $state(null);
   let resetConfirmOpen = $state(false);
   let resetExecuting = $state(false);
   let rebootConfirmOpen = $state(false);
   let rebootExecuting = $state(false);
-  let apiKeyVisible = $state(false);
+  let apiKeyDialogOpen = $state(false);
+  let apiKeyDialogMode = $state<"value" | "regenerate-confirm">("value");
+  let apiKeyDialogTitle = $state("");
   let apiKeyLoading = $state(false);
   let apiKeyValue = $state("");
   let apiKeyMessage = $state("");
@@ -120,11 +122,13 @@
   let demoNoticeOpen = $state(false);
   let demoNoticeTitle = $state("");
   let demoNoticeMessage = $state("");
-  let bootGuardNow = $state(Date.now());
-  let bootGuardSnapshotMs = $state(Date.now());
-  let bootGuardUptimeAtSnapshot = $state(0);
+  let firmwareTrust = $state<WebFirmwareTrustStatus | null>(null);
+  let firmwareTrustLoading = $state(false);
+  let alphaPermissionConfirmOpen = $state(false);
+  let alphaPermissionClock = $state(Date.now());
+  let alphaPermissionExpiresAt = $state(0);
+  let alphaPermissionTimer: ReturnType<typeof setInterval> | null = null;
   const configStorageStatus = useDeviceStorageStatus("config", () => messages.common.saveStatus);
-  let componentDestroyed = false;
 
   function showDemoNotice(title: string, message: string): void {
     demoNoticeTitle = title;
@@ -143,17 +147,19 @@
     }
   }
 
-  function hideApiKey(message = ""): void {
+  function closeApiKeyDialog(): void {
     clearApiKeyTimer();
-    apiKeyVisible = false;
+    apiKeyDialogOpen = false;
+    apiKeyDialogMode = "value";
+    apiKeyDialogTitle = "";
     apiKeyValue = "";
-    apiKeyMessage = message;
+    apiKeyMessage = "";
   }
 
   function scheduleApiKeyHide(seconds = 30): void {
     clearApiKeyTimer();
     apiKeyHideTimer = setTimeout(() => {
-      hideApiKey(text.apiKeyHidden);
+      closeApiKeyDialog();
     }, Math.max(1, seconds) * 1000);
   }
 
@@ -165,17 +171,62 @@
     }
 
     apiKeyLoading = true;
-    apiKeyMessage = "";
     try {
       const result = await onGetApiKey();
       apiKeyValue = result.apiKey;
-      apiKeyVisible = true;
+      apiKeyDialogTitle = text.apiKey;
+      apiKeyDialogMode = "value";
       apiKeyMessage = text.apiKeyAutoHide(result.visibleSeconds ?? 30);
+      apiKeyDialogOpen = true;
       scheduleApiKeyHide(result.visibleSeconds ?? 30);
     } catch (error) {
       const code = apiErrorCode(error);
       const message = apiErrorMessage(messages, error, text.apiKeyLoadFailed);
-      hideApiKey(code === "api_key_not_set" ? text.apiKeyNotSet : message);
+      showPreparedNotice(
+        text.apiKey,
+        code === "api_key_not_set" ? text.apiKeyNotSet : message
+      );
+    } finally {
+      apiKeyLoading = false;
+    }
+  }
+
+  function handleApiKeyRegenerateRequest(): void {
+    if (apiKeyLoading) return;
+    if (demoMode || !onRotateApiKey) {
+      showDemoNotice(text.apiKeyDemoTitle, text.apiKeyDemoMessage);
+      return;
+    }
+    clearApiKeyTimer();
+    apiKeyValue = "";
+    apiKeyMessage = "";
+    apiKeyDialogMode = "regenerate-confirm";
+    apiKeyDialogTitle = text.apiKeyRegenerateConfirmTitle;
+    apiKeyDialogOpen = true;
+  }
+
+  function closeApiKeyDialogFromBackdrop(event: MouseEvent): void {
+    if (event.target === event.currentTarget && !apiKeyLoading)
+      closeApiKeyDialog();
+  }
+
+  async function handleApiKeyRegenerate(): Promise<void> {
+    if (apiKeyLoading || !onRotateApiKey) return;
+    apiKeyLoading = true;
+    try {
+      const result = await onRotateApiKey();
+      apiKeyValue = result.apiKey;
+      apiKeyDialogMode = "value";
+      apiKeyDialogTitle = text.apiKeyRegeneratedTitle;
+      apiKeyMessage = text.apiKeyAutoHide(result.visibleSeconds ?? 30);
+      apiKeyDialogOpen = true;
+      scheduleApiKeyHide(result.visibleSeconds ?? 30);
+    } catch (error) {
+      closeApiKeyDialog();
+      showPreparedNotice(
+        text.apiKeyRegenerateFailed,
+        apiErrorMessage(messages, error, text.apiKeyRegenerateFailed)
+      );
     } finally {
       apiKeyLoading = false;
     }
@@ -221,111 +272,77 @@
       }
     }
     if (!copied) copied = legacyCopyText(apiKeyValue);
-    hideApiKey(copied ? text.apiKeyCopied : text.apiKeyCopyFailed);
+    if (copied) {
+      closeApiKeyDialog();
+    } else {
+      apiKeyMessage = text.apiKeyCopyFailed;
+    }
   }
 
   onDestroy(() => {
-    componentDestroyed = true;
     configStorageStatus.destroy();
     clearApiKeyTimer();
+    if (alphaPermissionTimer) clearInterval(alphaPermissionTimer);
   });
 
-  $effect(() => {
-    if (!systemStatus?.boot?.initialGuardActive) return;
-    const timer = setInterval(() => {
-      bootGuardNow = Date.now();
-    }, 1000);
-    return () => clearInterval(timer);
-  });
-
-  $effect(() => {
-    bootGuardSnapshotMs = Date.now();
-    bootGuardNow = bootGuardSnapshotMs;
-    bootGuardUptimeAtSnapshot = Math.max(0, Number(systemStatus?.firmware?.uptimeSeconds ?? 0));
-  });
-
-  function wait(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  function applyFirmwareTrust(status: WebFirmwareTrustStatus): void {
+    firmwareTrust = status;
+    alphaPermissionClock = Date.now();
+    alphaPermissionExpiresAt = status.alphaInstallAllowed
+      ? alphaPermissionClock + status.alphaInstallRemainingSeconds * 1000
+      : 0;
   }
 
-  function snapshotFirmwareStatus(status: WebSystemStatus | null): FirmwareStatusSnapshot {
-    if (!status?.firmware) return null;
-    return {
-      version: status.firmware.version,
-      buildTime: status.firmware.buildTime
-    };
-  }
-
-  async function readFirmwareStatusSnapshot(): Promise<FirmwareStatusSnapshot> {
-    if (!onGetSystemStatus) return snapshotFirmwareStatus(systemStatus);
+  async function refreshFirmwareTrust(): Promise<void> {
+    if (demoMode || !onGetFirmwareTrust || firmwareTrustLoading) return;
+    firmwareTrustLoading = true;
     try {
-      return snapshotFirmwareStatus(await onGetSystemStatus());
+      applyFirmwareTrust(await onGetFirmwareTrust());
     } catch {
-      return null;
+      firmwareTrust = null;
+      alphaPermissionExpiresAt = 0;
+    } finally {
+      firmwareTrustLoading = false;
     }
   }
 
-  function firmwareStatusChanged(before: FirmwareStatusSnapshot, after: FirmwareStatusSnapshot): boolean | null {
-    if (!after) return null;
-    if (!before) return null;
-    return after.version !== before.version || after.buildTime !== before.buildTime;
-  }
-
-  async function waitForFirmwareReboot(before: FirmwareStatusSnapshot): Promise<"changed" | "same" | "unknown" | "timeout"> {
-    if (!onGetSystemStatus) return "unknown";
-
-    const deadline = Date.now() + 180000;
-    let attempts = 0;
-
-    await wait(3000);
-
-    while (Date.now() < deadline && !componentDestroyed) {
-      attempts += 1;
-      firmwareUploadMessage =
-        attempts <= 2 ? text.firmwareRebooting : attempts <= 8 ? text.firmwareWaitingResponse : text.firmwareCheckingApplied;
-
-      try {
-        const after = snapshotFirmwareStatus(await onGetSystemStatus());
-        const changed = firmwareStatusChanged(before, after);
-        if (changed === true) return "changed";
-        if (changed === false) return "same";
-        return "unknown";
-      } catch {
-        await wait(2000);
-      }
+  async function setAlphaFirmwarePermission(enabled: boolean): Promise<void> {
+    if (!onSetAlphaFirmwareInstallAllowed || firmwareTrustLoading) return;
+    firmwareTrustLoading = true;
+    try {
+      applyFirmwareTrust(await onSetAlphaFirmwareInstallAllowed(enabled));
+      alphaPermissionConfirmOpen = false;
+    } catch (error) {
+      showPreparedNotice(
+        text.alphaFirmwareAllow,
+        apiErrorMessage(messages, error, text.alphaFirmwareUpdateFailed)
+      );
+    } finally {
+      firmwareTrustLoading = false;
     }
-
-    return "timeout";
   }
 
-  async function verifyFirmwareRebootAndReload(before: FirmwareStatusSnapshot): Promise<void> {
-    firmwareUploadStage = "verifying";
-    firmwareUploadPercent = 100;
-    firmwareUploadLoaded = firmwareFileSize || firmwareUploadLoaded;
-    firmwareUploadTotal = firmwareFileSize || firmwareUploadTotal;
-    firmwareUploadMessage = text.firmwareRebooting;
-
-    const result = await waitForFirmwareReboot(before);
-    if (componentDestroyed) return;
-
-    if (result === "timeout") {
-      firmwareUploadStage = "verify-error";
-      firmwareUploadMessage = text.firmwareVerifyTimeout;
+  function handleAlphaFirmwarePermissionChange(event: Event): void {
+    const input = event.currentTarget as HTMLInputElement;
+    const enabled = input.checked;
+    if (enabled) {
+      input.checked = alphaPermissionAllowed;
+      alphaPermissionConfirmOpen = true;
       return;
     }
-
-    firmwareUploadStage = "success";
-    firmwareFile = null;
-    firmwareUploadMessage =
-      result === "changed"
-        ? text.firmwareAppliedReload
-        : result === "same"
-          ? text.firmwareSameVersionReload
-          : text.firmwareRespondedReload;
-
-    await wait(1000);
-    if (!componentDestroyed) window.location.reload();
+    void setAlphaFirmwarePermission(false);
   }
+
+  onMount(() => {
+    void refreshFirmwareTrust();
+    alphaPermissionTimer = setInterval(() => {
+      alphaPermissionClock = Date.now();
+      if (alphaPermissionExpiresAt !== 0 && alphaPermissionClock >= alphaPermissionExpiresAt) {
+        alphaPermissionExpiresAt = 0;
+        if (firmwareTrust) firmwareTrust = { ...firmwareTrust, alphaInstallAllowed: false, alphaInstallRemainingSeconds: 0 };
+      }
+    }, 1000);
+  });
 
   function openFilePicker(): void {
     if (demoMode) {
@@ -347,7 +364,7 @@
   }
 
   function openFirmwareFilePicker(): void {
-    if (firmwareUploadStage === "uploading" || firmwareUploadStage === "verifying") return;
+    if ($firmwareUpdateStore.stage === "uploading" || $firmwareUpdateStore.stage === "verifying") return;
     if (bootGuardActive) {
       showBootGuardNotice(text.firmwareUpdateTitle);
       return;
@@ -360,12 +377,12 @@
   }
 
   function handleFirmwareAction(): void {
-    if (firmwareUploadStage === "uploading" || firmwareUploadStage === "verifying") return;
+    if ($firmwareUpdateStore.stage === "uploading" || $firmwareUpdateStore.stage === "verifying") return;
     if (bootGuardActive) {
       showBootGuardNotice(text.firmwareUpdateTitle);
       return;
     }
-    if (firmwareUploadStage === "selected" && firmwareFile) {
+    if ($firmwareUpdateStore.stage === "selected" && $firmwareUpdateStore.file) {
       void uploadSelectedFirmware();
       return;
     }
@@ -386,64 +403,23 @@
     }
     if (!file) return;
 
-    firmwareFile = null;
-    firmwareFileName = file.name;
-    firmwareFileSize = file.size;
-    firmwareUploadPercent = 0;
-    firmwareUploadLoaded = 0;
-    firmwareUploadTotal = file.size;
-
-    if (!file.name.toLowerCase().endsWith(".bin")) {
-      firmwareUploadStage = "error";
-      firmwareUploadMessage = text.firmwareBinOnly;
-      return;
-    }
-
-    if (Number.isFinite(systemStatus?.flash?.otaSlotBytes ?? NaN) && file.size > Number(systemStatus?.flash?.otaSlotBytes)) {
-      firmwareUploadStage = "error";
-      firmwareUploadMessage = text.firmwareFileTooLarge(formatBytes(file.size), formatBytes(systemStatus?.flash?.otaSlotBytes));
-      return;
-    }
-
     if (!onUploadFirmware) {
-      firmwareUploadStage = "error";
-      firmwareUploadMessage = text.firmwareApiNotReady;
+      firmwareUpdateStore.fail("api_unavailable");
       return;
     }
-
-    firmwareFile = file;
-    firmwareUploadStage = "selected";
-    firmwareUploadMessage = text.firmwareFileReady;
+    void firmwareUpdateStore.selectFile(file, systemStatus?.flash?.otaSlotBytes);
   }
 
   async function uploadSelectedFirmware(): Promise<void> {
-    if (!firmwareFile || !onUploadFirmware) return;
-    const file = firmwareFile;
-    const beforeStatus = await readFirmwareStatusSnapshot();
-    firmwareUploadStage = "uploading";
-    firmwareUploadMessage = text.firmwareUploadingMessage;
-    try {
-      await onUploadFirmware(file, (progress) => {
-        firmwareUploadLoaded = progress.loaded;
-        firmwareUploadTotal = progress.total;
-        firmwareUploadPercent = progress.percent;
-      });
-      firmwareUploadPercent = 100;
-      firmwareUploadLoaded = file.size;
-      firmwareUploadTotal = file.size;
-      await verifyFirmwareRebootAndReload(beforeStatus);
-    } catch (error) {
-      if (firmwareUploadPercent >= 95) {
-        firmwareUploadPercent = 100;
-        firmwareUploadLoaded = file.size;
-        firmwareUploadTotal = file.size;
-        firmwareUploadMessage = text.firmwareUploadResponseLost;
-        await verifyFirmwareRebootAndReload(beforeStatus);
-        return;
-      }
-      firmwareUploadStage = "error";
-      firmwareUploadMessage = apiErrorMessage(messages, error, text.firmwareUpdateFailedMessage);
+    if (!onGetSystemStatus || !onUploadFirmware) {
+      firmwareUpdateStore.fail("api_unavailable");
+      return;
     }
+    await firmwareUpdateStore.start({
+      getSystemStatus: onGetSystemStatus,
+      uploadFirmware: onUploadFirmware,
+      formatError: (error) => apiErrorMessage(messages, error, text.firmwareUpdateFailedMessage)
+    });
   }
 
   function handleExport(): void {
@@ -518,8 +494,25 @@
     }
   }
 
-  function handleResetSettingsChange(event: Event): void {
-    resetIncludeSettings = (event.currentTarget as HTMLInputElement).checked;
+  function handleResetSelectAllChange(event: Event): void {
+    const checked = (event.currentTarget as HTMLInputElement).checked;
+    resetIncludeSpace = checked;
+    resetIncludeDetection = checked;
+    resetIncludeConnections = checked;
+    resetIncludeStats = checked;
+    resetIncludeWifi = checked;
+  }
+
+  function handleResetSpaceChange(event: Event): void {
+    resetIncludeSpace = (event.currentTarget as HTMLInputElement).checked;
+  }
+
+  function handleResetDetectionChange(event: Event): void {
+    resetIncludeDetection = (event.currentTarget as HTMLInputElement).checked;
+  }
+
+  function handleResetConnectionsChange(event: Event): void {
+    resetIncludeConnections = (event.currentTarget as HTMLInputElement).checked;
   }
 
   function handleResetWifiChange(event: Event): void {
@@ -535,7 +528,7 @@
       showBootGuardNotice(text.resetButton);
       return;
     }
-    if (!resetIncludeSettings && !resetIncludeWifi && !resetIncludeStats) {
+    if (!canConfirmReset) {
       showPreparedNotice(text.resetSelectionRequiredTitle, text.resetSelectionRequiredMessage);
       return;
     }
@@ -559,7 +552,9 @@
     resetExecuting = true;
     try {
       const result = await onResetSystem({
-        settings: resetIncludeSettings,
+        space: resetIncludeSpace,
+        detection: resetIncludeDetection,
+        connections: resetIncludeConnections,
         wifi: resetIncludeWifi,
         stats: resetIncludeStats
       });
@@ -579,25 +574,36 @@
 
   const importing = $derived(stage === "importing");
   const restoreStorageBusy = $derived(!importing && configStorageStatus.isBusy);
-  const bootGuardSeconds = $derived(Math.max(1, Math.round(systemStatus?.boot?.guardSeconds ?? 60)));
-  const bootGuardRemainingSeconds = $derived.by(() => {
-    if (!systemStatus?.boot?.initialGuardActive) return 0;
-    const elapsedSeconds = bootGuardUptimeAtSnapshot + Math.floor(Math.max(0, bootGuardNow - bootGuardSnapshotMs) / 1000);
-    return Math.max(0, bootGuardSeconds - elapsedSeconds);
-  });
   const bootGuardActive = $derived(bootGuardRemainingSeconds > 0);
   const bootGuardHint = $derived(
     bootGuardActive
       ? text.bootGuardHint(bootGuardRemainingSeconds)
       : ""
   );
-  const canConfirmReset = $derived(resetIncludeSettings || resetIncludeWifi || resetIncludeStats);
+  const resetSelectionCount = $derived(
+    [
+      resetIncludeSpace,
+      resetIncludeDetection,
+      resetIncludeConnections,
+      resetIncludeStats,
+      resetIncludeWifi
+    ].filter(Boolean).length
+  );
+  const resetAllSelected = $derived(resetSelectionCount === 5);
+  const canConfirmReset = $derived(resetSelectionCount > 0);
   const showRestoreProgress = $derived(progressSteps.length > 0 && (stage === "importing" || stage === "imported" || stage === "error"));
+
+  $effect(() => {
+    if (resetSelectAllInput) {
+      resetSelectAllInput.indeterminate =
+        resetSelectionCount > 0 && !resetAllSelected;
+    }
+  });
 
   function showBootGuardNotice(action: string): void {
     showPreparedNotice(
       text.bootGuardTitle,
-      text.bootGuardNotice(action, bootGuardSeconds)
+      text.bootGuardNotice(action, bootGuardRemainingSeconds)
     );
   }
 
@@ -638,6 +644,11 @@
   }
 
   const firmwareVersion = $derived(systemStatus?.firmware?.version || "-");
+  const firmwareVersionText = $derived(
+    systemStatus?.firmware?.buildTime
+      ? `${firmwareVersion} · ${systemStatus.firmware.buildTime}`
+      : firmwareVersion
+  );
   const dashboardVersion = $derived(systemStatus?.dashboard?.version || "-");
   const dataStorageUsedBytes = $derived(systemStatus?.flash?.storageUsedBytes ?? systemStatus?.storage?.usedBytes);
   const dataStorageTotalBytes = $derived(systemStatus?.flash?.storageTotalBytes ?? systemStatus?.storage?.totalBytes);
@@ -667,7 +678,72 @@
   const externalRamPercentText = $derived(formatPercent(externalRamUsedBytes, externalRamTotalBytes));
   const minInternalRamText = $derived(formatBytes(systemStatus?.memory?.internalMinFreeBytes ?? systemStatus?.memory?.minFreeHeap));
   const wifiInfo = $derived(wifiSignalInfo(systemStatus?.wifi?.connected, systemStatus?.wifi?.rssi));
-  const firmwareFileText = $derived(firmwareFileName ? `${firmwareFileName} · ${formatBytes(firmwareFileSize)}` : text.notSelected);
+  const firmwareUploadStage = $derived($firmwareUpdateStore.stage);
+  const firmwareUploadPercent = $derived($firmwareUpdateStore.percent);
+  const firmwareFileText = $derived.by(() => {
+    const target = $firmwareUpdateStore.target;
+    if (!target) return text.notSelected;
+    return target.buildTime ? `${target.version} · ${target.buildTime}` : target.version;
+  });
+  const firmwareTargetText = $derived.by(() => {
+    const target = $firmwareUpdateStore.target;
+    if (!target) return text.notSelected;
+    return target.version;
+  });
+  const alphaPermissionRemainingSeconds = $derived(
+    alphaPermissionExpiresAt > alphaPermissionClock
+      ? Math.ceil((alphaPermissionExpiresAt - alphaPermissionClock) / 1000)
+      : 0
+  );
+  const alphaPermissionAllowed = $derived(
+    firmwareTrust?.alphaInstallAllowed === true && alphaPermissionRemainingSeconds > 0
+  );
+  const alphaPermissionSupported = $derived(
+    firmwareTrust?.mode === "signed" &&
+    firmwareTrust.ready &&
+    firmwareTrust.alphaInstallSupported
+  );
+  const firmwareUploadMessage = $derived.by(() => {
+    const update = $firmwareUpdateStore;
+    switch (update.status) {
+      case "file_ready":
+        return text.firmwareFileReady;
+      case "bin_only":
+        return text.firmwareBinOnly;
+      case "file_too_large":
+        return text.firmwareFileTooLarge(formatBytes(update.fileSize), formatBytes(update.otaSlotBytes));
+      case "image_invalid":
+        return text.firmwareImageInvalid;
+      case "api_unavailable":
+        return text.firmwareApiNotReady;
+      case "uploading":
+        return text.firmwareUploadingMessage;
+      case "response_lost":
+        return text.firmwareUploadResponseLost;
+      case "rebooting":
+        return text.firmwareRebooting;
+      case "waiting_response":
+        return text.firmwareWaitingResponse;
+      case "checking_applied":
+        return text.firmwareCheckingApplied;
+      case "upload_interrupted":
+        return text.firmwareUploadInterrupted;
+      case "verify_timeout":
+        return text.firmwareVerifyTimeout;
+      case "upload_failed":
+        return update.errorMessage || text.firmwareUpdateFailedMessage;
+      case "complete": {
+        const before = update.before?.version || "-";
+        const after = update.after?.version || update.target?.version || "-";
+        if (update.result === "updated") return text.firmwareUpdatedVersion(before, after);
+        if (update.result === "rebuilt") return text.firmwareRebuiltVersion(after);
+        if (update.result === "reinstalled") return text.firmwareReinstalledVersion(after);
+        return text.firmwareRespondedReload;
+      }
+      default:
+        return "";
+    }
+  });
   const firmwareActionText = $derived(
     firmwareUploadStage === "uploading"
       ? text.firmwareUploading
@@ -678,7 +754,7 @@
           : text.firmwareManualUpdate
   );
   const firmwareUploadProgressText = $derived(
-    `${firmwareUploadPercent}% · ${formatBytes(firmwareUploadLoaded)} / ${formatBytes(firmwareUploadTotal || firmwareFileSize)}`
+    `${firmwareUploadPercent}% · ${formatBytes($firmwareUpdateStore.loaded)} / ${formatBytes($firmwareUpdateStore.total || $firmwareUpdateStore.fileSize)}`
   );
   const firmwareUploadReadyText = $derived(
     systemStatus?.flash?.otaSlotBytes
@@ -854,20 +930,46 @@
           <strong>{text.firmwareUpdateTitle}</strong>
           <span>{text.firmwareUpdateDescription}</span>
         </div>
-        <dl class="floorplan-stored-summary">
+        <dl class="floorplan-stored-summary firmware-summary">
           <div>
             <dt>{text.firmware}</dt>
-            <dd>{systemStatusLoading ? text.checking : firmwareVersion}</dd>
+            <dd>{systemStatusLoading ? text.checking : firmwareVersionText}</dd>
           </div>
           <div>
             <dt>{text.dashboard}</dt>
             <dd>{systemStatusLoading ? text.checking : dashboardVersion}</dd>
           </div>
           <div>
+            <dt>{text.firmwareTarget}</dt>
+            <dd>{firmwareTargetText}</dd>
+          </div>
+          <div>
             <dt>{text.file}</dt>
             <dd>{firmwareFileText}</dd>
           </div>
         </dl>
+        <div class="alpha-firmware-control">
+          <label>
+            <input
+              type="checkbox"
+              checked={alphaPermissionAllowed}
+              disabled={demoMode || firmwareTrustLoading || !alphaPermissionSupported}
+              onchange={handleAlphaFirmwarePermissionChange}
+            />
+            <span>
+              <strong>{text.alphaFirmwareAllow}</strong>
+            </span>
+          </label>
+          <small class:active={alphaPermissionAllowed}>
+            {firmwareTrustLoading
+              ? text.checking
+              : alphaPermissionAllowed
+                ? text.alphaFirmwareArmed(alphaPermissionRemainingSeconds)
+                : !alphaPermissionSupported && firmwareTrust
+                  ? text.alphaFirmwareUnavailable
+                  : ""}
+          </small>
+        </div>
       </div>
 
       <div class="floorplan-stored-tools">
@@ -881,7 +983,7 @@
         >
           {firmwareActionText}
         </button>
-        <input bind:this={firmwareFileInput} type="file" accept=".bin,application/octet-stream" hidden onchange={handleFirmwareFileChange} />
+        <input bind:this={firmwareFileInput} type="file" accept=".namo-ota,.bin,application/octet-stream" hidden onchange={handleFirmwareFileChange} />
       </div>
     </aside>
 
@@ -958,7 +1060,9 @@
         <button type="button" disabled={apiKeyLoading} onclick={handleApiKeyReveal}>
           {apiKeyLoading ? text.checking : text.apiKeyReveal}
         </button>
-        <button type="button" disabled>{text.apiKeyRegenerate}</button>
+        <button type="button" disabled={apiKeyLoading} onclick={handleApiKeyRegenerateRequest}>
+          {text.apiKeyRegenerate}
+        </button>
         <button
           type="button"
           class="danger-button"
@@ -987,34 +1091,37 @@
           <span>{text.resetScopeDescription}</span>
         </div>
 
-        {#if apiKeyVisible}
-          <div class="floorplan-edit-tool-card backup-import-options danger-reset-options">
-            <strong>{text.apiKey}</strong>
-            <code class="api-key-value">{apiKeyValue}</code>
-            <span>{apiKeyMessage}</span>
-            <button type="button" onclick={handleApiKeyCopy}>{text.copy}</button>
-          </div>
-        {:else if apiKeyMessage}
-          <div class="floorplan-empty-note backup-empty-state danger-reset-empty">
-            <strong>{text.apiKey}</strong>
-            <span>{apiKeyMessage}</span>
-          </div>
-        {/if}
-
         {#if resetOptionsOpen}
           <div class="floorplan-edit-tool-card backup-import-options danger-reset-options">
             <strong>{text.resetItemsTitle}</strong>
             <label>
-              <input type="checkbox" checked={resetIncludeSettings} onchange={handleResetSettingsChange} />
-              <span>{text.resetSettingsData}</span>
+              <input
+                type="checkbox"
+                bind:this={resetSelectAllInput}
+                checked={resetAllSelected}
+                onchange={handleResetSelectAllChange}
+              />
+              <span>{text.resetSelectAll}</span>
             </label>
             <label>
-              <input type="checkbox" checked={resetIncludeWifi} onchange={handleResetWifiChange} />
-              <span>{text.resetWifiData}</span>
+              <input type="checkbox" checked={resetIncludeSpace} onchange={handleResetSpaceChange} />
+              <span>{text.resetSpaceData}</span>
+            </label>
+            <label>
+              <input type="checkbox" checked={resetIncludeDetection} onchange={handleResetDetectionChange} />
+              <span>{text.resetDetectionData}</span>
+            </label>
+            <label>
+              <input type="checkbox" checked={resetIncludeConnections} onchange={handleResetConnectionsChange} />
+              <span>{text.resetConnectionsData}</span>
             </label>
             <label>
               <input type="checkbox" checked={resetIncludeStats} onchange={handleResetStatsChange} />
               <span>{text.resetStatsData}</span>
+            </label>
+            <label>
+              <input type="checkbox" checked={resetIncludeWifi} onchange={handleResetWifiChange} />
+              <span>{text.resetWifiData}</span>
             </label>
             <button
               type="button"
@@ -1170,6 +1277,69 @@
     </section>
   </section>
 </section>
+
+{#if apiKeyDialogOpen}
+  <div class="dashboard-dialog-backdrop" role="presentation" onclick={closeApiKeyDialogFromBackdrop}>
+    <div
+      class="floorplan-delete-dialog dashboard-control-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="api-key-dialog-title"
+    >
+      {#if apiKeyDialogMode === "regenerate-confirm"}
+        <div class="dashboard-dialog-heading">
+          <strong id="api-key-dialog-title">{text.apiKeyRegenerateConfirmTitle}</strong>
+          <span>{text.apiKeyRegenerateConfirmDescription}</span>
+        </div>
+        <div class="floorplan-delete-dialog-actions">
+          <button type="button" disabled={apiKeyLoading} onclick={closeApiKeyDialog}>
+            {text.cancel}
+          </button>
+          <button type="button" class="danger-button" disabled={apiKeyLoading} onclick={handleApiKeyRegenerate}>
+            {apiKeyLoading ? text.apiKeyRegenerating : text.apiKeyRegenerateConfirm}
+          </button>
+        </div>
+      {:else}
+        <div class="dashboard-dialog-heading">
+          <strong id="api-key-dialog-title">{apiKeyDialogTitle}</strong>
+          <span>{text.apiKeyDescription}</span>
+        </div>
+        <div class="dashboard-dialog-section">
+          <code class="api-key-value">{apiKeyValue}</code>
+          <small class="dashboard-note">{apiKeyMessage}</small>
+        </div>
+        <div class="floorplan-delete-dialog-actions">
+          <button type="button" onclick={closeApiKeyDialog}>{messages.common.close}</button>
+          <button type="button" onclick={handleApiKeyCopy}>{text.copy}</button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+{#if alphaPermissionConfirmOpen}
+  <div class="dashboard-dialog-backdrop" role="presentation">
+    <div
+      class="floorplan-delete-dialog dashboard-control-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="alpha-firmware-confirm-title"
+    >
+      <div class="dashboard-dialog-heading">
+        <strong id="alpha-firmware-confirm-title">{text.alphaFirmwareConfirmTitle}</strong>
+        <span>{text.alphaFirmwareConfirmDescription}</span>
+      </div>
+      <div class="floorplan-delete-dialog-actions">
+        <button type="button" disabled={firmwareTrustLoading} onclick={() => (alphaPermissionConfirmOpen = false)}>
+          {text.cancel}
+        </button>
+        <button type="button" class="danger-button" disabled={firmwareTrustLoading} onclick={() => setAlphaFirmwarePermission(true)}>
+          {firmwareTrustLoading ? text.checking : text.alphaFirmwareConfirm}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if rebootConfirmOpen}
   <div class="demo-blocker-backdrop" role="presentation">

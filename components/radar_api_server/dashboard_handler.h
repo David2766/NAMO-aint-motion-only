@@ -7,8 +7,8 @@ namespace radar_api_server {
 
 class DashboardHandler {
  public:
-  bool can_handle(AsyncWebServerRequest *request) const;
-  bool handle(AsyncWebServerRequest *request) const;
+  bool can_handle(AsyncWebServerRequest *request, StringRef url) const;
+  bool handle(AsyncWebServerRequest *request, StringRef url) const;
 };
 
 }  // namespace radar_api_server

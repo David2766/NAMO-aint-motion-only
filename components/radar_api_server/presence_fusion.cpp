@@ -196,6 +196,10 @@ void PresenceFusion::update_last_spatial_target_(const PresenceTrackerOutput &tr
   }
   if (valid_track_count != 1 || only_track == nullptr)
     return;
+  if (only_track->reduced_zone) {
+    this->last_spatial_target_valid_ = false;
+    return;
+  }
   if (!std::isfinite(only_track->x_mm) || !std::isfinite(only_track->y_mm))
     return;
 

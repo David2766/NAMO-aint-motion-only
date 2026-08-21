@@ -23,5 +23,5 @@ established session.
   required acquisition source.
 - Sleep schedules should be a product mode with explicit user behavior, not an
   implicit tracker heuristic.
-- Multi-device coordination belongs to
-  [multi-sensor-contract.md](multi-sensor-contract.md), not this tracker.
+- Multi-device coordination belongs to the
+  [Spatial Platform Architecture](platform/architecture.md), not this tracker.

@@ -14,6 +14,7 @@
     onSelectGate: (gate: number) => void;
     onSetSensitivity: (value: number) => void;
     onApply: () => void;
+    onFactoryReset: () => void | Promise<void>;
   };
 
   let {
@@ -27,9 +28,11 @@
     error,
     onSelectGate,
     onSetSensitivity,
-    onApply
+    onApply,
+    onFactoryReset
   }: Props = $props();
 
+  let resetConfirmOpen = $state(false);
   const text = $derived(messages.zones);
   const selected = $derived(status?.gates.find((gate) => gate.gate === selectedGate) ?? null);
 
@@ -40,6 +43,23 @@
   function gateRange(gate: WebStaticRadarGateTuning): string {
     return text.staticRadarGateRange(distanceMeters(gate.startMm), distanceMeters(gate.endMm));
   }
+
+  function closeResetConfirm(): void {
+    if (!busy) resetConfirmOpen = false;
+  }
+
+  function closeResetConfirmFromBackdrop(event: MouseEvent): void {
+    if (event.target === event.currentTarget) closeResetConfirm();
+  }
+
+  async function confirmFactoryReset(): Promise<void> {
+    try {
+      await onFactoryReset();
+      resetConfirmOpen = false;
+    } catch {
+      // The parent exposes the localized device error in the tuning panel.
+    }
+  }
 </script>
 
 <section class="static-radar-tuning-panel">
@@ -48,9 +68,10 @@
 
   {#if error}
     <p class="static-radar-tuning-error" role="alert">{error}</p>
-  {/if}
-
-  {#if !status?.active || status.gates.length === 0}
+  {:else if status?.phase === "failed"}
+    <p class="static-radar-tuning-error" role="alert">{text.staticRadarLoadFailed}</p>
+  {:else if !status || status.phase === "starting" || status.phase === "stopping" ||
+      !status.active || status.gates.length === 0}
     <p class="static-radar-tuning-loading">{text.staticRadarTuningStarting}</p>
   {:else}
     <div class="static-radar-gate-list" aria-label={text.staticRadarGateListAria}>
@@ -107,6 +128,46 @@
       <button type="button" disabled={busy || !sensitivityDirty} onclick={onApply}>
         {busy ? text.staticRadarApplying : text.staticRadarApply}
       </button>
+      <div class="static-radar-reset-action">
+        <button type="button" disabled={busy} onclick={() => (resetConfirmOpen = true)}>
+          {text.staticRadarFactoryReset}
+        </button>
+      </div>
     {/if}
   {/if}
 </section>
+
+{#if resetConfirmOpen}
+  <div class="dashboard-dialog-backdrop" role="presentation" onclick={closeResetConfirmFromBackdrop}>
+    <div
+      class="floorplan-delete-dialog dashboard-control-dialog static-radar-reset-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="static-radar-reset-title"
+    >
+      <div class="dashboard-dialog-heading">
+        <strong id="static-radar-reset-title">{text.staticRadarFactoryResetTitle}</strong>
+        <span>{text.staticRadarFactoryResetDescription}</span>
+      </div>
+      <div class="floorplan-delete-dialog-actions">
+        <button type="button" disabled={busy} onclick={closeResetConfirm}>{messages.common.cancel}</button>
+        <button type="button" disabled={busy} onclick={confirmFactoryReset}>
+          {busy ? text.staticRadarFactoryResetting : text.staticRadarFactoryResetConfirm}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .static-radar-reset-action {
+    display: flex;
+    justify-content: flex-start;
+    padding-top: 10px;
+    border-top: 1px solid rgba(123, 184, 216, 0.16);
+  }
+
+  .static-radar-reset-dialog {
+    width: min(520px, calc(100vw - 28px));
+  }
+</style>

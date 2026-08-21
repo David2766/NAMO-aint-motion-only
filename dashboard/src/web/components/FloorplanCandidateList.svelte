@@ -23,7 +23,8 @@
     onStartSnapEdit,
     onStartSplitDraft,
     onStartMergeDraft,
-    showCandidateTools = false
+    showCandidateTools = false,
+    showDispositionActions = true
   } = $props();
 
   const text = $derived(messages.floorplan.candidateList);
@@ -146,9 +147,11 @@
                   <button type="button" onclick={() => onStartSplitDraft?.(candidate.id)}>{text.actions.split}</button>
                   <button type="button" onclick={() => onStartMergeDraft?.()}>{text.actions.merge}</button>
                 {/if}
-                <button type="button" onclick={() => onConfirm?.(candidate.id)}>{text.actions.confirm}</button>
-                <button type="button" onclick={() => onReject?.(candidate.id)}>{text.actions.reject}</button>
-                <button type="button" class="danger-button" onclick={() => onRemove?.(candidate.id)}>{text.actions.remove}</button>
+                {#if showDispositionActions}
+                  <button type="button" onclick={() => onConfirm?.(candidate.id)}>{text.actions.confirm}</button>
+                  <button type="button" onclick={() => onReject?.(candidate.id)}>{text.actions.reject}</button>
+                  <button type="button" class="danger-button" onclick={() => onRemove?.(candidate.id)}>{text.actions.remove}</button>
+                {/if}
               </div>
             </div>
           {/if}

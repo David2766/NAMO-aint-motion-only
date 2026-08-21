@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Messages } from "../i18n";
   import DashboardPanel from "../components/DashboardPanel.svelte";
+  import type { PlatformSiteConfigurationStatus } from "../api/platform-pairing";
   import type { WebControlStatus, WebDeviceConfig, WebDeviceState, WebSystemStatus } from "../types";
 
   type TabTarget = "zones" | "floorplan" | "stats" | "backup";
@@ -12,6 +13,7 @@
     systemStatus: WebSystemStatus | null;
     systemStatusLoading: boolean;
     systemStatusError: string;
+    platformSiteConfiguration: PlatformSiteConfigurationStatus | null;
     controlStatus: WebControlStatus | null;
     controlStatusLoading: boolean;
     controlStatusError: string;
@@ -39,6 +41,7 @@
     systemStatus,
     systemStatusLoading,
     systemStatusError,
+    platformSiteConfiguration,
     controlStatus,
     controlStatusLoading,
     controlStatusError,
@@ -68,6 +71,7 @@
     {systemStatus}
     {systemStatusLoading}
     {systemStatusError}
+    {platformSiteConfiguration}
     {controlStatus}
     {controlStatusLoading}
     {controlStatusError}

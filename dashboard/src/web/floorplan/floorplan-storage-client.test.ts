@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { FloorplanStorageDocument } from "../../core/floorplan/floorplan-storage";
 import {
   deleteFloorplanStorage,
+  floorplanStorageRevision,
   FloorplanStorageRequestError,
+  hasCompleteFloorplanStorage,
   loadFloorplanStorageDocument,
   loadFloorplanStorageStatus,
   saveFloorplanObjectsPatch,
@@ -11,6 +13,27 @@ import {
   saveFloorplanRoomNamePatch,
   saveFloorplanStorageDocument
 } from "./floorplan-storage-client";
+import { mockContentHash } from "./mock-floorplan-storage";
+
+function storageStatus(overrides: Partial<import("./floorplan-storage-client").FloorplanStorageStatus> = {}) {
+  return {
+    ok: true,
+    storage: "raw-partition",
+    partition: "spiffs",
+    hasConfig: true,
+    hasImage: true,
+    totalBytes: 1024,
+    usedBytes: 128,
+    configBytes: 80,
+    imageBytes: 48,
+    configHash: 101,
+    imageHash: 202,
+    uploadTarget: 0,
+    uploadSize: 0,
+    uploadWritten: 0,
+    ...overrides
+  };
+}
 
 function apiErrorResponse(
   status: number,
@@ -74,6 +97,53 @@ function minimalDocument(): FloorplanStorageDocument {
 }
 
 describe("floorplan storage client errors", () => {
+  it("recognizes a replicated floorplan from authoritative storage status", () => {
+    expect(hasCompleteFloorplanStorage(storageStatus())).toBe(true);
+    expect(hasCompleteFloorplanStorage(storageStatus({ hasImage: false }))).toBe(false);
+  });
+
+  it("detects a replicated revision change even when payload sizes stay equal", () => {
+    const current = storageStatus();
+    const updated = storageStatus({ configHash: 303 });
+
+    expect(floorplanStorageRevision(updated)).not.toBe(floorplanStorageRevision(current));
+  });
+
+  it("changes the demo revision hash when equal-length floorplan content changes", () => {
+    expect("56.6".length).toBe("71.7".length);
+    expect(mockContentHash("56.6")).not.toBe(mockContentHash("71.7"));
+  });
+
+  it("treats a bare device address as an HTTP origin", async () => {
+    const calls: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      calls.push(String(input));
+      return new Response(JSON.stringify(storageStatus()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    };
+
+    await loadFloorplanStorageStatus({ baseUrl: "192.168.29.173", fetcher });
+
+    expect(calls).toEqual(["http://192.168.29.173/api/floorplan/status"]);
+  });
+
+  it("preserves a rooted proxy base path", async () => {
+    const calls: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      calls.push(String(input));
+      return new Response(JSON.stringify(storageStatus()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    };
+
+    await loadFloorplanStorageStatus({ baseUrl: "/device", fetcher });
+
+    expect(calls).toEqual(["/device/api/floorplan/status"]);
+  });
+
   it("wraps contract-shaped API errors without losing the code", async () => {
     const fetcher: typeof fetch = async () => apiErrorResponse(500, "legacy upload failure", "upload_storage_failed", {
       target: "image",

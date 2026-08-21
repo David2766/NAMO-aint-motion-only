@@ -1,6 +1,7 @@
 #include "stats_handler.h"
 
 #include "http_response.h"
+#include "esphome/core/log.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -10,10 +11,9 @@
 namespace esphome {
 namespace radar_api_server {
 
-bool StatsHandler::can_handle(AsyncWebServerRequest *request) const {
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
+static const char *const TAG = "stats_handler";
 
+bool StatsHandler::can_handle(AsyncWebServerRequest *request, StringRef url) const {
   if (request->method() == HTTP_GET)
     return url == "/api/stats";
   if (request->method() == HTTP_POST)
@@ -22,18 +22,13 @@ bool StatsHandler::can_handle(AsyncWebServerRequest *request) const {
   return false;
 }
 
-bool StatsHandler::handle(AsyncWebServerRequest *request) {
-  if (!this->can_handle(request))
-    return false;
-
+bool StatsHandler::handle(AsyncWebServerRequest *request, StringRef url) {
   if (request->method() == HTTP_GET) {
     this->handle_get_stats_(request);
     return true;
   }
 
   if (request->method() == HTTP_POST) {
-    char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-    auto url = request->url_to(url_buf);
     if (url == "/api/stats/upload/start") {
       this->handle_upload_start_(request);
       return true;
@@ -56,7 +51,8 @@ void StatsHandler::handle_get_stats_(AsyncWebServerRequest *request) {
   httpd_resp_set_type(raw_request, "application/json");
   httpd_resp_set_hdr(raw_request, "Access-Control-Allow-Origin", "*");
   httpd_resp_set_hdr(raw_request, "Cache-Control", "no-store");
-  this->stats_store_->stream_json(raw_request);
+  if (!this->stats_store_->stream_json(raw_request))
+    ESP_LOGW(TAG, "Statistics response stream failed");
 }
 
 void StatsHandler::handle_upload_start_(AsyncWebServerRequest *request) {

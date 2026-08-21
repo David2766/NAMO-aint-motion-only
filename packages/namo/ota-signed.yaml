@@ -1,0 +1,4 @@
+ota:
+  - platform: web_server
+web_server:
+  ota: false

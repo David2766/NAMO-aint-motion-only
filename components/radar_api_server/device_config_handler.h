@@ -14,8 +14,8 @@ class DeviceConfigHandler {
  public:
   explicit DeviceConfigHandler(RadarStorage *storage, DeviceConfigCache *cache) : storage_(storage), cache_(cache) {}
 
-  bool can_handle(AsyncWebServerRequest *request) const;
-  bool handle(AsyncWebServerRequest *request);
+  bool can_handle(AsyncWebServerRequest *request, StringRef url) const;
+  bool handle(AsyncWebServerRequest *request, StringRef url);
 
  private:
   RadarStorage *storage_;

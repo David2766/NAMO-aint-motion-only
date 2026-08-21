@@ -3,7 +3,11 @@
   import FloorplanFurnitureOverlay from "../FloorplanFurnitureOverlay.svelte";
   import FloorplanImageFrame from "./FloorplanImageFrame.svelte";
   import FloorplanMapToolPanel from "./FloorplanMapToolPanel.svelte";
+  import FloorplanPhysicalWallOverlay from "./FloorplanPhysicalWallOverlay.svelte";
+  import FloorplanRadarAdvancedOptions from "./FloorplanRadarAdvancedOptions.svelte";
   import FloorplanRadarPlacementOverlay from "../FloorplanRadarPlacementOverlay.svelte";
+  import ManualFloorplanDoorList from "./ManualFloorplanDoorList.svelte";
+  import ManualFloorplanDoorOverlay from "./ManualFloorplanDoorOverlay.svelte";
   import RoomEditStep from "./RoomEditStep.svelte";
   import RoomEditTools from "./RoomEditTools.svelte";
   import StoredFloorplanEditToolTabs from "./StoredFloorplanEditToolTabs.svelte";
@@ -44,7 +48,8 @@
         canSave={state.summary.canSave}
         onView={actions.view}
         onEdit={actions.edit}
-        onCreateNew={actions.createNew}
+        onReplace={actions.replace}
+        onDelete={actions.delete}
         onSave={actions.save}
       />
 
@@ -58,9 +63,12 @@
             roomSplitDraft={tools.room.roomSplitDraft}
             roomMergeDraft={tools.room.roomMergeDraft}
             snapEdit={tools.room.snapEdit}
+            manualMode={state.structuredManualSource}
+            doorPlacementActive={tools.doors.placementActive}
             onStartSplitDraft={actions.startSplitDraft}
             onStartMergeDraft={actions.startMergeDraft}
             onStartSnapEdit={actions.startSnapEdit}
+            onStartDoorPlacement={actions.startDoorPlacement}
           />
         {/if}
 
@@ -71,7 +79,6 @@
           onScale={actions.selectScaleTool}
           onRadar={actions.selectRadarTool}
           onZones={actions.selectZonesTool}
-          onExitPoint={actions.selectExitPointTool}
           onCalibration={actions.selectCalibrationTool}
           onFurniture={actions.selectFurnitureTool}
         />
@@ -113,6 +120,19 @@
             onStartSplitDraft={actions.startSplitDraft}
             onStartMergeDraft={actions.startMergeDraft}
           />
+          {#if state.structuredManualSource}
+            <ManualFloorplanDoorList
+              {text}
+              doors={tools.doors.doors}
+              placementActive={tools.doors.placementActive}
+              placementKind={tools.doors.placementKind}
+              placementError={tools.doors.placementError}
+              selectedDoorId={tools.doors.selectedDoorId}
+              onKindChange={actions.setDoorPlacementKind}
+              onSelect={actions.selectDoor}
+              onRemove={actions.removeDoor}
+            />
+          {/if}
         {:else if state.editTool === "scale"}
           <StoredFloorplanScaleTool
             {text}
@@ -123,11 +143,11 @@
             onHeightInput={actions.scaleHeightInput}
             onCommit={actions.scaleCommit}
           />
-        {:else if state.editTool === "zones" || state.editTool === "exit" || state.editTool === "calibration"}
+        {:else if state.editTool === "zones" || state.editTool === "calibration"}
           <StoredFloorplanZoneTool
             {messages}
             {text}
-            source={state.editTool === "exit" ? "exit" : tools.zone.source}
+            source={tools.zone.source}
             zones={tools.zone.zones}
             selection={tools.zone.selection}
             actions={tools.zone.actions}
@@ -148,6 +168,15 @@
           <div class="floorplan-stored-tool-placeholder">
             <strong>{text.storedRadarTitle}</strong>
             <span>{text.storedRadarDescription}</span>
+            {#if state.editTool === "radar"}
+              <FloorplanRadarAdvancedOptions
+                text={messages.floorplan.radarStep}
+                occlusionEditActive={tools.radar.occlusionEditActive}
+                ignoredOcclusionEdges={tools.radar.ignoredOcclusionEdges}
+                onToggleOcclusionEdit={actions.toggleStoredOcclusionEdit}
+                onResetOcclusion={actions.resetStoredOcclusionEdges}
+              />
+            {/if}
           </div>
         {/if}
       </aside>
@@ -161,8 +190,11 @@
               imageUrl={state.storage.imageUrl}
               imageWidth={state.document.image.width}
               imageHeight={state.document.image.height}
+              viewBounds={tools.workspace.viewBounds}
               frameStyle={tools.workspace.imageFrameStyle}
               ariaLabel={text.storedTitle}
+              showImage={!state.structuredManualSource}
+              backgroundFill={state.structuredManualSource ? "#f4f6f3" : ""}
             >
               {#if state.mode === "edit"}
                 <StoredFloorplanWorkspaceToolbar
@@ -196,6 +228,7 @@
                 focusSelectedCandidate={state.editTool === "furniture"}
                 imageWidth={state.document.image.width}
                 imageHeight={state.document.image.height}
+                viewBounds={tools.workspace.viewBounds}
                 ariaLabels={{
                   candidateLayer: text.roomCandidateLayerAria,
                   addSplitPoint: text.addRoomSplitPointAria,
@@ -210,6 +243,8 @@
                 mergeDraftActive={tools.room.roomMergeDraft.active}
                 mergeDraftCandidateIds={tools.room.roomMergeDraft.candidateIds}
                 allowCandidateEditing={state.mode === "edit" && state.editTool === "rooms"}
+                metricMmPerPx={(tools.workspace.scaleEstimate?.mmPerPxX + tools.workspace.scaleEstimate?.mmPerPxY) / 2 || 0}
+                showMetricGrid={false}
                 snapEdges={tools.workspace.snapEdges}
                 selectedSnapEdgeKey={tools.room.snapEdit.edgeKey}
                 snapWallSegments={tools.workspace.snapWallSegments}
@@ -231,25 +266,59 @@
                 onCandidateVertexMove={actions.moveCandidateVertex}
                 onCandidateVertexMoveEnd={actions.endCandidateVertexMove}
               />
+              {#if state.structuredManualSource}
+                <FloorplanPhysicalWallOverlay
+                  segments={tools.workspace.physicalWallSegments}
+                  imageWidth={state.document.image.width}
+                  imageHeight={state.document.image.height}
+                  viewBounds={tools.workspace.viewBounds}
+                />
+              {/if}
+              {#if state.structuredManualSource && (tools.doors.doors.length || tools.doors.placementActive)}
+                <ManualFloorplanDoorOverlay
+                  doors={tools.doors.doors}
+                  placementActive={state.mode === "edit" && state.editTool === "rooms" && tools.doors.placementActive}
+                  selectedDoorId={tools.doors.selectedDoorId}
+                  imageWidth={state.document.image.width}
+                  imageHeight={state.document.image.height}
+                  viewBounds={tools.workspace.viewBounds}
+                  mmPerPx={(state.document.scale.mmPerPxX + state.document.scale.mmPerPxY) / 2}
+                  ariaLabel={text.manualPlaceDoorAria}
+                  onPreview={state.editTool === "rooms" ? actions.previewDoor : undefined}
+                  onPlace={state.editTool === "rooms" ? actions.placeDoor : undefined}
+                  onSelect={state.editTool === "rooms" ? actions.selectDoor : undefined}
+                  onResize={state.editTool === "rooms" ? actions.resizeDoor : undefined}
+                  onResizeCommit={state.editTool === "rooms" ? actions.resizeDoorCommit : undefined}
+                  onMove={state.editTool === "rooms" ? actions.moveDoor : undefined}
+                  onMoveCommit={state.editTool === "rooms" ? actions.moveDoorCommit : undefined}
+                />
+              {/if}
               {#if tools.workspace.radarVisible}
                 <FloorplanRadarPlacementOverlay
                   imageWidth={state.document.image.width}
                   imageHeight={state.document.image.height}
+                  viewBounds={tools.workspace.viewBounds}
                   scaleEstimate={tools.workspace.scaleEstimate}
                   placement={tools.workspace.radarPlacement}
                   scalePercent={tools.workspace.radarScalePercent}
                   zones={tools.workspace.zones}
                   calibrationZones={tools.workspace.calibrationZones}
                   targets={tools.workspace.targets}
+                  peerRadars={tools.workspace.peerRadars}
+                  peerRadarLabel={messages.dashboard.connectedRadar}
+                  fusionLabel={messages.common.fused}
                   wallSegments={tools.workspace.wallSegments}
                   occlusionSegments={tools.workspace.occlusionSegments}
                   ignoredOcclusionSegmentIds={tools.workspace.ignoredOcclusionSegmentIds}
+                  occlusionEditActive={tools.radar.occlusionEditActive}
                   editableZoneSource={tools.workspace.editableZoneSource}
                   selectedZoneId={tools.workspace.selectedZoneId}
                   selectedZonePointIndex={tools.workspace.selectedZonePointIndex}
+                  zoneEditable={tools.workspace.zoneEditable}
                   readOnly={state.mode !== "edit" || state.editTool !== "radar"}
                   onChange={actions.changeRadarPlacement}
                   onCommit={actions.commitRadarPlacement}
+                  onToggleOcclusionSegment={actions.toggleStoredOcclusionEdge}
                   onSelectZone={actions.selectZone}
                   onZoneMove={actions.moveZone}
                   onZonePointMove={actions.moveZonePoint}
@@ -263,6 +332,7 @@
                 selectedObjectId={tools.furniture.selectedObjectId}
                 imageWidth={state.document.image.width}
                 imageHeight={state.document.image.height}
+                viewBounds={tools.workspace.viewBounds}
                 bounds={tools.workspace.furnitureBounds}
                 rooms={tools.workspace.furnitureRooms}
                 editable={state.mode === "edit" && state.editTool === "furniture"}

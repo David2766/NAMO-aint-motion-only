@@ -23,7 +23,9 @@ describe("timezone options", () => {
 
   it("matches the firmware catalog and restored select options", () => {
     const firmwareIds = [...firmwareHeader.matchAll(/\{"([^"]+)",\s*"[^"]+"\}/g)].map((match) => match[1]);
-    const timezoneSelectBlock = selectConfig.match(/id: device_timezone([\s\S]*?)(?=\n\s*- platform: ld2450)/)?.[1] ?? "";
+    const timezoneSelectBlock = selectConfig.match(
+      /id: device_timezone([\s\S]*?)(?=\n\s*- platform:|$)/
+    )?.[1] ?? "";
     const selectIds = [...timezoneSelectBlock.matchAll(/- "([^"]+)"/g)].map((match) => match[1]);
 
     expect(firmwareIds).toEqual([...TIMEZONE_IDS]);

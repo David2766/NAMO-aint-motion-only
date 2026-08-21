@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from "svelte";
   import { DEFAULT_CARD_CONFIG } from "../../core/defaults";
   import {
     floorplanPxToRadarPoint,
@@ -7,18 +8,26 @@
   } from "../../core/floorplan/radar-floorplan-transform";
   import { LD2450_FOV_DEGREES, radarViewportRangeX } from "../../core/radar-math";
   import { clampRadarEditZonePoint } from "../canvas/radar-view";
+  import {
+    isFloorplanOcclusionSegmentIgnored,
+    radarVisiblePolygonPoints
+  } from "../floorplan/floorplan-occlusion";
   import { exitLineFromZone } from "../zone-geometry";
 
   let {
     transformStyle = "",
     imageWidth = 1,
     imageHeight = 1,
+    viewBounds = null,
     scaleEstimate = null,
     placement = null,
     scalePercent = 100,
     zones = [],
     calibrationZones = [],
     targets = [],
+    peerRadars = [],
+    peerRadarLabel = "",
+    fusionLabel = "",
     wallSegments = [],
     occlusionSegments = [],
     ignoredOcclusionSegmentIds = [],
@@ -37,7 +46,8 @@
     onZonePointMove,
     onZoneEdgeClick,
     onZoneEditCommit,
-    onToggleOcclusionSegment
+    onToggleOcclusionSegment,
+    zoneEditable = () => true
   } = $props();
 
   let drag = $state(null);
@@ -49,6 +59,59 @@
   const RADAR_VISIBILITY_RAY_STEP_DEGREES = 0.5;
   const radarCoverageClipId = `radar-coverage-clip-${Math.random().toString(36).slice(2)}`;
   const radarReachableMaskId = `radar-reachable-mask-${Math.random().toString(36).slice(2)}`;
+  let radarLayer = $state(null);
+  let screenUnitScale = $state(1);
+
+  function viewX() {
+    return viewBounds?.x ?? 0;
+  }
+
+  function viewY() {
+    return viewBounds?.y ?? 0;
+  }
+
+  function viewWidth() {
+    return viewBounds?.width ?? imageWidth;
+  }
+
+  function viewHeight() {
+    return viewBounds?.height ?? imageHeight;
+  }
+
+  function updateScreenUnitScale() {
+    if (!radarLayer) {
+      screenUnitScale = 1;
+      return;
+    }
+    const bounds = radarLayer.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    screenUnitScale = Math.max(viewWidth() / bounds.width, viewHeight() / bounds.height);
+  }
+
+  function screenSize(screenPixels) {
+    return screenPixels * screenUnitScale;
+  }
+
+  onMount(() => {
+    updateScreenUnitScale();
+    const observer = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(updateScreenUnitScale);
+    observer?.observe(radarLayer);
+    window.addEventListener("resize", updateScreenUnitScale);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", updateScreenUnitScale);
+    };
+  });
+
+  $effect(() => {
+    const refreshKey = `${imageWidth}:${imageHeight}:${viewX()}:${viewY()}:${viewWidth()}:${viewHeight()}:${transformStyle}`;
+    queueMicrotask(() => {
+      void refreshKey;
+      updateScreenUnitScale();
+    });
+  });
 
   function effectivePlacement() {
     if (placement) return placement;
@@ -91,8 +154,8 @@
     const rect = svg.getBoundingClientRect();
     if (!rect.width || !rect.height) return { x: 0, y: 0 };
     return {
-      x: ((event.clientX - rect.left) / rect.width) * imageWidth,
-      y: ((event.clientY - rect.top) / rect.height) * imageHeight
+      x: viewX() + ((event.clientX - rect.left) / rect.width) * viewWidth(),
+      y: viewY() + ((event.clientY - rect.top) / rect.height) * viewHeight()
     };
   }
 
@@ -215,8 +278,8 @@
     return editableZoneSource === source;
   }
 
-  function isZoneEditable(source) {
-    return Boolean(editableZoneSource) && isZoneEditingSource(source);
+  function isZoneEditable(source, zone = null) {
+    return Boolean(editableZoneSource) && isZoneEditingSource(source) && (!zone || source !== "zones" || zoneEditable(zone));
   }
 
   function isSelectedZone(zone) {
@@ -224,7 +287,7 @@
   }
 
   function beginZoneMove(event, zone, source) {
-    if (!isZoneEditable(source)) return;
+    if (!isZoneEditable(source, zone)) return;
     const options = transformOptions();
     if (!options) return;
     const startRadarPoint = radarEditPointFromImagePoint(imagePointFromEvent(event), options);
@@ -242,7 +305,7 @@
   }
 
   function beginZonePointMove(event, zone, source, pointIndex) {
-    if (!isZoneEditable(source)) return;
+    if (!isZoneEditable(source, zone)) return;
     const options = transformOptions();
     if (!options) return;
     event.preventDefault();
@@ -467,13 +530,8 @@
     return `${front.x},${front.y} ${left.x},${left.y} ${right.x},${right.y}`;
   }
 
-  function onSegment(a, b, c) {
-    return (
-      Math.min(a.x, c.x) <= b.x + 0.001 &&
-      b.x <= Math.max(a.x, c.x) + 0.001 &&
-      Math.min(a.y, c.y) <= b.y + 0.001 &&
-      b.y <= Math.max(a.y, c.y) + 0.001
-    );
+  function targetLabel(target) {
+    return target.fused && fusionLabel ? `${target.name} · ${fusionLabel}` : target.name;
   }
 
   function wallSegmentLine(segment) {
@@ -499,13 +557,8 @@
     };
   }
 
-  function occlusionSegmentKey(segment) {
-    return segment.occlusionKey ?? segment.id;
-  }
-
   function isOcclusionSegmentIgnored(segment, ignored = new Set(ignoredOcclusionSegmentIds)) {
-    if (segment.locked) return false;
-    return ignored.has(segment.id) || ignored.has(occlusionSegmentKey(segment));
+    return isFloorplanOcclusionSegmentIgnored(segment, ignored);
   }
 
   function visibleRayPolygon() {
@@ -516,72 +569,21 @@
     if (!scaleEstimate) return [];
     const current = effectivePlacement();
     const origin = { x: current.originX, y: current.originY };
-    const blockingWalls = activeOcclusionWallLines();
     const halfFov = fovDegrees / 2;
     const rayCount = Math.max(1, Math.ceil(fovDegrees / RADAR_VISIBILITY_RAY_STEP_DEGREES));
-    const points = [origin];
+    const rayEndpoints = [];
 
     for (let index = 0; index <= rayCount; index += 1) {
       const angle = -halfFov + (fovDegrees * index) / rayCount;
       const radians = (angle * Math.PI) / 180;
-      const rayEnd = rotatedPoint(Math.sin(radians) * rangeY, Math.cos(radians) * rangeY);
-      const hit = closestRayWallHit(origin, rayEnd, blockingWalls);
-      points.push(hit ?? rayEnd);
+      rayEndpoints.push(rotatedPoint(Math.sin(radians) * rangeY, Math.cos(radians) * rangeY));
     }
 
-    return points;
+    return radarVisiblePolygonPoints(origin, rayEndpoints, occlusionSegments, ignoredOcclusionSegmentIds);
   }
 
   function pointList(points) {
     return points.map((point) => `${point.x},${point.y}`).join(" ");
-  }
-
-  function activeOcclusionWallLines() {
-    const ignored = new Set(ignoredOcclusionSegmentIds);
-    return occlusionSegments
-      .filter((segment) => !isOcclusionSegmentIgnored(segment, ignored))
-      .map((segment) => {
-        const line = wallSegmentLine(segment);
-        return line
-          ? {
-              ...line,
-              id: segment.id,
-              occlusionKey: occlusionSegmentKey(segment)
-            }
-          : null;
-      })
-      .filter(Boolean);
-  }
-
-  function closestRayWallHit(origin, rayEnd, walls) {
-    let nearest = null;
-    for (const wall of walls) {
-      const hit = segmentIntersectionPoint(origin, rayEnd, { x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 });
-      if (!hit) continue;
-      const distance = Math.hypot(hit.x - origin.x, hit.y - origin.y);
-      if (distance < 0.5) continue;
-      if (!nearest || distance < nearest.distance) {
-        nearest = {
-          ...hit,
-          distance,
-          wallId: wall.id,
-          occlusionKey: wall.occlusionKey
-        };
-      }
-    }
-    return nearest;
-  }
-
-  function segmentIntersectionPoint(a, b, c, d) {
-    const denominator = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
-    if (Math.abs(denominator) < 0.001) return null;
-    const determinantA = a.x * b.y - a.y * b.x;
-    const determinantB = c.x * d.y - c.y * d.x;
-    const point = {
-      x: (determinantA * (c.x - d.x) - (a.x - b.x) * determinantB) / denominator,
-      y: (determinantA * (c.y - d.y) - (a.y - b.y) * determinantB) / denominator
-    };
-    return onSegment(a, point, b) && onSegment(c, point, d) ? point : null;
   }
 
   function toggleOcclusionSegment(event, segment) {
@@ -604,10 +606,11 @@
   {@const remoteBand = remoteRangeBandPoints()}
   {@const occlusionMaskVersion = `${ignoredOcclusionSegmentIds.join("|")}:${current.originX}:${current.originY}:${current.rotation}:${visiblePolygon}`}
   <svg
+    bind:this={radarLayer}
     class="floorplan-radar-placement-layer"
     data-readonly={readOnly ? "true" : "false"}
     style={transformStyle}
-    viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+    viewBox={`${viewX()} ${viewY()} ${viewWidth()} ${viewHeight()}`}
     preserveAspectRatio="none"
     aria-label="레이더 배치 오버레이"
     role="img"
@@ -620,8 +623,16 @@
         <path d={coveragePath()}></path>
       </clipPath>
       {#key occlusionMaskVersion}
-        <mask id={radarReachableMaskId} maskUnits="userSpaceOnUse">
-          <rect x="0" y="0" width={imageWidth} height={imageHeight} fill="white"></rect>
+        <mask
+          id={radarReachableMaskId}
+          maskUnits="userSpaceOnUse"
+          maskContentUnits="userSpaceOnUse"
+          x={viewX()}
+          y={viewY()}
+          width={viewWidth()}
+          height={viewHeight()}
+        >
+          <rect x={viewX()} y={viewY()} width={viewWidth()} height={viewHeight()} fill="white"></rect>
           <polygon points={visiblePolygon} fill="black"></polygon>
         </mask>
       {/key}
@@ -707,9 +718,9 @@
             ></line>
             <line
               class="floorplan-radar-exit-line-hit"
-              data-editable={isZoneEditable("zones") ? "true" : "false"}
+              data-editable={isZoneEditable("zones", zone) ? "true" : "false"}
               data-zone-id={zone.id}
-              data-zone-drag={isZoneEditable("zones") ? "move" : undefined}
+              data-zone-drag={isZoneEditable("zones", zone) ? "move" : undefined}
               x1={exitLine.start.x}
               y1={exitLine.start.y}
               x2={exitLine.end.x}
@@ -720,7 +731,7 @@
               onpointerdown={(event) => beginZoneMove(event, zone, "zones")}
               onkeydown={(event) => handleZoneKeydown(event, zone, "zones")}
             ></line>
-            {#if isZoneEditable("zones") && isSelectedZone(zone)}
+            {#if isZoneEditable("zones", zone) && isSelectedZone(zone)}
               <line
                 class="floorplan-radar-exit-line-edit"
                 x1={exitLine.start.x}
@@ -759,10 +770,10 @@
             {/if}
           {:else}
             <polygon
-              class={`floorplan-radar-zone ${zone.type} ${isSelectedZone(zone) ? "selected" : ""}`}
-              data-editable={isZoneEditable("zones") ? "true" : "false"}
+              class={`floorplan-radar-zone ${zone.placeholder ? "placeholder" : zone.type} ${isSelectedZone(zone) ? "selected" : ""}`}
+              data-editable={isZoneEditable("zones", zone) ? "true" : "false"}
               data-zone-id={zone.id}
-              data-zone-drag={isZoneEditable("zones") ? "move" : undefined}
+              data-zone-drag={isZoneEditable("zones", zone) ? "move" : undefined}
               points={zonePoints(zone)}
               role="button"
               tabindex="0"
@@ -770,7 +781,7 @@
               onpointerdown={(event) => beginZoneMove(event, zone, "zones")}
               onkeydown={(event) => handleZoneKeydown(event, zone, "zones")}
             ></polygon>
-            {#if isZoneEditable("zones") && isSelectedZone(zone)}
+            {#if isZoneEditable("zones", zone) && isSelectedZone(zone)}
               {#each zonePolygonEdges(zone) as edge}
                 <line
                   class="floorplan-radar-zone-edge"
@@ -834,14 +845,31 @@
         aria-label="레이더 센서 이동"
         onpointerdown={beginMove}
       ></polygon>
+      {#each peerRadars as radar, index (radar.participantId)}
+        <g
+          class="floorplan-peer-radar"
+          transform={`translate(${radar.xPx} ${radar.yPx}) rotate(${radar.rotationDegrees})`}
+        >
+          <title>{`${peerRadarLabel} ${index + 1}`}</title>
+          <line x1="0" y1="0" x2="0" y2="-18"></line>
+          <polygon points="0,-11 -7,7 7,7"></polygon>
+        </g>
+      {/each}
       {#each renderableTargets() as target (target.id)}
         {@const targetPoint = rotatedPoint(target.x, target.y)}
         <g
-          class={`floorplan-radar-target${target.displayMode ? ` ${target.displayMode}` : ""}`}
-          style={`--target-color:${target.color || "#ff6b7a"}`}
+          class={`floorplan-radar-target${target.fused ? " fused" : ""}${target.displayMode ? ` ${target.displayMode}` : ""}`}
+          style={`--target-color:${target.color || "#ff6b7a"};transform:translate(${targetPoint.x}px, ${targetPoint.y}px)`}
         >
-          <circle cx={targetPoint.x} cy={targetPoint.y} r="8"></circle>
-          <text x={targetPoint.x + 10} y={targetPoint.y - 10}>{target.name}</text>
+          {#if target.fused}
+            <circle class="target-fusion-ring" cx="0" cy="0" r={screenSize(13)}></circle>
+          {/if}
+          <circle cx="0" cy="0" r={screenSize(8)}></circle>
+          <text
+            x={screenSize(11)}
+            y={-screenSize(11)}
+            style={`font-size: ${screenSize(14)}px;`}
+          >{targetLabel(target)}</text>
         </g>
       {/each}
       <circle

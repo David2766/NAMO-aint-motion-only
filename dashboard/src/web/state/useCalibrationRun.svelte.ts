@@ -13,7 +13,8 @@ import {
 } from "../../core/calibration";
 import { clamp } from "../../core/geometry";
 import type { Messages } from "../i18n/types";
-import type { CalibrationResult, WebDeviceConfig, WebDeviceState } from "../types";
+import type { CalibrationResult, DeviceApi, WebDeviceConfig, WebDeviceState } from "../types";
+import { createStaticRadarCalibrationSession } from "./useStaticRadarCalibrationSession";
 
 type StatusTone = "ok" | "warn" | "error";
 
@@ -29,6 +30,11 @@ type CalibrationStatusCode =
   | "calibration_multiple_targets_cancelled"
   | "calibration_timeout"
   | "calibration_candidate_failed"
+  | "calibration_static_radar_started"
+  | "calibration_static_radar_failed"
+  | "calibration_static_radar_target_appeared"
+  | "calibration_static_radar_adjusted"
+  | "calibration_static_radar_still_detected"
   | "calibration_score_accepted"
   | "calibration_saved"
   | "calibration_running"
@@ -44,9 +50,13 @@ interface CalibrationStatusDetail {
   maxSeconds?: number;
   score?: number;
   zoneId?: string;
+  gate?: number;
+  fromSensitivity?: number;
+  toSensitivity?: number;
 }
 
 interface CalibrationRunOptions {
+  getApi: () => DeviceApi;
   getConfig: () => WebDeviceConfig | null;
   getState: () => WebDeviceState | null;
   getCalibrationZoneCount: () => number;
@@ -57,6 +67,7 @@ interface CalibrationRunOptions {
 }
 
 export function createCalibrationRun({
+  getApi,
   getConfig,
   getState,
   getCalibrationZoneCount,
@@ -69,10 +80,44 @@ export function createCalibrationRun({
   let run = $state<CalibrationRun | null>(null);
   let result = $state<CalibrationResult | null>(null);
   let logs = $state<string[]>([]);
+  let spatialCalibrationEnabled = $state(false);
+  let staticRadarCalibrationEnabled = $state(false);
+  let applying = $state(false);
 
   const metrics = $derived(run ? calibrationMetrics(run.samples) : result?.metrics);
   const progress = $derived(calibrationProgress(metrics));
   const dialogLogs = $derived(result?.logs ?? logs);
+  const staticRadarCalibration = createStaticRadarCalibrationSession({
+    getApi,
+    getState,
+    onStarted: () => addStatusLog("calibration_static_radar_started"),
+    onFailed: () => addStatusLog("calibration_static_radar_failed"),
+    onSample: (count) => addLog(statusMessages().staticRadarSamples(count)),
+    onAdjusted: (recommendation) =>
+      addStatusLog("calibration_static_radar_adjusted", {
+        gate: recommendation.gate,
+        fromSensitivity: recommendation.currentSensitivity,
+        toSensitivity: recommendation.recommendedSensitivity
+      })
+  });
+
+  function canCalibrateStaticRadar(state = getState(), api = getApi()): boolean {
+    return Boolean(
+      state?.debug?.staticRadar?.available &&
+      state.debug.staticRadar.presence &&
+      api.getStaticRadarTuningStatus &&
+      api.setStaticRadarTuningSession &&
+      api.setStaticRadarGateSensitivity
+    );
+  }
+
+  function canStart(): boolean {
+    const config = getConfig();
+    const state = getState();
+    if (!config || !state || state.pirMotion) return false;
+    if (getCalibrationZoneCount() < MAX_CALIBRATION_ZONES) return true;
+    return canCalibrateStaticRadar(state);
+  }
 
   function start(): void {
     const config = getConfig();
@@ -81,6 +126,10 @@ export function createCalibrationRun({
     dialogOpen = true;
     logs = [];
     result = null;
+    applying = false;
+    spatialCalibrationEnabled = false;
+    staticRadarCalibrationEnabled = false;
+    staticRadarCalibration.stop();
     addStatusLog("calibration_start_requested");
 
     if (state.pirMotion) {
@@ -89,7 +138,9 @@ export function createCalibrationRun({
     }
 
     const activeTargets = state.targets.filter((target) => target.active);
-    if (activeTargets.length === 0) {
+    const api = getApi();
+    const staticRadarDetected = canCalibrateStaticRadar(state, api);
+    if (activeTargets.length === 0 && !staticRadarDetected) {
       finishWithError("calibration_no_target");
       return;
     }
@@ -97,21 +148,35 @@ export function createCalibrationRun({
       finishWithError("calibration_multiple_targets");
       return;
     }
-    if ((config.calibrationZones || []).length >= MAX_CALIBRATION_ZONES) {
+    if (activeTargets.length === 1 && getCalibrationZoneCount() >= MAX_CALIBRATION_ZONES) {
       finishWithError("calibration_max_zones_reached");
       return;
     }
 
+    spatialCalibrationEnabled = activeTargets.length === 1;
+    staticRadarCalibrationEnabled = staticRadarDetected;
     run = { startedAt: Date.now(), samples: [] };
     addStatusLog("calibration_pir_passed");
     addStatusLog("calibration_sample_collection_started");
+    if (staticRadarCalibrationEnabled) {
+      void staticRadarCalibration.start().then((started) => {
+        if (!started && run) {
+          staticRadarCalibrationEnabled = false;
+          if (!spatialCalibrationEnabled) {
+            stop(statusMessage("calibration_static_radar_failed"), "error");
+          }
+        }
+      });
+    }
     setCalibrationStatus("calibration_started", "warn");
   }
 
   function stop(reason: string, tone: "warn" | "error"): void {
     const currentMetrics = run ? calibrationMetrics(run.samples) : undefined;
     addLog(reason);
+    staticRadarCalibration.stop();
     run = null;
+    applying = false;
     result = {
       title: tone === "error" ? statusMessages().failureTitle : statusMessages().stoppedTitle,
       tone,
@@ -126,14 +191,16 @@ export function createCalibrationRun({
   function update(): void {
     const config = getConfig();
     const state = getState();
-    if (!run || !state || !config) return;
+    if (!run || !state || !config || applying) return;
     if (state.pirMotion) {
       stop(statusMessages().pirCancelled, "error");
       return;
     }
 
+    if (staticRadarCalibrationEnabled) staticRadarCalibration.update(Date.now());
+
     const activeTargets = state.targets.filter((target) => target.active);
-    if (activeTargets.length === 1) {
+    if (spatialCalibrationEnabled && activeTargets.length === 1) {
       const target = activeTargets[0];
       const last = run.samples[run.samples.length - 1];
       const speed = last ? Math.hypot(target.x - last.x, target.y - last.y) : 0;
@@ -142,38 +209,66 @@ export function createCalibrationRun({
       if (samples.length === 1 || samples.length % 10 === 0) {
         addLog(`samples=${samples.length}`);
       }
-    } else if (activeTargets.length > 1) {
+    } else if (spatialCalibrationEnabled && activeTargets.length > 1) {
       stop(statusMessage("calibration_multiple_targets_cancelled"), "error");
+      return;
+    } else if (!spatialCalibrationEnabled && activeTargets.length > 0) {
+      stop(statusMessage("calibration_static_radar_target_appeared"), "error");
       return;
     }
 
     const elapsed = Date.now() - run.startedAt;
     const currentMetrics = calibrationMetrics(run.samples);
+    const spatialReady =
+      !spatialCalibrationEnabled ||
+      (run.samples.length >= CALIBRATION_MIN_SAMPLES && currentMetrics.acceptedBy !== "none");
+    const staticReady =
+      !staticRadarCalibrationEnabled ||
+      staticRadarCalibration.ready();
     if (
       elapsed >= CALIBRATION_MIN_MS &&
-      run.samples.length >= CALIBRATION_MIN_SAMPLES &&
-      currentMetrics.acceptedBy !== "none"
+      spatialReady &&
+      staticReady
     ) {
-      addStatusLog("calibration_score_accepted", { acceptedBy: currentMetrics.acceptedBy });
-      apply(currentMetrics);
+      if (spatialCalibrationEnabled) {
+        addStatusLog("calibration_score_accepted", { acceptedBy: currentMetrics.acceptedBy });
+      }
+      void apply(currentMetrics);
       return;
     }
     if (elapsed >= CALIBRATION_MAX_MS) {
-      stop(statusMessage("calibration_timeout"), "error");
+      const staticRecommendations = staticRadarCalibration.recommendations();
+      if (staticRecommendations.length > 0 || (spatialCalibrationEnabled && currentMetrics.acceptedBy !== "none")) {
+        void apply(currentMetrics);
+      } else {
+        stop(statusMessage("calibration_timeout"), "error");
+      }
     }
   }
 
-  function apply(currentMetrics: CalibrationMetrics): void {
+  async function apply(currentMetrics: CalibrationMetrics): Promise<void> {
     const config = getConfig();
-    if (!config || !run) return;
-    const zone = calibrationZoneFromSamples(
-      run.samples,
-      config.calibrationZones || [],
-      getMessages().zones.calibrationZoneLabel
-    );
-    run = null;
-    if (!zone) {
+    const currentRun = run;
+    if (!config || !currentRun || applying) return;
+    if (getState()?.pirMotion) {
+      stop(statusMessages().pirCancelled, "error");
+      return;
+    }
+    applying = true;
+
+    const zone = spatialCalibrationEnabled
+      ? calibrationZoneFromSamples(
+          currentRun.samples,
+          config.calibrationZones || [],
+          getMessages().zones.calibrationZoneLabel
+        )
+      : null;
+    const recommendations = staticRadarCalibration.recommendations();
+    if (spatialCalibrationEnabled && !zone && recommendations.length === 0) {
       addLog(statusMessages().candidateCreateFailedLog);
+      staticRadarCalibration.stop();
+      run = null;
+      applying = false;
       result = {
         title: statusMessages().failureTitle,
         tone: "error",
@@ -186,29 +281,53 @@ export function createCalibrationRun({
       return;
     }
 
-    updateConfig((current) => ({
-      ...current,
-      calibrationZones: [...(current.calibrationZones || []), zone]
-    }));
+    const staticApplyResult = recommendations.length > 0
+      ? await staticRadarCalibration.apply()
+      : { adjusted: 0, failed: false, stillDetected: false };
+    const adjustedStaticRadarGates = staticApplyResult.adjusted;
+    const staticRadarApplyFailed = staticApplyResult.failed;
+    const staticRadarStillDetected = staticApplyResult.stillDetected;
+
+    if (zone) {
+      updateConfig((current) => ({
+        ...current,
+        calibrationZones: [...(current.calibrationZones || []), zone]
+      }));
+      addLog(statusMessages().zoneCreated(zone.id));
+      selectZone(zone.id);
+    }
+
+    staticRadarCalibration.stop();
+    run = null;
+    applying = false;
+    const createdCount = zone ? 1 : 0;
+    const tone: CalibrationResult["tone"] =
+      staticRadarApplyFailed || staticRadarStillDetected ? (createdCount > 0 || adjustedStaticRadarGates > 0 ? "warn" : "error") : "ok";
+    const reason = staticRadarStillDetected
+      ? statusMessage("calibration_static_radar_still_detected")
+      : staticRadarApplyFailed
+        ? statusMessage("calibration_static_radar_failed")
+        : createdCount === 0 && adjustedStaticRadarGates === 0
+          ? statusMessages().noPersistentFalsePositive
+          : statusMessages().completed(createdCount, adjustedStaticRadarGates);
     result = {
-      title: statusMessages().successTitle,
-      tone: "ok",
-      createdCount: 1,
-      reason:
-        currentMetrics.acceptedBy === "score"
-          ? statusMessages().successByScore
-          : statusMessages().successByRepeat,
-      metrics: currentMetrics,
-      logs: [...logs, statusMessages().zoneCreated(zone.id)]
+      title: tone === "error" ? statusMessages().failureTitle : statusMessages().successTitle,
+      tone,
+      createdCount,
+      adjustedStaticRadarGates,
+      reason,
+      metrics: currentMetrics.samples > 0 ? currentMetrics : undefined,
+      logs: [...logs]
     };
-    selectZone(zone.id);
-    setCalibrationStatus("calibration_saved", "ok", { score: Math.round(currentMetrics.score), zoneId: zone.id });
+    setStatus(reason, tone);
   }
 
   function finishWithError(code: CalibrationStatusCode, detail: CalibrationStatusDetail = {}): void {
     const reason = statusMessage(code, detail);
     addLog(reason);
+    staticRadarCalibration.stop();
     run = null;
+    applying = false;
     result = {
       title: statusMessages().failureTitle,
       tone: "error",
@@ -261,6 +380,20 @@ export function createCalibrationRun({
         return text.timeout;
       case "calibration_candidate_failed":
         return text.candidateCreateFailed;
+      case "calibration_static_radar_started":
+        return text.staticRadarStarted;
+      case "calibration_static_radar_failed":
+        return text.staticRadarFailed;
+      case "calibration_static_radar_target_appeared":
+        return text.staticRadarTargetAppeared;
+      case "calibration_static_radar_adjusted":
+        return text.staticRadarAdjusted(
+          detail.gate ?? 0,
+          detail.fromSensitivity ?? 0,
+          detail.toSensitivity ?? 0
+        );
+      case "calibration_static_radar_still_detected":
+        return text.staticRadarStillDetected;
       case "calibration_score_accepted":
         return text.scoreAccepted(detail.acceptedBy ?? "none");
       case "calibration_saved":
@@ -294,6 +427,9 @@ export function createCalibrationRun({
     }
     if (state?.pirMotion) return statusMessage("calibration_pir_active");
     if (calibrationZoneCount >= MAX_CALIBRATION_ZONES) {
+      if (canCalibrateStaticRadar(state)) {
+        return getMessages().zones.calibrationStaticRadarOnlyAvailable;
+      }
       return getMessages().zones.calibrationMaxZonesReached(MAX_CALIBRATION_ZONES);
     }
     return getMessages().zones.calibrationSavedCount(calibrationZoneCount, MAX_CALIBRATION_ZONES);
@@ -302,9 +438,18 @@ export function createCalibrationRun({
   function progressText(currentMetrics: CalibrationMetrics | undefined): string {
     if (result) return result.title;
     if (!run) return statusMessage("calibration_waiting");
-    if (!currentMetrics || currentMetrics.samples === 0) return statusMessage("calibration_waiting_for_target_sample");
-    if (currentMetrics.samples < CALIBRATION_MIN_SAMPLES) return statusMessage("calibration_collecting_samples");
-    if (currentMetrics.acceptedBy === "none") return statusMessage("calibration_analyzing_stability");
+    if ((!currentMetrics || currentMetrics.samples === 0) && staticRadarCalibration.sampleCount === 0) {
+      return statusMessage("calibration_waiting_for_target_sample");
+    }
+    if (!spatialCalibrationEnabled && staticRadarCalibration.sampleCount < 5) {
+      return statusMessage("calibration_collecting_samples");
+    }
+    if (spatialCalibrationEnabled) {
+      if (!currentMetrics || currentMetrics.samples < CALIBRATION_MIN_SAMPLES) {
+        return statusMessage("calibration_collecting_samples");
+      }
+      if (currentMetrics.acceptedBy === "none") return statusMessage("calibration_analyzing_stability");
+    }
     return statusMessage("calibration_ready_to_create");
   }
 
@@ -313,7 +458,7 @@ export function createCalibrationRun({
     const text = statusMessages();
     if (!run && !result) return [text.waitingWork];
     const elapsed = run ? Math.floor((Date.now() - run.startedAt) / 1000) : null;
-    return [
+    const items = [
       text.pirState(Boolean(state?.pirMotion)),
       elapsed === null
         ? text.collectionFinished
@@ -324,6 +469,10 @@ export function createCalibrationRun({
       text.score(Math.round(currentMetrics?.score ?? 0), CALIBRATION_SCORE_THRESHOLD),
       text.acceptedBy(currentMetrics?.acceptedBy ?? "none")
     ];
+    if (staticRadarCalibrationEnabled || staticRadarCalibration.sampleCount > 0) {
+      items.splice(3, 0, text.staticRadarSamples(staticRadarCalibration.sampleCount));
+    }
+    return items;
   }
 
   function metricsLines(currentMetrics: CalibrationMetrics): string[] {
@@ -352,7 +501,14 @@ export function createCalibrationRun({
   function progressFromMetrics(currentMetrics: CalibrationMetrics | undefined): number {
     if (!run || !currentMetrics) return currentMetrics ? Math.round(clamp(currentMetrics.score, 0, 100)) : 0;
     const elapsedProgress = clamp((Date.now() - run.startedAt) / CALIBRATION_MIN_MS, 0, 1) * 35;
-    const sampleProgress = clamp(currentMetrics.samples / CALIBRATION_MIN_SAMPLES, 0, 1) * 45;
+    const spatialSampleProgress = clamp(currentMetrics.samples / CALIBRATION_MIN_SAMPLES, 0, 1);
+    const staticSampleProgress = clamp(staticRadarCalibration.sampleCount / 5, 0, 1);
+    const sampleProgress =
+      (spatialCalibrationEnabled && staticRadarCalibrationEnabled
+        ? (spatialSampleProgress + staticSampleProgress) / 2
+        : spatialCalibrationEnabled
+          ? spatialSampleProgress
+          : staticSampleProgress) * 45;
     const scoreProgress = clamp(currentMetrics.score / CALIBRATION_SCORE_THRESHOLD, 0, 1) * 15;
     const acceptedProgress = currentMetrics.acceptedBy === "none" ? 0 : 4;
     return Math.round(sampleProgress + scoreProgress + elapsedProgress + acceptedProgress);
@@ -384,6 +540,7 @@ export function createCalibrationRun({
     stop,
     update,
     clearResult,
+    canStart,
     statusText,
     progressText,
     workItems,

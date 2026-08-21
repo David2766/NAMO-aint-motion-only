@@ -43,7 +43,7 @@ export interface RoomCandidateImageMeta {
 
 export interface FloorplanWallSegment {
   id: string;
-  axis: "horizontal" | "vertical";
+  axis: "horizontal" | "vertical" | "diagonal";
   x1: number;
   y1: number;
   x2: number;

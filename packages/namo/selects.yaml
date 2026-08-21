@@ -26,11 +26,6 @@ select:
       - "Australia/Perth"
       - "Australia/Sydney"
       - "Pacific/Auckland"
-  - platform: ld2450
-    ld2450_id: ld2450_radar
-    zone_type:
-      name: "LD2450 Zone Type"
-      entity_category: config
   - platform: template
     name: "Direction Tuning Preset"
     id: direction_tuning_preset

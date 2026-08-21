@@ -1,4 +1,6 @@
 <script>
+  import FloorplanRadarAdvancedOptions from "./FloorplanRadarAdvancedOptions.svelte";
+
   let {
     messages,
     scaleSummary = null,
@@ -11,6 +13,7 @@
     onScaleInput,
     onScaleNudge,
     onToggleOcclusionEdit,
+    onResetOcclusion,
     onBack,
     onNext
   } = $props();
@@ -62,19 +65,13 @@
     <em>{text.scaleHint}</em>
   </div>
   <em>{text.nextWork}</em>
-  <button
-    type="button"
-    class="floorplan-radar-occlusion-toggle"
-    data-active={occlusionEditActive ? "true" : "false"}
-    onclick={onToggleOcclusionEdit}
-  >
-    {occlusionEditActive ? text.occlusionEditOff : text.occlusionEditOn}
-  </button>
-  <em>
-    {occlusionEditActive
-      ? text.occlusionActiveHint
-      : text.occlusionIgnored(ignoredOcclusionEdges.length)}
-  </em>
+  <FloorplanRadarAdvancedOptions
+    {text}
+    {occlusionEditActive}
+    {ignoredOcclusionEdges}
+    {onToggleOcclusionEdit}
+    {onResetOcclusion}
+  />
 </div>
 
 <div class="floorplan-step-actions">

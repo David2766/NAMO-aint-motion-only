@@ -1,6 +1,7 @@
 import type { WebDeviceConfig, WebDeviceState, WebDeviceStats, WebStatsEntry } from "../../core/types";
 import version from "../../../../version.json";
 import { hasMockFloorplanStorage, saveMockFloorplan } from "../floorplan/mock-floorplan-storage";
+import { mockConnectedPeerCount, mockRegisteredPeerCount, resetMockPlatformStorage } from "./mock-platform";
 import type { DeviceApi, WebStaticRadarTuningStatus, WebSystemStatus } from "../types";
 
 const startTime = Date.now();
@@ -30,10 +31,6 @@ function storeConfig(nextConfig: WebDeviceConfig): void {
   sessionStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(plainClone(nextConfig)));
 }
 
-function clearStoredConfig(): void {
-  sessionStorage.removeItem(CONFIG_STORAGE_KEY);
-}
-
 function waveValue(base: number, spread: number, elapsed: number, speed: number, phase = 0): number {
   return Math.round((base + Math.sin(elapsed / speed + phase) * spread) * 10) / 10;
 }
@@ -48,9 +45,7 @@ function staticRadarDemoFrame(elapsed: number) {
   const staticPresence = cycle < 30;
   const assistActive = targetCount === 0 && staticPresence;
   const graceActive = targetCount === 0 && !staticPresence && cycle < 33;
-  const detectionDistanceMm = staticPresence
-    ? Math.round(clamp(1750 + Math.sin(elapsed / 4.2) * 1050, 350, 4100))
-    : 0;
+  const detectionDistanceMm = staticPresence ? Math.round(clamp(1750 + Math.sin(elapsed / 4.2) * 1050, 350, 4100)) : 0;
   const lastDistanceMm = 1897;
   const distanceDeltaMm = staticPresence ? Math.abs(detectionDistanceMm - lastDistanceMm) : null;
 
@@ -61,7 +56,7 @@ function staticRadarDemoFrame(elapsed: number) {
     presence: targetCount > 0 || assistActive || graceActive,
     detectionDistanceMm,
     distanceDeltaMm,
-    distanceMatched: distanceDeltaMm != null && distanceDeltaMm <= 750
+    distanceMatched: distanceDeltaMm != null && distanceDeltaMm <= 750,
   };
 }
 
@@ -88,23 +83,28 @@ function makeStatsEntry(daysAgo: number): WebStatsEntry {
     r: reducedHits,
     fz: [filterHits, Math.max(1, Math.floor(filterHits * 0.55)), daysAgo % 4, daysAgo % 3],
     rz: [reducedHits, Math.max(0, Math.floor(reducedHits * 0.5)), daysAgo % 2, (daysAgo + 1) % 2],
-    sz: [
-      Math.max(0, base),
-      Math.max(0, base - 7 + (daysAgo % 5)),
-      Math.max(0, Math.floor(base * 0.55)),
-      daysAgo % 6,
-      (daysAgo * 2) % 5,
-      daysAgo % 4
-    ]
+    sz: [Math.max(0, base), Math.max(0, base - 7 + (daysAgo % 5)), Math.max(0, Math.floor(base * 0.55)), daysAgo % 6, (daysAgo * 2) % 5, daysAgo % 4],
   };
 }
 
 function makeHeatmapRle(daysAgo: number): string {
   const cells = Array.from({ length: HEATMAP_CELL_COUNT }, () => 0);
   const centers = [
-    { col: 15 + Math.sin(daysAgo * 0.45) * 3.5, row: 8 + Math.cos(daysAgo * 0.31) * 2.3, weight: 8 },
-    { col: 10 + Math.cos(daysAgo * 0.26) * 2.2, row: 14 + Math.sin(daysAgo * 0.38) * 2.5, weight: 5 },
-    { col: 22 + Math.sin(daysAgo * 0.21) * 2.8, row: 17 + Math.cos(daysAgo * 0.42) * 2.1, weight: 4 }
+    {
+      col: 15 + Math.sin(daysAgo * 0.45) * 3.5,
+      row: 8 + Math.cos(daysAgo * 0.31) * 2.3,
+      weight: 8,
+    },
+    {
+      col: 10 + Math.cos(daysAgo * 0.26) * 2.2,
+      row: 14 + Math.sin(daysAgo * 0.38) * 2.5,
+      weight: 5,
+    },
+    {
+      col: 22 + Math.sin(daysAgo * 0.21) * 2.8,
+      row: 17 + Math.cos(daysAgo * 0.42) * 2.1,
+      weight: 4,
+    },
   ];
 
   for (let row = 0; row < HEATMAP_ROWS; row += 1) {
@@ -156,8 +156,11 @@ function createDemoStats(): WebDeviceStats {
       cellMm: 300,
       encoding: "rle",
       today: makeHeatmapRle(0),
-      daily: entries.slice(1).map((entry, index) => ({ d: entry.d, data: makeHeatmapRle(index + 1) }))
-    }
+      daily: entries.slice(1).map((entry, index) => ({
+        d: entry.d,
+        data: makeHeatmapRle(index + 1),
+      })),
+    },
   };
 }
 
@@ -175,8 +178,8 @@ const defaultConfig: WebDeviceConfig = {
         [-900, 1000],
         [900, 1000],
         [900, 2600],
-        [-900, 2600]
-      ]
+        [-900, 2600],
+      ],
     },
     {
       id: "filter_1",
@@ -187,15 +190,15 @@ const defaultConfig: WebDeviceConfig = {
         [1800, 2600],
         [2600, 2600],
         [2600, 3800],
-        [1800, 3800]
-      ]
-    }
+        [1800, 3800],
+      ],
+    },
   ],
   calibrationZones: [],
   floorplan: {
     enabled: false,
-    hasImage: false
-  }
+    hasImage: false,
+  },
 };
 let config: WebDeviceConfig = loadStoredConfig() ?? plainClone(defaultConfig);
 let statusLedEnabled = true;
@@ -208,16 +211,22 @@ let stats: WebDeviceStats = createDemoStats();
 let staticRadarTuningActive = false;
 let staticRadarSensitivity = Array.from({ length: STATIC_RADAR_GATE_COUNT }, () => 50);
 
+export function resetMockDeviceStorage(): void {
+  sessionStorage.removeItem(CONFIG_STORAGE_KEY);
+  resetMockPlatformStorage();
+  config = plainClone(defaultConfig);
+}
+
 function createStaticRadarTuningStatus(elapsed: number): WebStaticRadarTuningStatus {
   const frame = staticRadarDemoFrame(elapsed);
-  const detectedGate = frame.staticPresence
-    ? clamp(Math.floor(frame.detectionDistanceMm / STATIC_RADAR_RESOLUTION_MM), 0, STATIC_RADAR_GATE_COUNT - 1)
-    : -1;
+  const detectedGate = frame.staticPresence ? clamp(Math.floor(frame.detectionDistanceMm / STATIC_RADAR_RESOLUTION_MM), 0, STATIC_RADAR_GATE_COUNT - 1) : -1;
 
   return {
     ok: true,
     available: true,
     active: staticRadarTuningActive,
+    phase: staticRadarTuningActive ? "active" : "idle",
+    result: staticRadarTuningActive ? "ok" : "idle",
     resolutionMm: STATIC_RADAR_RESOLUTION_MM,
     gates: staticRadarSensitivity.map((sensitivity, gate) => {
       const distanceFromDetection = detectedGate < 0 ? STATIC_RADAR_GATE_COUNT : Math.abs(gate - detectedGate);
@@ -229,9 +238,9 @@ function createStaticRadarTuningStatus(elapsed: number): WebStaticRadarTuningSta
         endMm: (gate + 1) * STATIC_RADAR_RESOLUTION_MM,
         sensitivity,
         moveEnergy: staticRadarTuningActive ? clamp(signal - 18 + variation, 0, 100) : 0,
-        stillEnergy: staticRadarTuningActive ? clamp(signal + variation, 0, 100) : 0
+        stillEnergy: staticRadarTuningActive ? clamp(signal + variation, 0, 100) : 0,
       };
-    })
+    }),
   };
 }
 
@@ -239,7 +248,9 @@ export const mockApi: DeviceApi = {
   async getState(): Promise<WebDeviceState> {
     const elapsed = (Date.now() - startTime) / 1000;
     const staticRadar = staticRadarDemoFrame(elapsed);
-    const targetCount = staticRadar.targetCount;
+    const connectedPeers = mockConnectedPeerCount();
+    const fusionConfigured = connectedPeers > 0 && hasMockFloorplanStorage();
+    const targetCount = connectedPeers > 0 ? staticRadar.targetCount : Math.min(staticRadar.targetCount, 1);
     const targets = [
       {
         id: "target_1",
@@ -247,7 +258,9 @@ export const mockApi: DeviceApi = {
         color: "#ff6b7a",
         x: Math.round(Math.sin(elapsed / 2) * 1100),
         y: Math.round(1800 + Math.cos(elapsed / 2.8) * 700),
-        active: targetCount >= 1
+        active: targetCount >= 1,
+        fused: fusionConfigured && targetCount >= 1,
+        sourceCount: fusionConfigured && targetCount >= 1 ? Math.min(7, connectedPeers + 1) : 0,
       },
       {
         id: "target_2",
@@ -255,7 +268,9 @@ export const mockApi: DeviceApi = {
         color: "#ffd166",
         x: Math.round(1250 + Math.sin(elapsed / 2.7 + 1.8) * 650),
         y: Math.round(2600 + Math.cos(elapsed / 3.4 + 0.6) * 850),
-        active: targetCount >= 2
+        active: targetCount >= 2,
+        fused: false,
+        sourceCount: targetCount >= 2 ? 1 : 0,
       },
       {
         id: "target_3",
@@ -263,8 +278,10 @@ export const mockApi: DeviceApi = {
         color: "#06d6a0",
         x: Math.round(-1350 + Math.sin(elapsed / 3.1 + 2.4) * 720),
         y: Math.round(3300 + Math.cos(elapsed / 3.8 + 1.2) * 900),
-        active: targetCount >= 3
-      }
+        active: targetCount >= 3,
+        fused: false,
+        sourceCount: targetCount >= 3 ? 1 : 0,
+      },
     ];
     return {
       connected: true,
@@ -275,6 +292,11 @@ export const mockApi: DeviceApi = {
       targetCount,
       movingTargetCount: targetCount > 0 ? 1 : 0,
       stillTargetCount: Math.max(0, targetCount - 1),
+      fusion: {
+        buildEnabled: true,
+        authoritative: fusionConfigured,
+        state: fusionConfigured ? "active" : "degraded",
+      },
       temperatureC: waveValue(25.4, 0.25, elapsed, 17),
       humidityPercent: waveValue(45, 0.45, elapsed, 19, 1.1),
       illuminanceLux: Math.round(waveValue(180, 1.8, elapsed, 23, 2.2)),
@@ -291,7 +313,7 @@ export const mockApi: DeviceApi = {
         presenceEvidence: {
           pir: targetCount > 0,
           tracker: targetCount > 0,
-          staticAssist: staticRadar.assistActive
+          staticAssist: staticRadar.assistActive,
         },
         still: {
           state: "candidate",
@@ -301,14 +323,14 @@ export const mockApi: DeviceApi = {
           lastSeenAgeMs: Math.round((elapsed % 3) * 1000),
           anchor: {
             x: targets[0]?.x ?? 0,
-            y: targets[0]?.y ?? 0
-          }
+            y: targets[0]?.y ?? 0,
+          },
         },
         range: {
           reason: targetCount >= 3 ? "remote_pir_validated" : "ok",
           suspectTargetCount: targetCount >= 3 ? 1 : 0,
           outOfRangeTargetCount: 0,
-          remoteCandidateCount: targetCount >= 3 ? 1 : 0
+          remoteCandidateCount: targetCount >= 3 ? 1 : 0,
         },
         staticRadar: {
           available: true,
@@ -335,12 +357,12 @@ export const mockApi: DeviceApi = {
                   lastDistanceMm: 1897,
                   staticDistanceMm: staticRadar.detectionDistanceMm,
                   distanceDeltaMm: staticRadar.distanceDeltaMm,
-                  distanceMatched: staticRadar.distanceMatched
+                  distanceMatched: staticRadar.distanceMatched,
                 }
-              : null
-          }
-        }
-      }
+              : null,
+          },
+        },
+      },
     };
   },
 
@@ -351,8 +373,8 @@ export const mockApi: DeviceApi = {
         floorplan: {
           ...(config.floorplan ?? {}),
           enabled: true,
-          hasImage: true
-        }
+          hasImage: true,
+        },
       };
       storeConfig(config);
     }
@@ -364,34 +386,58 @@ export const mockApi: DeviceApi = {
   },
 
   async getSystemStatus(): Promise<WebSystemStatus> {
+    const connectedPeers = mockConnectedPeerCount();
+    const registeredPeers = mockRegisteredPeerCount();
     return {
       ok: true,
+      platform: {
+        schemaVersion: 1,
+        identityReady: true,
+        siteId: "site-00112233445566778899aabbccddeeff",
+        nodeId: "namo-node-246f2801a2b3",
+        mode: registeredPeers > 0 ? "enrolled" : "standalone",
+        maxParticipants: 7,
+        registryReady: true,
+        remoteParticipantCount: registeredPeers,
+        connectedRemoteParticipantCount: connectedPeers,
+        activeRemoteParticipantCount: connectedPeers,
+        readinessReady: true,
+        configuredRemoteParticipantCount: connectedPeers,
+        fusionEnabled: connectedPeers > 0 && hasMockFloorplanStorage(),
+        pairingSupported: true,
+        pairingEnabled: false,
+      },
       firmware: {
         version: version.firmware,
         buildTime: "mock",
-        uptimeSeconds: Math.round((Date.now() - startTime) / 1000)
+        uptimeSeconds: Math.round((Date.now() - startTime) / 1000),
       },
       api: {
+        enabled: true,
+        keyConfigured: true,
+        serviceReady: true,
+        clientConnected: true,
         connected: true,
         warning: false,
         statusInfo: {
           code: "api_client_connected",
           severity: "info",
-          detail: {}
-        }
+          detail: {},
+        },
       },
       boot: {
         initialGuardActive: Math.round((Date.now() - startTime) / 1000) < 60,
-        guardSeconds: 60
+        guardSeconds: 60,
+        remainingSeconds: Math.max(0, 60 - Math.round((Date.now() - startTime) / 1000)),
       },
       dashboard: {
         version: version.dashboard,
-        gzipBytes: 92000
+        gzipBytes: 92000,
       },
       schema: {
         config: version.configSchema,
         floorplan: version.floorplanSchema,
-        stats: version.statsSchema
+        stats: version.statsSchema,
       },
       memory: {
         freeHeap: 6370000,
@@ -399,10 +445,12 @@ export const mockApi: DeviceApi = {
         internalTotalBytes: 327680,
         internalFreeBytes: 250220,
         internalMinFreeBytes: 180000,
+        internalLargestFreeBlockBytes: 131072,
+        httpdStackMinFreeBytes: 6144,
         psramTotal: 8388608,
         psramFree: 6120000,
         externalTotalBytes: 8388608,
-        externalFreeBytes: 6120000
+        externalFreeBytes: 6120000,
       },
       flash: {
         totalBytes: 8388608,
@@ -410,7 +458,7 @@ export const mockApi: DeviceApi = {
         firmwareSlotBytes: 3145728,
         otaSlotBytes: 3145728,
         storageUsedBytes: 34504,
-        storageTotalBytes: 2031616
+        storageTotalBytes: 2031616,
       },
       storage: {
         ok: true,
@@ -421,17 +469,17 @@ export const mockApi: DeviceApi = {
         floorplanImageBytes: 28234,
         deviceConfigBytes: 683,
         statsBytes: 2400,
-        maxPayloadBytes: 65536
+        maxPayloadBytes: 65536,
       },
       wifi: {
         connected: true,
         ssid: "mock-wifi",
-        rssi: -48
+        rssi: -48,
       },
       bluetooth: {
         enabled: true,
-        connected: false
-      }
+        connected: false,
+      },
     };
   },
 
@@ -450,7 +498,7 @@ export const mockApi: DeviceApi = {
       humidityOffsetKnown: true,
       timezone,
       timezoneKnown: true,
-      timezoneApplyPending: false
+      timezoneApplyPending: false,
     };
   },
 
@@ -497,13 +545,13 @@ export const mockApi: DeviceApi = {
         r: 0,
         fz: stats.today.fz.map(() => 0),
         rz: stats.today.rz.map(() => 0),
-        sz: stats.today.sz.map(() => 0)
+        sz: stats.today.sz.map(() => 0),
       };
     }
     if (stats.heatmap) {
       stats.heatmap = {
         ...stats.heatmap,
-        today: `0x${HEATMAP_COLS * HEATMAP_ROWS}`
+        today: `0x${HEATMAP_COLS * HEATMAP_ROWS}`,
       };
     }
   },
@@ -519,6 +567,11 @@ export const mockApi: DeviceApi = {
     staticRadarSensitivity[gate] = Math.round(clamp(sensitivity, 0, 100));
   },
 
+  async resetStaticRadarFactoryDefaults(): Promise<void> {
+    staticRadarTuningActive = false;
+    staticRadarSensitivity = Array.from({ length: STATIC_RADAR_GATE_COUNT }, () => 50);
+  },
+
   async saveFloorplan(document, image): Promise<void> {
     await saveMockFloorplan(document, image);
     config = {
@@ -526,8 +579,8 @@ export const mockApi: DeviceApi = {
       floorplan: {
         ...(config.floorplan ?? {}),
         enabled: true,
-        hasImage: true
-      }
+        hasImage: true,
+      },
     };
     storeConfig(config);
   },
@@ -540,21 +593,16 @@ export const mockApi: DeviceApi = {
       onProgress({
         loaded,
         total,
-        percent: Math.round((loaded / total) * 100)
+        percent: Math.round((loaded / total) * 100),
       });
     }
   },
 
   async resetSystem(options) {
-    if (options.settings) {
-      config = plainClone(defaultConfig);
+    if (options.detection) {
       config.zones = [];
       config.calibrationZones = [];
-      config.floorplan = {
-        enabled: false,
-        hasImage: false
-      };
-      clearStoredConfig();
+      config.legacyPresenceFallback = false;
       statusLedEnabled = true;
       ledBlinkDuration = 60;
       environmentCorrectionEnabled = true;
@@ -562,27 +610,35 @@ export const mockApi: DeviceApi = {
       humidityOffset = 0;
       timezone = "Asia/Seoul";
       staticRadarTuningActive = false;
-      staticRadarSensitivity = Array.from({ length: STATIC_RADAR_GATE_COUNT }, () => 50);
     }
+    if (options.space) {
+      config.floorplan = {
+        enabled: false,
+        hasImage: false,
+      };
+    }
+    if (options.space || options.detection) storeConfig(config);
     if (options.stats) {
       stats = createDemoStats();
     }
     return {
       ok: true,
       reset: {
-        settings: options.settings,
+        space: options.space,
+        detection: options.detection,
+        connections: options.connections,
         wifi: options.wifi,
-        stats: options.stats
+        stats: options.stats,
       },
-      rebootRequired: options.settings || options.wifi,
-      rebootInMs: options.settings || options.wifi ? 2500 : 0
+      rebootRequired: options.space || options.detection || options.connections || options.wifi,
+      rebootInMs: options.space || options.detection || options.connections || options.wifi ? 2500 : 0,
     };
   },
 
   async rebootSystem() {
     return {
       ok: true,
-      rebootInMs: 2500
+      rebootInMs: 2500,
     };
   },
 
@@ -591,13 +647,15 @@ export const mockApi: DeviceApi = {
       ok: true,
       message: "mock_handoff_started",
       waitSeconds: 1,
+      rebootExpected: true,
       statusInfo: {
         code: "ha_handoff_started",
         severity: "info",
         detail: {
-          waitSeconds: 1
-        }
-      }
+          waitSeconds: 1,
+          rebootExpected: true,
+        },
+      },
     };
-  }
+  },
 };

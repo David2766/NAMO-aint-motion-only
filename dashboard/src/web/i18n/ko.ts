@@ -14,6 +14,7 @@ export const ko: Messages = {
     delete: "삭제",
     reset: "초기화",
     save: "저장",
+    fused: "융합",
     unsavedChangesConfirm: "저장하지 않은 변경사항이 있습니다. 저장하지 않고 이동할까요?",
     saveStatus: {
       idle: "변경 없음",
@@ -34,6 +35,16 @@ export const ko: Messages = {
   setup: createSetupMessages("ko"),
   api: {
     errors: {
+      site_configuration_owner_required:
+        "공유 평면도는 설정 원본 기기에서 수정하세요. 이 기기에서는 로컬 레이더 위치만 유지합니다.",
+      site_configuration_conflict:
+        "연결된 기기 사이의 공유 설정이 서로 다릅니다. 감지는 계속되지만 복구가 끝날 때까지 공유 설정을 변경할 수 없습니다.",
+      site_configuration_continuity_unavailable:
+        "대체 기기가 최신 공유 평면도를 아직 확인하지 못했습니다. 감지는 계속되며, 다시 연결될 때까지 공유 설정 변경만 잠시 멈춥니다.",
+      floorplan_manifest_invalid:
+        "공유 평면도를 확정하지 못했습니다. 이미지와 방 구조가 저장되었는지 확인하세요.",
+      floorplan_delete_requires_standalone:
+        "공유 평면도를 삭제하려면 먼저 다른 NAMO 기기의 연동을 해제하세요. 연결된 상태에서는 평면도를 교체할 수 있습니다.",
       invalid_request: "요청 형식이 올바르지 않습니다. 입력값을 확인한 뒤 다시 시도하세요.",
       config_not_found: "저장된 설정을 찾지 못했습니다.",
       config_write_failed: "장치가 설정을 저장하지 못했습니다.",
@@ -52,8 +63,12 @@ export const ko: Messages = {
       api_key_unavailable: "API 키 서비스를 사용할 수 없습니다.",
       api_key_not_set: "저장된 API 키가 없습니다.",
       api_key_unsupported: "이 빌드에서는 API 키 확인을 지원하지 않습니다.",
+      api_key_random_failed: "안전한 API 키를 만들지 못했습니다.",
+      api_key_save_failed: "새 API 키를 저장하지 못했습니다.",
       nothing_selected: "초기화할 항목을 선택하세요.",
-      settings_reset_failed: "설정 초기화에 실패했습니다.",
+      space_reset_failed: "평면도와 배치를 초기화하지 못했습니다.",
+      detection_reset_failed: "감지 설정을 초기화하지 못했습니다.",
+      connections_reset_failed: "연결된 기기 정보를 초기화하지 못했습니다.",
       stats_reset_failed: "통계 초기화에 실패했습니다.",
       wifi_not_ready: "Wi-Fi 설정이 아직 준비되지 않았습니다.",
       wifi_unavailable: "Wi-Fi를 사용할 수 없습니다.",
@@ -61,7 +76,24 @@ export const ko: Messages = {
       invalid_password_length: "Wi-Fi 비밀번호는 8~63자여야 합니다.",
       firmware_upload_failed: "펌웨어 업로드에 실패했습니다.",
       firmware_network_error: "펌웨어 업로드 중 네트워크 오류가 발생했습니다.",
-      firmware_upload_aborted: "펌웨어 업로드가 취소되었습니다."
+      firmware_upload_aborted: "펌웨어 업로드가 취소되었습니다.",
+      firmware_trust_unavailable: "이 기기에서 펌웨어 검증을 사용할 수 없습니다.",
+      firmware_header_invalid: "펌웨어 패키지 정보가 올바르지 않습니다.",
+      alpha_firmware_not_allowed: "알파 펌웨어 설치가 허용되지 않았습니다. 관리/백업에서 1회 설치를 먼저 허용하세요.",
+      alpha_firmware_permission_invalid: "알파 펌웨어 설치 허용 요청이 올바르지 않습니다.",
+      signed_firmware_required: "서명된 NAMO 펌웨어 패키지(.namo-ota)를 선택하세요.",
+      legacy_firmware_bin_required: "이전 펌웨어에는 ESP32 OTA .bin 파일이 필요합니다.",
+      firmware_session_invalid: "기기가 잘못된 펌웨어 업데이트 세션을 반환했습니다.",
+      busy: "다른 펌웨어 업데이트가 이미 진행 중입니다.",
+      session_mismatch: "펌웨어 업데이트 세션이 더 이상 일치하지 않습니다.",
+      header_mismatch: "업로드한 펌웨어가 사전 검증한 패키지와 다릅니다.",
+      trust_rejected: "펌웨어 서명 또는 신뢰 버전이 거부되었습니다.",
+      offset_mismatch: "펌웨어 조각의 순서가 올바르지 않습니다.",
+      size_mismatch: "펌웨어 패키지 크기가 서명 정보와 다릅니다.",
+      expired: "펌웨어 업로드 세션 시간이 만료되었습니다.",
+      sink_begin_failed: "펌웨어 업데이트 파티션을 열지 못했습니다.",
+      sink_write_failed: "펌웨어 업데이트 기록에 실패했습니다.",
+      sink_finish_failed: "최종 펌웨어 또는 신뢰 검증에 실패했습니다."
     },
     statuses: {
       setup_wifi_connecting: "Wi-Fi에 연결하는 중입니다.",
@@ -70,7 +102,8 @@ export const ko: Messages = {
       ha_handoff_started: "Home Assistant handoff가 시작되었습니다.",
       api_client_waiting: "Native API client 연결을 기다리는 중입니다.",
       api_client_connected: "Native API client가 연결되었습니다.",
-      api_client_idle: "Native API client가 대기 중입니다."
+      api_client_idle: "Native API client가 대기 중입니다.",
+      api_service_not_ready: "Native API가 아직 준비되지 않았습니다."
     }
   },
   app: {
@@ -168,6 +201,10 @@ export const ko: Messages = {
     connected: "연결됨",
     waiting: "대기 중",
     updated: "업데이트",
+    fusionActive: (count) => `${count}대 융합`,
+    fusionSending: "융합 전송",
+    fusionFallback: "융합 대기",
+    connectedRadar: "연결된 레이더",
     coreStatus: "핵심 상태",
     presence: "재실",
     motion: "움직임",
@@ -193,7 +230,9 @@ export const ko: Messages = {
     quickNav: "빠른 이동",
     zoneStatus: "구역 상태",
     zone: "구역",
-    filter: "필터",
+    userZones: (count) => `사용자 구역 ${count}개`,
+    calibrationZones: (count) => `보정 구역 ${count}개`,
+    filter: "차단",
     reduced: "둔감",
     disabled: "제외",
     exit: "퇴실",
@@ -205,6 +244,14 @@ export const ko: Messages = {
     storage: "저장공간",
     storageUsed: (usage, percent) => `${usage} · ${percent} 사용 중`,
     uptime: "가동 시간",
+    platformStatus: "플랫폼",
+    platformReady: "준비됨",
+    platformUnavailable: "사용 불가",
+    platformMode: "동작 모드",
+    platformStandalone: "단독",
+    platformEnrolled: "연결됨",
+    nodeId: "Node ID",
+    siteId: "Site ID",
     checking: "확인 중",
     notConnected: "연결 안 됨",
     wifiExcellent: "매우 좋음",
@@ -228,6 +275,374 @@ export const ko: Messages = {
     controlStatusFailed: (error) => `제어 상태를 읽지 못했습니다. ${error}`,
     statusLedControl: "Status LED 제어",
     diagnostics: "진단 정보",
+    pairingButton: "기기 연결",
+    pairing: {
+      sharedFloorplan: "공유 평면도",
+      sharedFloorplanDescription: "이 기기와 함께 연결되는 기기는 모두 같은 이미지와 방 구조를 사용합니다. 각 기기의 레이더 위치와 구역 설정은 그대로 유지됩니다.",
+      sharedFloorplanOwner: "평면도를 제공하는 기기",
+      sharedFloorplanRevision: "방 구조 버전",
+      sharedFloorplanClaimOwner: "이 기기의 평면도를 함께 사용",
+      sharedFloorplanOwnerClaimed: "이 기기의 평면도를 연결된 기기와 함께 사용합니다.",
+      sharedFloorplanCommit: "연결된 기기에 현재 평면도 적용",
+      sharedFloorplanSync: "공유 평면도 다시 받기",
+      sharedFloorplanNotCommitted: "함께 사용할 평면도가 아직 선택되지 않음",
+      sharedFloorplanCommitted: "같은 평면도 사용 중",
+      sharedFloorplanCommitDone: "연결된 기기에서 현재 평면도를 함께 사용하도록 저장했습니다.",
+      sharedFloorplanSyncStarted: "인증된 평면도 동기화를 시작했습니다.",
+      sharedFloorplanAutoWaiting: (seconds) => `자동 동기화 순번 대기 · ${seconds}초`,
+      replicationState: (state, result) => {
+        if (state === "complete" && result === "ok") return "평면도가 최신 상태입니다";
+        if (state === "requesting" || state === "receiving" || state === "committing") return "평면도 업데이트 중";
+        if (state === "conflict") return "사용할 평면도를 다시 확인해야 합니다";
+        if (state === "failed") return "평면도를 업데이트하지 못했습니다";
+        return "평면도 업데이트 대기 중";
+      },
+      title: "NAMO 기기 연결",
+      description: "주변 NAMO 기기를 안전하게 연결하고, 함께 사용할 평면도와 기기 위치를 설정합니다.",
+      unavailable: "이 빌드 또는 데모에서는 보안 기기 연결을 사용할 수 없습니다.",
+      localDevice: "이 기기",
+      localDeviceDescription: "현재 기기의 연결 상태를 보여줍니다.",
+      state: "연결 상태",
+      floorplanUsage: "평면도 사용",
+      floorplanUsageStates: {
+        none: "저장된 평면도 없음",
+        local: "이 기기에서만 사용 중",
+        shared: "이 기기의 평면도를 함께 사용",
+        received: "연결된 기기의 평면도 사용"
+      },
+      peer: "상대 기기",
+      states: {
+        idle: "시작하지 않음",
+        prepared: "상대 기기 대기 중",
+        exchanged: "보안 연결 확인 중",
+        verified: "확인 코드 준비됨",
+        committed: "안전하게 연결됨 · 설정 필요"
+      },
+      codeLabel: "확인 코드",
+      codeHelp: "연결을 시작한 기기에 같은 코드가 보이는지 확인하세요.",
+      confirmed: "이 기기에 보안 연결 정보를 저장했습니다.",
+      receiveTitle: "다른 기기에서 연결할 수 있게 허용",
+      receiveDescription: "다른 기기에서 이 기기를 찾고 연결하려면 먼저 누르세요.",
+      allowIncoming: "3분 동안 연결 허용",
+      incomingRequestTitle: "기기 연결 요청",
+      incomingRequestDescription: "같은 네트워크의 NAMO 기기에서 연결을 요청했습니다. 요청한 기기가 맞을 때만 허용하세요.",
+      incomingProgressTitle: "기기를 안전하게 연결하는 중",
+      incomingProgressDescription: "연결을 시작한 기기에서 다음 단계를 진행하고 있습니다.",
+      rejectIncoming: "거절",
+      connectTitle: "다른 기기 추가",
+      ownerRequiredTitle: "설정 원본 기기에서 추가",
+      ownerRequiredDescription: "새 기기 연결은 공유 평면도와 연결 정보를 변경하므로 설정 원본 기기에서 진행해야 합니다.",
+      ownerUnavailable: "설정 원본 기기가 현재 오프라인입니다. 다시 연결되거나 자동 대체가 완료된 뒤 시도하세요.",
+      openOwnerDevice: "설정 원본으로 이동",
+      connectionNotReadyTitle: "연결 정보 확인 중",
+      connectionNotReadyDescription: "연결된 기기들이 최신 공유 설정을 확인한 뒤 새 기기를 추가할 수 있습니다. 감지는 계속됩니다.",
+      resumeSetup: "연결 설정 계속",
+      setupResumed: "새 기기에 공유 설정을 전달했습니다. 위치 맞추기를 계속할 수 있습니다.",
+      nearbyDevices: "주변 NAMO 기기",
+      nearbyDescription: "이미 연결된 기기는 위 목록에서 관리하며 다시 연결 대상으로 표시하지 않습니다.",
+      searching: "주변 기기를 찾는 중...",
+      noDevices: "연결 가능한 NAMO 기기를 찾지 못했습니다.",
+      noDevicesDescription: "상대 기기에서 연결을 허용한 뒤 다시 찾거나 주소를 직접 입력하세요.",
+      refreshDevices: "다시 찾기",
+      manualAddress: "주소 직접 입력",
+      manualAddressDescription: "네트워크에서 자동 발견을 사용할 수 없을 때 이용하는 보조 경로입니다.",
+      address: "상대 기기 주소",
+      connect: "보안 연결",
+      confirm: "이 기기에서 확인",
+      cancel: "연결 취소",
+      connectedDevices: "연결된 기기",
+      connectedDescription: "이 기기와 안전하게 연결된 NAMO 기기입니다. 위치 맞추기를 마치면 함께 감지할 수 있습니다.",
+      pendingSetupTitle: (count) => `설정이 남은 기기 ${count}대`,
+      pendingSetupDescription: (count) =>
+        `${count}대는 안전하게 연결되었지만 위치 맞추기가 끝나지 않아 아직 융합에 참여하지 않습니다. 각 기기의 설정은 나중에 원하는 순서로 마칠 수 있으며, 그동안 다른 기기를 계속 추가해도 기존 연결은 유지됩니다.`,
+      pendingSetupAddDescription: "설정이 남은 기기는 그대로 유지됩니다. 새 기기를 먼저 연결해도 되며, 위치 맞추기를 마친 기기부터 융합에 참여합니다.",
+      noConnectedDevices: "연결된 기기가 없습니다",
+      noConnectedDescription: "연결을 허용한 주변 기기가 아래 목록에 표시됩니다.",
+      connectedCount: (count) => `${count}대 연결됨`,
+      returnToMainDevice: "연결을 진행하던 기기로 돌아가기",
+      membership: "상태",
+      readiness: "설정",
+      networkState: "네트워크",
+      networkOnline: "온라인",
+      networkUnavailable: "응답 없음",
+      deviceAddress: "주소",
+      deviceName: "이름",
+      automaticFallback: "자동 대체",
+      automaticFallbackAllowed: "허용됨",
+      automaticFallbackNotAllowed: "허용 안 됨",
+      automaticFallbackAllow: "자동 대체 허용",
+      automaticFallbackDisable: "자동 대체 해제",
+      automaticFallbackDescription: "다른 기기가 응답하지 않을 때 이 기기가 조정 역할을 이어받도록 허용할 수 있습니다. 각 기기의 기본 재실 감지는 이 설정과 관계없이 계속 작동합니다.",
+      automaticFallbackEnabledNotice: "이 기기가 필요할 때 자동으로 조정 역할을 이어받을 수 있습니다.",
+      automaticFallbackDisabledNotice: "이 기기의 자동 대체 권한을 해제했습니다.",
+      automaticFallbackPreparedNotice: "위치 보정을 마쳤고, 이 기기가 필요할 때 자동으로 조정 역할을 이어받을 수 있습니다.",
+      automaticFallbackPreparationFailed: "위치 보정은 완료했지만 자동 대체를 켜지 못했습니다. 연결된 기기 목록에서 자동 대체 허용을 눌러 다시 시도하세요.",
+      singleFallbackWarning: "현재 온라인 상태에서 조정 역할을 맡을 수 있는 기기가 한 대뿐입니다. 연결된 다른 기기에 자동 대체를 허용하면 장애 시 역할을 이어받을 수 있습니다.",
+      ready: "준비됨",
+      notReady: "설정 필요",
+      memberships: {
+        quarantined: "연결됨 · 설정 필요",
+        active: "사용 중",
+        revoked: "해제 마무리 필요"
+      },
+      pendingDisconnects: "연동 해제 대기",
+      pendingDisconnectsDescription: "이 기기에서는 차단됐으며 상대 기기가 응답하면 양쪽 해제를 마무리할 수 있습니다.",
+      finishDisconnect: "해제 마무리",
+      disconnect: "연동 해제",
+      disconnectTitle: "두 기기 연동 해제",
+      disconnectDescription: (participantId) => `${participantId}와의 연결 정보를 두 기기에서 모두 삭제합니다.`,
+      pendingDisconnectDescription: (participantId) => `${participantId}의 남은 연결 기록을 정리합니다.`,
+      disconnectAddressHelp: "상대 기기가 온라인이어야 합니다. 양쪽 기록을 지우기 전에 상대 기기 식별 정보를 확인합니다.",
+      disconnectConfirm: "양쪽 모두 해제",
+      retryDisconnect: "양쪽 해제 재시도",
+      blockAndWait: "이 기기에서 차단",
+      disconnectPendingNotice: "상대 기기의 연결 권한을 이 기기에서 차단했습니다. 양쪽 해제는 나중에 마무리할 수 있습니다.",
+      deleteLocalRecord: "로컬 기록 삭제",
+      localDeleteWarning: "로컬 기록을 삭제하면 상대 기기에 남은 연결 기록은 이 기기에서 더 이상 정리할 수 없습니다.",
+      localRecordDeleted: "이 기기에서 남은 연결 기록을 삭제했습니다.",
+      disconnecting: "연동 해제 중...",
+      disconnected: "두 기기에서 연결 정보를 모두 삭제했습니다.",
+      siteMemberRemoveTitle: "연결된 기기 제거",
+      siteMemberRemoveDescription: (participantId) => `${participantId}의 공유 연결을 차단하고 해당 기기를 단독 센서로 전환한 뒤 목록에서 제거합니다.`,
+      siteMemberRemoveAddressHelp: "대상 기기의 신원을 확인한 뒤 연결 정보만 초기화합니다. 평면도, 레이더 위치, 구역과 감도 설정은 유지됩니다.",
+      siteMemberRemoveConfirm: "기기 제거",
+      siteMemberRemoving: "기기 제거 중...",
+      siteMemberRemoved: "대상 기기가 단독 센서로 전환되었고 공유 구성원 목록에서 제거되었습니다.",
+      siteMemberForceRemove: "목록에서 강제로 제거",
+      siteMemberForceRemoveWarning: "강제로 제거하면 이 기기의 공유 목록에서는 사라지지만 대상 기기에 이전 연결 정보가 남을 수 있습니다. 대상 기기에 접속할 수 있게 되면 관리 및 백업에서 기기 사이의 보안 연결을 초기화한 뒤 다시 연결하세요.",
+      siteMemberForceRemoved: "대상 기기를 공유 구성원 목록에서 강제로 제거했습니다.",
+      leaveSite: "연결된 Site에서 나가기",
+      leaveSiteTitle: "이 Site에서 나가기",
+      leaveSiteDescription: "설정 원본 기기에서 이 기기를 제거한 뒤 단독 센서로 재시작합니다. 평면도, 레이더 위치, 구역과 감도 설정은 유지됩니다.",
+      leaveSiteAddressHelp: "공유 구성원 목록에서 제거되었는지 확인하려면 설정 원본 기기가 온라인이어야 합니다.",
+      leaveSiteConfirm: "Site에서 나가기",
+      leavingSite: "Site에서 나가는 중...",
+      leftSite: "연결된 Site에서 제거되었습니다. 단독 모드로 재시작합니다.",
+      setup: {
+        title: "다른 NAMO 기기 연결",
+        description: "이 화면에서 순서대로 진행합니다. 상대 기기에서는 연결 허용만 한 번 누르면 됩니다.",
+        close: "설정 닫기",
+        currentStep: "현재 단계",
+        steps: {
+          device: "기기 선택",
+          select: "기기 선택",
+          verify: "코드 확인",
+          floorplan: "평면도 선택",
+          complete: "마무리"
+        },
+        selectTitle: "추가할 기기를 선택하세요",
+        selectDescription: "주변 기기를 선택하거나, 자동 검색이 안 될 때는 로컬 주소를 직접 입력하세요.",
+        otherDevice: "주변 기기",
+        manualAddress: "기기 주소",
+        selectContinue: "계속",
+        waitTitle: (name) => `${name}에서 연결을 허용하세요`,
+        waitDescription: (seconds) => `최대 ${seconds}초 동안 기다립니다. 언제든 취소할 수 있습니다.`,
+        openOtherDevice: "상대 기기 열기",
+        waiting: "연결 허용 대기 중",
+        waitingHelp: "상대 기기에서 ‘3분 동안 연결 허용’을 누르세요. 이후 과정은 이 화면에서 계속 진행합니다.",
+        verifyTitle: "확인 코드를 비교하세요",
+        verifyDescription: "상대 기기에 표시된 코드가 아래와 같을 때만 계속하세요.",
+        code: "확인 코드",
+        codeMatches: "코드가 같습니다",
+        floorplanTitle: "함께 사용할 평면도를 선택하세요",
+        floorplanDescription: "두 기기에 모두 평면도가 있으면 앞으로 함께 사용할 방 구조를 하나 선택합니다.",
+        mockFloorplanRequired: "먼저 평면도를 생성하세요.",
+        existingSiteFloorplan: "이 Site에서 사용 중인 평면도를 새 기기에 자동으로 전달합니다.",
+        sameFloorplan: "두 기기에 이미 같은 평면도가 저장되어 있습니다.",
+        thisFloorplan: "이 기기의 평면도 사용",
+        otherFloorplan: (name) => `${name}의 평면도 사용`,
+        noFloorplan: "저장된 평면도 없음",
+        floorplanSummary: (bytes) => `${Math.max(1, Math.round(bytes / 1024))}KB 저장됨`,
+        radarPositionKept: "각 기기의 레이더 위치는 그대로 유지됩니다",
+        radarPositionHelp: "이미지와 방 구조만 공유합니다. 구역 설정과 각 기기의 레이더 위치는 덮어쓰지 않습니다.",
+        fallbackTitle: "자동 대체 기기를 준비할까요?",
+        fallbackDescription: "현재 연결된 시스템의 조정 역할을 맡을 수 있는 기기가 이 기기 한 대뿐입니다. 위치 보정 후 새 기기도 역할을 이어받을 수 있도록 허용하는 것을 권장합니다.",
+        fallbackAccept: "자동 대체 준비",
+        fallbackDecline: "허용하지 않고 계속",
+        fallbackDeclineTitle: "자동 대체 없이 진행하는 것은 권장하지 않습니다",
+        fallbackDeclineDescription: "한 기기에 여러 핵심 역할이 집중됩니다. 전원이나 네트워크에 문제가 생기면 공유 감지, 좌표 융합, 설정 관리가 중단될 수 있습니다. 자원 부담이 계속 커지면 기기가 불안정해지거나 재시작할 수도 있습니다.",
+        fallbackGoBack: "자동 대체 준비하기",
+        fallbackContinueWithout: "위험을 확인하고 계속",
+        applying: "적용 중...",
+        apply: "이 평면도 사용",
+        completeTitle: "기기 연결 완료",
+        completeDescription: "공유 평면도 전달을 완료했습니다. 이 기기에서 두 센서의 위치를 맞춘 뒤 함께 사용할 수 있습니다.",
+        startCalibration: "위치 맞추기 시작",
+        later: "나중에 하기",
+        manageExisting: "상대 기기의 기존 연결 확인",
+        done: "완료",
+        error: (code) => {
+          if (code === "peer_manages_existing_devices") {
+            return "선택한 기기에 이미 연결된 다른 기기가 있습니다. 해당 기기에서 기존 연결을 먼저 확인하세요.";
+          }
+          if (code === "floorplan_required") {
+            return "두 기기 중 한 곳에 평면도를 먼저 만든 뒤 연결하세요.";
+          }
+          if (code === "site_conflict") {
+            return "선택한 기기에 이전 연결 정보가 남아 있습니다. 해당 기기에서 기존 연결을 확인하세요.";
+          }
+          if (code === "site_configuration_owner_required") {
+            return "새 기기 연결은 설정 원본 기기에서 시작해야 합니다.";
+          }
+          if (code === "owner_mismatch") {
+            return "확인한 설정 원본과 실제 설정 원본이 다릅니다. 설정 원본 기기에서 연결을 다시 시작하세요.";
+          }
+          if (code === "local_member_missing") {
+            return "새 기기가 현재 Site의 연결 목록에 없습니다. 설정 원본 기기에서 연결을 다시 확인하세요.";
+          }
+          if (code === "site_mismatch") {
+            return "새 기기에 다른 Site 정보가 남아 있습니다. 해당 기기에서 기존 연결을 확인하세요.";
+          }
+          if (code === "revision_conflict") {
+            return "두 기기의 공유 설정이 서로 달라 자동으로 합칠 수 없습니다. 연결된 기기의 설정 상태를 확인하세요.";
+          }
+          if (code === "pairing_confirmation_uncertain") {
+            return "보안 연결 응답을 확인하지 못했습니다. 저장된 연결 정보는 지우지 않았으므로 두 기기를 켜 둔 뒤 다시 시도하세요.";
+          }
+          if (code === "site_state_invalid") {
+            return "선택한 기기의 연결 정보가 완전하지 않습니다. 기기를 다시 시작한 뒤 연결을 다시 시도하세요.";
+          }
+          if (code === "peer_rejected") {
+            return "상대 기기에서 연결 요청을 거절했습니다.";
+          }
+          if (code === "site_owner_not_local") {
+            return "이 기기에서 공유할 평면도 원본을 확정하지 못했습니다. 기존 연결 상태를 확인한 뒤 다시 시도하세요.";
+          }
+          if (code === "site_configuration_sync_timeout") {
+            return "상대 기기의 평면도 동기화가 제한 시간 안에 끝나지 않았습니다. 두 기기의 네트워크 연결을 확인한 뒤 다시 시도하세요.";
+          }
+          if (code === "site_configuration_continuity_unavailable") {
+            return "두 기기의 연결 정보 동기화가 끝나지 않았습니다. 두 기기를 켜 둔 뒤 다시 시도하세요.";
+          }
+          if (code === "site_configuration_conflict") {
+            return "두 기기의 공유 연결 정보가 서로 다릅니다. 기존 연결 상태를 확인한 뒤 다시 시도하세요.";
+          }
+          if (code === "site_reconciliation_pending") {
+            return "이 기기의 이전 연결 정보를 정리하고 있습니다. 잠시 후 다시 시도하세요.";
+          }
+          if (code === "site_reconciliation_failed") {
+            return "이 기기의 이전 연결 정보를 저장하지 못했습니다. 기기를 재시작한 뒤 다시 시도하세요.";
+          }
+          if (code === "calibration_rollback_incomplete") {
+            return "보정을 중단했지만 한 기기에서 연결이 비활성화되었는지 확인하지 못했습니다. 다시 시도하기 전에 두 기기의 연결 상태를 확인하세요.";
+          }
+          if (code === "group_full") {
+            return "이 공간에는 이미 함께 사용할 수 있는 감지 기기 7대가 연결되어 있습니다.";
+          }
+          return "기기 연결을 완료하지 못했습니다. 잠시 후 다시 시도하세요.";
+        }
+      },
+      calibration: {
+        start: "보정 후 활성화",
+        preparing: "위치 맞추기 준비 중",
+        recalibrate: "다시 보정",
+        title: "기기 위치 맞추기",
+        description: (participantId) => `이 기기와 ${participantId}에서 같은 사람을 캡처한 뒤 보정안을 확인하고 활성화합니다.`,
+        firstPosition: "첫 번째 위치",
+        firstPositionHelp: "두 레이더가 모두 볼 수 있는 곳에 한 사람만 멈춰 선 뒤 한 번 캡처하세요.",
+        secondPosition: "선택: 두 번째 위치",
+        secondPositionHelp: "각도까지 보정하려면 옆으로 0.8m 이상 이동한 뒤 한 번 더 캡처하세요.",
+        ready: "보정안 준비됨",
+        readyHelp: "아래 보정값을 확인하세요. 두 기기에 저장된 레이더 배치 자체는 변경하지 않습니다.",
+        steps: {
+          check: "감지 확인",
+          first: "첫 위치",
+          second: "두 번째 위치",
+          review: "확인 및 활성화"
+        },
+        views: {
+          together: "함께 보기",
+          reference: "이 기기",
+          peer: "다른 기기"
+        },
+        thisDevice: "이 기기",
+        placementRequiredTitle: "레이더 배치가 필요합니다",
+        placementRequiredDescription: (deviceNames) =>
+          `다음 기기에 저장된 레이더 위치가 없습니다: ${deviceNames}. 평면도에 위치가 보이더라도 아직 저장되지 않았을 수 있습니다. 해당 기기에서 레이더를 조금 움직인 뒤 저장하세요.`,
+        placementCheckFailed:
+          "기기에 저장된 레이더 위치를 확인하지 못했습니다. 두 기기의 연결 상태를 확인한 뒤 다시 시도하세요.",
+        openRadarPlacement: (deviceName) => `${deviceName}에서 레이더 배치`,
+        liveStatus: "실시간 감지",
+        liveStatusHelp: "두 색의 점이 같은 사람을 가리키는지 확인하세요.",
+        deviceOnline: "온라인",
+        deviceOffline: "응답 없음",
+        targetCount: (count) => `감지 대상 ${count}명`,
+        targetSeparation: (millimeters) => `두 감지 위치 차이 ${millimeters}mm`,
+        waitingForTargets: "두 기기에서 한 사람씩 감지되면 캡처할 수 있습니다.",
+        mapAria: "두 기기의 레이더 위치와 감지 대상을 겹쳐 보여주는 보정 평면도",
+        minimumBaseline: "이 원 밖으로 이동",
+        captureFirst: "스냅샷 캡처",
+        captureSecond: "두 번째 스냅샷 캡처",
+        working: "처리 중...",
+        samples: "스냅샷",
+        translation: "위치 보정",
+        rotation: "각도 보정",
+        residual: "잔여 오차",
+        room: "함께 감지할 방",
+        reset: "처음부터",
+        approveAndActivate: "승인하고 활성화",
+        activated: "두 기기의 보정과 활성화를 완료했습니다.",
+        error: (code) => {
+          if (code === "calibration_pose_missing") {
+            return "저장된 레이더 위치가 없는 기기가 있습니다. 보정 창을 닫고 해당 기기에서 레이더 위치를 저장하세요.";
+          }
+          if (code === "calibration_pose_contract_invalid") {
+            return "보정에 사용된 위치 버전이 서로 맞지 않습니다. 보정 창을 닫았다가 다시 여세요.";
+          }
+          if (code === "calibration_scale_invalid") {
+            return "저장된 평면도 축척 정보가 완전하지 않거나 서로 맞지 않아 위치를 보정할 수 없습니다.";
+          }
+          if (code === "calibration_floorplan_mismatch") {
+            return "두 기기가 같은 버전의 평면도를 사용하지 않아 위치를 보정할 수 없습니다.";
+          }
+          if (code === "calibration_membership_inconsistent") {
+            return "두 기기가 현재 연결의 활성 상태를 서로 다르게 알고 있습니다. 연결 상태를 확인한 뒤 다시 보정하세요.";
+          }
+          if (code === "group_full") {
+            return "이 공간에는 이미 함께 사용할 수 있는 감지 기기 7대가 연결되어 있습니다.";
+          }
+          if (code === "site_leave_owner_mismatch") {
+            return "선택한 기기가 더 이상 이 Site의 설정 원본이 아닙니다. 연결 목록을 새로 확인한 뒤 다시 시도하세요.";
+          }
+          if (code === "site_leave_owner_still_lists_node") {
+            return "설정 원본 기기에서 이 기기 제거를 완료하지 못했습니다. 두 기기를 온라인으로 둔 뒤 다시 시도하세요.";
+          }
+          if (code === "calibration_rollback_incomplete") {
+            return "위치 보정을 중단했지만 이전 좌표로 완전히 복원하지 못했습니다. 두 기기의 연결 상태를 확인하세요.";
+          }
+          return `기기 위치 보정 실패: ${code}`;
+        }
+      },
+      error: (code) => {
+        if (code === "site_configuration_owner_required") {
+          return "새 기기 연결은 설정 원본 기기에서 시작해야 합니다.";
+        }
+        if (code === "site_conflict") {
+          return "이 기기가 아직 다른 연결을 맡고 있습니다. 연결된 기기를 먼저 확인하세요.";
+        }
+        if (code === "pairing_confirmation_uncertain") {
+          return "상대 기기의 보안 연결 완료 여부를 확인하지 못했습니다. 연결 기록은 유지했습니다.";
+        }
+        if (code === "owner_mismatch") return "설정 원본 기기가 변경되었습니다. 현재 설정 원본에서 다시 시도하세요.";
+        if (code === "local_member_missing") return "이 기기가 Site 연결 목록에 없어 공유 설정을 받을 수 없습니다.";
+        if (code === "site_mismatch") return "두 기기가 서로 다른 Site에 속해 있습니다.";
+        if (code === "floorplan_manifest_invalid") {
+          return "연결된 기기와 공유하기 전에 평면도를 완전히 저장하세요.";
+        }
+        if (code === "owner_offline") return "평면도를 제공하는 기기가 응답하지 않습니다.";
+        if (code === "peer_not_ready") return "상대 기기에서 아직 연결을 허용하지 않았습니다.";
+        if (code === "group_full") return "이 공간에는 이미 함께 사용할 수 있는 감지 기기 7대가 연결되어 있습니다.";
+        if (code === "direct_pair_not_found") return "이 항목은 직접 연결 기록이 아니라 공유 구성원입니다. 설정 원본 기기에서 다시 제거하세요.";
+        if (code === "site_member_removal_owner_changed") return "기기 제거 중 설정 원본 기기가 변경되었습니다. 현재 설정 원본 기기에서 제거를 계속하세요.";
+        if (code === "site_member_removal_superseded") return "기기 제거 중 공유 구성원 목록이 변경되었습니다. 현재 목록을 확인한 뒤 다시 시도하세요.";
+        if (code === "site_member_removal_replication_pending") return "연결 차단 정보가 아직 다른 기기에 충분히 전달되지 않았습니다. 잠시 후 다시 시도하거나 목록에서 강제로 제거할 수 있습니다.";
+        if (code === "site_member_removal_site_mismatch") return "선택한 주소의 기기가 예상한 공유 연결에 속해 있지 않아 초기화를 중단했습니다.";
+        if (code === "site_member_not_canonical") return "선택한 기기가 현재 공유 구성원 목록에 없습니다. 목록을 새로 확인하세요.";
+        if (code === "site_member_revoke_incomplete") return "대상 기기의 연결 차단 상태를 저장하지 못했습니다. 다시 시도하세요.";
+        if (code === "site_member_reset_unconfirmed") return "대상 기기가 단독 센서로 전환되었는지 확인하지 못했습니다. 온라인 상태를 확인한 뒤 다시 시도하거나 목록에서 강제로 제거할 수 있습니다.";
+        return "기기 연결을 완료하지 못했습니다. 잠시 후 다시 시도하세요.";
+      }
+    },
     changing: "변경 중...",
     haMode: "HA 모드로",
     edgeMode: "Edge 모드로",
@@ -311,7 +726,12 @@ export const ko: Messages = {
     staticRadarApplying: "적용 중",
     staticRadarApplyFailed: "보조센서 감도를 적용하지 못했습니다.",
     staticRadarLoadFailed: "보조센서 계측 정보를 불러오지 못했습니다.",
-    exitPoint: "퇴실지점",
+    staticRadarFactoryReset: "공장 감도로 초기화",
+    staticRadarFactoryResetTitle: "LD2410C 설정 초기화",
+    staticRadarFactoryResetDescription: "G0~G8 감도뿐 아니라 최대 감지 거리, 해제 시간, 거리 해상도와 Bluetooth를 포함한 LD2410C의 전체 설정이 공장 기본값으로 돌아갑니다.",
+    staticRadarFactoryResetConfirm: "초기화",
+    staticRadarFactoryResetting: "초기화 중",
+    staticRadarFactoryResetFailed: "LD2410C 공장 초기화를 완료하지 못했습니다.",
     zonePanelTitle: "구역",
     zonesLoading: "구역 데이터를 불러오는 중입니다.",
     zonesEmpty: "아직 설정된 구역이 없습니다. 구역을 추가해 감지, 제외, 퇴실 구역을 만들어보세요.",
@@ -323,11 +743,19 @@ export const ko: Messages = {
     zoneNamePlaceholder: "예: 침대, 책상, 커튼",
     deleteZone: "구역 삭제",
     selectOrAddZone: "구역을 추가하거나 선택하세요.",
+    zoneTypePlaceholder: "구역 종류 선택",
+    zoneValidationTitle: "구역 설정 확인",
+    zoneValidationInstruction: "탐지, 제외, 둔감, 퇴실, 비활성화 중 하나를 선택한 후 다시 저장하세요.",
+    zoneValidationItem: (name) => `${name}: 구역 종류가 선택되지 않았습니다.`,
+    ownerRequiredTitle: "설정 원본 기기에서 편집",
+    ownerRequiredDescription: "탐지 구역은 연결된 기기가 함께 사용하므로 설정 원본 기기에서만 편집할 수 있습니다.",
+    ownerUnavailable: "설정 원본 기기가 현재 오프라인입니다.",
+    openOwnerDevice: "설정 원본으로 이동",
     typeLabels: {
       detection: "탐지",
-      filter: "필터",
+      filter: "제외",
       reduced: "둔감",
-      disabled: "제외",
+      disabled: "비활성화",
       exit: "퇴실"
     },
     calibrationPanelTitle: "오탐 보정",
@@ -363,6 +791,7 @@ export const ko: Messages = {
     calibrationPirActiveCannotStart: "PIR 움직임이 감지되어 시작할 수 없습니다.",
     calibrationMaxZonesReached: (max) => `오탐 보정 구역은 최대 ${max}개까지 저장할 수 있습니다.`,
     calibrationSavedCount: (count, max) => `저장된 보정 구역 ${count}/${max}`,
+    calibrationStaticRadarOnlyAvailable: "공간 보정 구역은 가득 찼지만 LD2410C 보조 센서 보정은 가능합니다.",
     geometryMessages: {
       polygonMaxPoints: (maxPoints) => `꼭짓점은 최대 ${maxPoints}개까지 추가할 수 있습니다.`,
       polygonMinPoints: (minPoints) => `다각형은 꼭짓점 ${minPoints}개 이상이 필요합니다.`,
@@ -371,6 +800,16 @@ export const ko: Messages = {
       zoneMinPoints: (minPoints) => `다각형은 꼭짓점 ${minPoints}개 이상이 필요합니다.`
     },
     calibrationStatus: {
+      staticRadarStarted: "LD2410C 보조 센서 데이터 수집을 시작했습니다.",
+      staticRadarFailed: "LD2410C 보조 센서 보정을 완료하지 못했습니다.",
+      staticRadarTargetAppeared: "보조 센서 단독 보정 중 LD2450 타깃이 나타나 보정을 취소했습니다.",
+      staticRadarAdjusted: (gate, fromSensitivity, toSensitivity) =>
+        `LD2410C G${gate} 감도 ${fromSensitivity} -> ${toSensitivity}`,
+      staticRadarStillDetected: "자동 보정 후에도 LD2410C 감지가 계속됩니다. 설치 위치 또는 수동 감도를 확인하세요.",
+      staticRadarSamples: (count) => `LD2410C 샘플: ${count}`,
+      completed: (zoneCount, gateCount) =>
+        `보정 구역 ${zoneCount}개 생성, LD2410C 게이트 ${gateCount}개 조정을 완료했습니다.`,
+      noPersistentFalsePositive: "지속적인 오탐이 확인되지 않아 변경하지 않았습니다.",
       startRequested: "보정 시작 요청",
       pirPassed: "PIR 조건 통과",
       sampleCollectionStarted: "타겟 샘플 수집 시작",
@@ -412,6 +851,7 @@ export const ko: Messages = {
       runningDescription: "보정 데이터를 수집하고 있습니다.",
       doneDescription: "보정 작업이 종료되었습니다.",
       createdZones: (count) => `생성된 보정 구역: ${count}개`,
+      adjustedStaticRadarGates: (count) => `조정된 LD2410C 게이트: ${count}개`,
       workItems: "작업 내역",
       errorLog: "오류 로그",
       debugLog: "디버그 로그",
@@ -577,21 +1017,29 @@ export const ko: Messages = {
     apiKeyHidden: "API 키를 숨겼습니다.",
     apiKeyDemoTitle: "데모에서는 API 키를 확인할 수 없습니다.",
     apiKeyDemoMessage: "API 키 확인은 실제 장치에서만 사용할 수 있습니다.",
-    apiKeyAutoHide: (seconds) => `${seconds}초 후 자동으로 숨겨집니다.`,
+    apiKeyAutoHide: (seconds) => `${seconds}초 후 창이 자동으로 닫힙니다.`,
     apiKeyLoadFailed: "API 키를 불러오지 못했습니다.",
     apiKeyNotSet: "저장된 API 키가 없습니다. API 키 생성 또는 재발급이 필요합니다.",
     apiKeyCopied: "API 키를 복사했습니다.",
     apiKeyCopyFailed: "복사하지 못했습니다. 다시 확인해 주세요.",
     apiKeyReveal: "API 키 확인",
     apiKeyRegenerate: "API 키 재발급",
+    apiKeyDescription: "Home Assistant 연결에 사용하는 키입니다. 외부에 노출되지 않도록 주의하세요.",
+    apiKeyRegenerateConfirmTitle: "API 키를 재발급할까요?",
+    apiKeyRegenerateConfirmDescription: "기존 Home Assistant 연결이 끊어집니다. 다시 연결하려면 새 키를 Home Assistant에 입력해야 합니다.",
+    apiKeyRegenerateConfirm: "재발급",
+    apiKeyRegenerating: "재발급 중...",
+    apiKeyRegeneratedTitle: "새 API 키가 발급되었습니다.",
+    apiKeyRegenerateFailed: "API 키를 재발급하지 못했습니다.",
     restoreDemoTitle: "데모에서는 복원할 수 없습니다.",
     restoreDemoOpenMessage: "데모 페이지에서는 실제 장치 데이터를 덮어쓰지 않도록 복원 작업을 막아두었습니다.",
     restoreDemoFileMessage: "백업 검증과 복원 API 호출은 실제 장치에서만 사용할 수 있습니다.",
     restoreDemoConfirmMessage: "선택한 백업 데이터는 실제 장치에서만 가져올 수 있습니다.",
     firmwareUpdateTitle: "펌웨어 업데이트",
-    firmwareUpdateDescription: "장치 펌웨어를 업데이트합니다. 자동 업데이트는 배포 방식 확정 후 연결합니다.",
+    firmwareUpdateDescription: "서명된 NAMO 펌웨어 패키지를 확인한 뒤 장치에 설치합니다.",
     firmwareUpdateButton: "펌웨어 업데이트",
-    firmwareManualDescription: "ESPHome에서 생성한 펌웨어 파일을 장치에 직접 업로드합니다.",
+    firmwareManualDescription: "NAMO 펌웨어 패키지를 기기에 직접 업로드합니다.",
+    firmwareTarget: "설치 대상",
     firmwareUploading: "업로드 중",
     firmwareVerifying: "응답 확인 중",
     firmwareUpload: "업로드",
@@ -599,6 +1047,9 @@ export const ko: Messages = {
     firmwareUploadingTitle: "펌웨어를 업로드하는 중입니다",
     firmwareVerifyingTitle: "장치 응답을 확인하는 중입니다",
     firmwareSuccessTitle: "업데이트 완료",
+    firmwareCompletionDescription: "새 펌웨어가 적용되었고 기기가 정상적으로 다시 응답했습니다.",
+    firmwarePreviousVersion: "이전 펌웨어",
+    firmwareInstalledVersion: "설치된 펌웨어",
     firmwareVerifyFailedTitle: "재응답 확인 실패",
     firmwareFailedTitle: "업데이트 실패",
     firmwareReadyTitle: "업로드 준비됨",
@@ -610,8 +1061,8 @@ export const ko: Messages = {
     firmwareVerifyFailedHint: "업데이트가 진행되었을 수 있습니다. 장치가 정상 동작하면 수동으로 새로고침하세요.",
     firmwareFailedHint: "파일과 OTA 예비 공간을 확인한 뒤 다시 시도하세요.",
     firmwareReadyHint: (fileText) => `${fileText} · 업로드를 누르면 장치 업데이트가 시작됩니다.`,
-    firmwareReadyWithOta: (otaSpace) => `업로드할 .bin 파일을 선택하세요. OTA 예비 공간은 ${otaSpace}입니다.`,
-    firmwareReadyWithoutOta: "업로드할 .bin 파일을 선택하세요. OTA 예비 공간은 시스템 정보 조회 후 확인할 수 있습니다.",
+    firmwareReadyWithOta: (otaSpace) => `업로드할 NAMO 펌웨어 파일을 선택하세요. OTA 예비 공간은 ${otaSpace}입니다.`,
+    firmwareReadyWithoutOta: "업로드할 NAMO 펌웨어 파일을 선택하세요. OTA 예비 공간은 시스템 정보 조회 후 확인할 수 있습니다.",
     firmwareRebooting: "장치가 재부팅 중입니다.",
     firmwareWaitingResponse: "장치 응답을 기다리는 중입니다.",
     firmwareCheckingApplied: "새 펌웨어 적용 여부를 확인하는 중입니다.",
@@ -622,13 +1073,25 @@ export const ko: Messages = {
     firmwareDemoTitle: "데모에서는 업데이트할 수 없습니다.",
     firmwareDemoOpenMessage: "펌웨어 업로드는 장치를 재부팅할 수 있는 작업이라 데모에서는 API 호출을 모두 막아두었습니다.",
     firmwareDemoFileMessage: "선택한 펌웨어 파일은 업로드되지 않습니다. 실제 장치에서만 업데이트를 진행할 수 있습니다.",
-    firmwareBinOnly: "ESPHome에서 생성한 .bin 펌웨어 파일만 업로드할 수 있습니다.",
+    firmwareBinOnly: "NAMO 서명 펌웨어(.namo-ota) 또는 개발용 .bin 파일만 업로드할 수 있습니다.",
+    firmwareImageInvalid: "ESP32용 NAMO 펌웨어 정보를 확인할 수 없는 파일입니다.",
     firmwareFileTooLarge: (fileSize, otaSpace) => `파일이 OTA 예비 공간보다 큽니다. ${fileSize} / ${otaSpace}`,
     firmwareApiNotReady: "펌웨어 업로드 API가 준비되지 않았습니다.",
     firmwareFileReady: "파일을 확인했습니다. 업로드 버튼을 누르면 업데이트를 시작합니다.",
     firmwareUploadingMessage: "펌웨어를 업로드하는 중입니다. 업데이트 중에는 전원을 끄지 마세요.",
     firmwareUploadResponseLost: "업로드 응답이 끊겼습니다. 장치 응답을 확인합니다.",
+    firmwareUploadInterrupted: "업로드 또는 재부팅 확인이 중단되었습니다. 펌웨어 파일을 다시 선택해 시도하세요.",
     firmwareUpdateFailedMessage: "펌웨어 업데이트에 실패했습니다.",
+    firmwareUpdatedVersion: (before, after) => `펌웨어 업데이트 완료: ${before} → ${after}`,
+    firmwareRebuiltVersion: (version) => `펌웨어 ${version}의 새 빌드를 다시 설치했습니다.`,
+    firmwareReinstalledVersion: (version) => `펌웨어 ${version}을 다시 설치했습니다.`,
+    alphaFirmwareAllow: "알파 펌웨어 설치 허용",
+    alphaFirmwareArmed: (seconds) => `알파 펌웨어 1회 설치 허용됨 · ${Math.ceil(seconds / 60)}분 이내`,
+    alphaFirmwareUnavailable: "이 펌웨어에서는 서명된 알파 설치 허용을 사용할 수 없습니다.",
+    alphaFirmwareConfirmTitle: "알파 펌웨어를 허용할까요?",
+    alphaFirmwareConfirmDescription: "알파 펌웨어는 검증이 덜 된 개발 빌드입니다. 설치 후 기능 불안정, 설정 손상 또는 반복 재부팅이 발생할 수 있습니다. 다음 10분 동안 이 기기에서 알파 펌웨어 1회 설치를 허용합니다.",
+    alphaFirmwareConfirm: "10분 동안 1회 허용",
+    alphaFirmwareUpdateFailed: "알파 펌웨어 설치 허용을 변경하지 못했습니다.",
     dangerZoneTitle: "위험 구역",
     dangerZoneDescription: "장치 연결, 보안 키, 저장된 설정을 되돌리는 작업입니다. 필요한 경우 먼저 백업을 만들어 두세요.",
     rebootButton: "재시작",
@@ -655,9 +1118,12 @@ export const ko: Messages = {
     resetScopeTitle: "초기화 범위",
     resetScopeDescription: "초기화를 누른 뒤 아래 항목을 선택하고 확인 버튼을 누르면 최종 확인 팝업을 표시합니다.",
     resetItemsTitle: "초기화할 항목",
-    resetSettingsData: "설정 데이터: API 키, software/hardware zone, calibration/filter zone, 평면도, 가구 배치, 고급 설정",
-    resetWifiData: "Wi-Fi 초기화: 저장된 Wi-Fi 정보를 삭제하고 설정 AP로 돌아가기",
-    resetStatsData: "통계/히트맵 데이터",
+    resetSelectAll: "모두 선택",
+    resetSpaceData: "평면도 이미지와 방 구조, 가구 배치, 레이더 위치",
+    resetDetectionData: "사용자 감지 영역, 오탐 보정 영역, 감지 제외·둔감 설정, 환경 보정과 일반 설정",
+    resetConnectionsData: "연결된 다른 기기 목록, 기기 사이의 보안 연결, 위치 맞춤과 융합 설정, 자동 대체 설정, 공유 중인 공간 정보",
+    resetWifiData: "저장된 Wi-Fi 정보",
+    resetStatsData: "통계 기록",
     resetSelected: "선택한 항목 초기화",
     resetIdleTitle: "초기화 대기 중",
     resetIdleDescription: "왼쪽의 초기화 버튼을 누르면 초기화 범위를 선택할 수 있습니다.",
@@ -765,7 +1231,7 @@ export const ko: Messages = {
       estimatedPixelBasis: (widthPx, heightPx) => `${widthPx} x ${heightPx}px 기준`,
       width: "가로",
       height: "세로",
-      noCandidates: "아직 생성된 방 후보가 없습니다.",
+      noCandidates: "아직 생성된 방이 없습니다.",
       status: {
         candidate: "후보",
         confirmed: "확정",
@@ -805,7 +1271,8 @@ export const ko: Messages = {
       title: "편집 도구",
       split: "방 나누기",
       merge: "방 합치기",
-      snap: "벽에 맞추기"
+      snap: "벽에 맞추기",
+      door: "문 추가"
     },
     radarStep: {
       title: "레이더 배치",
@@ -818,10 +1285,14 @@ export const ko: Messages = {
       zoomInAria: "레이더맵 확대",
       scaleHint: "자동 스케일 기준에서 95~105%까지만 조정됩니다.",
       nextWork: "다음 작업: 평면도 위에서 레이더 위치와 방향을 지정합니다.",
-      occlusionEditOn: "차폐 변 편집",
-      occlusionEditOff: "차폐 변 편집 끄기",
-      occlusionActiveHint: "평면도 위 방 경계선을 클릭하면 해당 변의 레이더 차폐를 무시합니다.",
-      occlusionIgnored: (count) => `무시한 차폐 변 ${count}개`,
+      advancedOptions: "고급 옵션",
+      occlusionTitle: "레이더 차폐 예외",
+      occlusionDescription: "실제 감지가 벽을 통과하는 구간만 차폐 대상에서 제외합니다.",
+      occlusionEditOn: "차폐 예외 편집",
+      occlusionEditOff: "차폐 예외 편집 끝내기",
+      occlusionActiveHint: "평면도의 물리 벽을 클릭해 차폐 적용 여부를 변경하세요.",
+      occlusionIgnored: (count) => `차폐 예외 ${count}개`,
+      occlusionReset: "예외 모두 초기화",
       previousStep: "이전 단계",
       roomsScale: "방 이름/스케일",
       nextStep: "다음 단계",
@@ -1042,6 +1513,44 @@ export const ko: Messages = {
       clearImage: "이미지 지우기",
       converting: "변환 중",
       selectImage: "이미지 선택",
+      drawFloorplan: "직접 그리기",
+      drawFloorplanHint: "전체 외곽선을 그린 다음 내부 벽으로 방을 나눕니다.",
+      manualFloorplanName: "직접 그린 평면도",
+      manualOutlineRequired: "계속하려면 전체 외곽선을 완성하세요.",
+      manualRoomRequired: "레이더를 배치하기 전에 방을 하나 이상 추가하세요.",
+      manualOutlineTitle: "집 전체 외곽선 그리기",
+      manualOutlineHint: "집 전체의 바깥 모서리를 순서대로 찍으세요. 점은 0.5m 격자와 기존 모서리 선에 맞춰지고 실제 길이는 0.1m 단위로 표시됩니다.",
+      manualOutlineCancelled: "작성 중이던 외곽선을 취소했습니다. 준비되면 외곽선 그리기를 다시 시작하세요.",
+      manualStartOutline: "외곽선 다시 그리기",
+      manualOutlineNeedPoints: "집 전체의 바깥 모서리를 3개 이상 찍으세요.",
+      manualOutlineReady: "마지막으로 닫히는 변까지 확인한 뒤 완료를 누르세요. 방은 다음 단계에서 별도로 추가합니다.",
+      manualOutlineInvalid: "외곽선이 서로 교차하거나 같은 모서리를 반복할 수 없습니다. 점을 조정한 뒤 완료하세요.",
+      manualRoomsTitle: "외곽선 안에 방 추가하기",
+      manualRoomsHint: "집 전체 외곽선이 준비되었습니다. 외곽선 안에 각 방을 별도의 다각형으로 추가하세요.",
+      manualRoomsReady: (count) => `방 ${count}개를 추가했습니다. 방을 더 추가하거나 레이더 배치로 진행하세요.`,
+      manualAddRoom: "방 추가",
+      manualEditOutline: "외곽선 편집",
+      manualOutlineEditTitle: "외곽선 편집",
+      manualOutlineEditHint: "모서리를 끌어 옮기고, 변을 눌러 모서리를 추가하거나 모서리를 두 번 눌러 삭제할 수 있습니다.",
+      manualOutlineEditReady: "외곽선과 모든 방의 위치가 정상입니다. 완료를 눌러 변경을 적용하세요.",
+      manualOutlineEditInvalid: "모든 방이 교차 없는 외곽선 안에 들어오도록 조정한 뒤 완료하세요.",
+      manualRoomInvalid: "방이 외곽선 안에 들어오는지, 방의 변이 서로 교차하지 않는지 확인하세요.",
+      manualFloorplanLocked: "저장된 도면은 수정할 수 없습니다. 외곽선이나 방을 바꾸려면 이 평면도를 삭제하고 다시 그리세요.",
+      manualDoorsTitle: "문 목록",
+      manualDoorType: "문 종류",
+      manualAddDoor: "문 추가",
+      manualHingedDoor: "여닫이문",
+      manualSlidingDoor: "미닫이문",
+      manualDoorPlacementTitle: "벽에 문 배치하기",
+      manualDoorPlacementHint: "커서를 벽 가까이 옮기면 문이 벽에 맞춰집니다. 문 본체를 끌어 같은 벽에서 이동하고 양끝을 끌어 길이를 조절하세요. 저장하면 해당 위치가 퇴실 지점으로 등록됩니다.",
+      manualDoorWallRequired: "벽에서 너무 먼 위치입니다. 문을 놓을 벽을 직접 누르세요.",
+      manualDoorWallTooShort: "선택한 벽은 이 문을 배치하기에 너무 짧습니다.",
+      manualDoorOverlap: "이 위치에는 이미 다른 문이 있습니다. 겹치지 않는 벽 위치를 선택하세요.",
+      manualNoDoors: "아직 추가된 문이 없습니다.",
+      manualDoorExitZoneLimit: "문을 퇴실 지점으로 등록할 공간이 부족합니다. 소프트웨어 구역은 퇴실 지점을 포함해 최대 6개까지 사용할 수 있습니다.",
+      manualDoorExitSaveUnavailable: "문의 퇴실 지점을 저장할 수 없습니다. 잠시 후 다시 시도하세요.",
+      manualDeleteDoor: "문 삭제",
+      manualPlaceDoorAria: "벽에 문 배치",
       statusPassed: "통과",
       statusCheckRequired: "확인 필요",
       statusWaiting: "대기",
@@ -1088,6 +1597,7 @@ export const ko: Messages = {
       mergeReady: "완료를 누르면 선택한 방 2개가 하나로 합쳐집니다.",
       manualNeedPoints: "평면도 위에 방 꼭짓점을 3개 이상 찍으세요.",
       manualReady: "완료를 누르면 새 방이 추가됩니다. 꼭짓점은 더 찍을 수 있습니다.",
+      manualInvalid: "다각형이 올바르게 닫히도록 점을 조정한 뒤 완료하세요.",
       defaultRoomName: (index) => `방 ${index}`,
       defaultRoomCandidateName: (index) => `방 후보 ${index}`,
       storedLoading: "로딩중입니다",
@@ -1105,29 +1615,40 @@ export const ko: Messages = {
       storedView: "보기",
       storedEdit: "편집",
       storedCreateNew: "새로 만들기",
+      storedReplace: "평면도 교체",
+      storedDelete: "평면도 삭제",
+      storedReplaceCancel: "교체 취소",
+      floorplanOwnerRequiredTitle: "설정 관리 기기에서 평면도를 변경하세요",
+      floorplanOwnerRequiredDescription: "연결된 NAMO 기기들이 함께 사용하는 평면도입니다. 설정 관리 기기로 이동하여 교체하거나 관리하세요.",
+      floorplanOpenOwner: "설정 관리 기기로 이동",
+      floorplanOwnerUnavailable: "설정 관리 기기의 주소를 확인할 수 없습니다. 해당 기기의 네트워크 연결을 확인하세요.",
+      floorplanDeleteConnectedTitle: "연결된 기기를 해제한 뒤 평면도를 삭제하세요",
+      floorplanDeleteConnectedDescription: "연결된 기기들은 평면도를 기준으로 좌표를 공유하고 융합합니다. 지금은 평면도를 교체할 수 있으며, 삭제하려면 먼저 다른 기기의 연동을 해제하세요.",
+      floorplanRadarRelocatedTitle: "레이더 위치를 다시 설정해야 하는 기기가 있습니다",
+      floorplanRadarRelocatedDescription: (count) => `새 좌표계 바깥에 있던 ${count}개 기기의 레이더를 평면도 중앙으로 옮겼습니다. 각 기기로 이동하여 레이더 위치를 다시 설정하세요.`,
+      floorplanRadarRelocatedDevice: (address) => `${address}에서 위치 설정`,
+      floorplanRadarRelocatedUnavailable: "기기가 오프라인이거나 주소를 확인할 수 없습니다.",
       storedSaving: "저장 중",
       storedSaveChanges: "변경사항 저장",
       storedSave: "저장",
       storedRoomEdit: "방 편집",
       storedRadarPosition: "레이더 위치 변경",
-      storedZoneEdit: "감지 구역 편집",
-      storedExitPointEdit: "퇴실지점 편집",
+      storedZoneEdit: "구역 설정",
       storedCalibrationEdit: "오탐 영역 편집",
       storedFurniture: "가구 배치",
       storedScaleRecalculated: "전체 크기와 방별 추정 치수를 다시 계산했습니다.",
       storedSaveInProgress: "ESP32에 평면도 설정을 저장하는 중입니다.",
       storedSaveDone: "평면도 설정을 저장했습니다.",
       storedSaveComplete: "저장 완료",
-      storedAddZoneUnavailable: "감지 구역을 추가할 수 없습니다.",
-      storedZoneAdded: "감지 구역을 추가했습니다.",
-      storedExitPointAdded: "퇴실지점을 추가했습니다.",
+      storedAddZoneUnavailable: "구역을 추가할 수 없습니다.",
+      storedZoneAdded: "구역을 추가했습니다.",
       storedZoneDeleted: "구역을 삭제했습니다.",
-      storedZoneRectified: "감지 구역을 사각형으로 정리했습니다.",
+      storedZoneRectified: "구역을 사각형으로 정리했습니다.",
       storedAddPointUnavailable: "꼭짓점을 추가할 수 없습니다.",
-      storedZonePointAdded: "감지 구역 꼭짓점을 추가했습니다.",
+      storedZonePointAdded: "구역 꼭짓점을 추가했습니다.",
       storedCalibrationUpdated: "오탐 영역을 수정했습니다.",
-      storedZoneUpdated: "감지 구역을 수정했습니다.",
-      storedZonePointDeleted: "감지 구역 꼭짓점을 삭제했습니다.",
+      storedZoneUpdated: "구역을 수정했습니다.",
+      storedZonePointDeleted: "구역 꼭짓점을 삭제했습니다.",
       storedFurnitureChanged: "가구 배치를 변경했습니다.",
       storedFurnitureAdded: "가구를 추가했습니다.",
       storedFurnitureRotated: "가구를 회전했습니다.",
@@ -1139,12 +1660,10 @@ export const ko: Messages = {
         sofa: "소파",
         tv_console: "TV장"
       })[id] ?? fallback,
-      storedZoneEditorTitle: (source) => source === "calibration" ? "오탐 영역 편집" : source === "exit" ? "퇴실지점 편집" : "감지 구역 편집",
+      storedZoneEditorTitle: (source) => source === "calibration" ? "오탐 영역 편집" : "구역 설정",
       storedZoneEditorDescription: "평면도 위의 구역을 드래그하거나 꼭짓점을 움직여 수정합니다. 감지 구역의 변을 더블클릭하면 꼭짓점이 추가됩니다.",
-      storedExitPointEditorDescription: "퇴실선을 드래그하거나 양 끝점을 움직여 실제 문 또는 이탈 경로에 맞춥니다.",
       storedAddZone: "구역 추가",
-      storedAddExitPoint: "퇴실지점 추가",
-      storedNoZones: (source) => source === "calibration" ? "등록된 오탐 영역이 없습니다." : source === "exit" ? "등록된 퇴실지점이 없습니다." : "등록된 감지 구역이 없습니다.",
+      storedNoZones: (source) => source === "calibration" ? "등록된 오탐 영역이 없습니다." : "등록된 구역이 없습니다.",
       storedZonePointCount: (count) => `${count}점 다각형`,
       storedExitLineShape: "퇴실선",
       storedRectShape: "사각형",
@@ -1152,7 +1671,7 @@ export const ko: Messages = {
       storedZoneNamePlaceholder: "예: 침대, 책상",
       storedDetection: "감지",
       storedFilter: "제외",
-      storedDisabled: "비활성",
+      storedDisabled: "비활성화",
       storedExit: "퇴실",
       storedConvertRect: "사각형으로 정리",
       storedDeletePoint: "선택 꼭짓점 삭제",

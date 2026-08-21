@@ -2,7 +2,7 @@ import type { FloorplanStorageDocument } from "../../core/floorplan/floorplan-st
 import type { WebDeviceConfig, WebZone } from "../types";
 
 type SaveTone = "idle" | "saving" | "ok" | "error";
-export type StoredFloorplanDirtyScope = "document" | "config" | "roomContext" | "radar" | "roomName" | "occlusion" | "objects";
+export type StoredFloorplanDirtyScope = "document" | "coordinateFrame" | "config" | "roomContext" | "radar" | "roomName" | "occlusion" | "objects" | "automationAreas";
 
 interface StoredFloorplanSnapshot {
   document: FloorplanStorageDocument | null;
@@ -174,7 +174,9 @@ export function createStoredFloorplanEditSession({
   function dirtyScopesForTool(tool: string): StoredFloorplanDirtyScope[] {
     if (tool === "zones" || tool === "exit" || tool === "calibration") return ["config"];
     if (tool === "radar") return ["radar", "roomContext"];
-    if (tool === "rooms" || tool === "scale") return ["document", "roomContext"];
+    if (tool === "automationAreas") return ["automationAreas"];
+    if (tool === "rooms") return ["document", "roomContext"];
+    if (tool === "scale") return ["document", "coordinateFrame", "roomContext"];
     return ["document"];
   }
 

@@ -8,7 +8,7 @@ namespace radar_api_server {
 
 namespace {
 
-void append_json_string(std::string &out, const char *value) {
+template<typename Output> void append_json_string(Output &out, const char *value) {
   out.push_back('"');
   const char *safe = value != nullptr ? value : "";
   for (const char *p = safe; *p != '\0'; ++p) {
@@ -27,15 +27,17 @@ void append_json_string(std::string &out, const char *value) {
   out.push_back('"');
 }
 
-void append_json_string(std::string &out, const std::string &value) {
+template<typename Output> void append_json_string(Output &out, const std::string &value) {
   append_json_string(out, value.c_str());
 }
 
-void append_float(std::string &out, const char *name, float value, const char *format) {
+template<typename Output>
+void append_float(Output &out, const char *name, float value,
+                  const char *format) {
   out += ",\"";
   out += name;
   out += "\":";
-  if (std::isnan(value)) {
+  if (!std::isfinite(value)) {
     out += "null";
     return;
   }
@@ -44,35 +46,25 @@ void append_float(std::string &out, const char *name, float value, const char *f
   out += value_buf;
 }
 
-bool zone_config_valid(const std::string &value, int zone_index) {
-  const std::string needle = std::string("\"id\":\"zone_") + std::to_string(zone_index) + "\"";
-  return !value.empty() && value != "__EMPTY__" && value.find(needle) != std::string::npos &&
-         value.find("\"points\"") != std::string::npos;
-}
-
-std::string json_string_value(const std::string &json, const char *key, const char *fallback) {
-  const std::string needle = std::string("\"") + key + "\":\"";
-  const size_t value_start = json.find(needle);
-  if (value_start == std::string::npos)
-    return fallback;
-
-  size_t cursor = value_start + needle.size();
-  bool escaped = false;
-  while (cursor < json.size()) {
-    const char current = json[cursor];
-    if (escaped) {
-      escaped = false;
-    } else if (current == '\\') {
-      escaped = true;
-    } else if (current == '"') {
-      return json.substr(value_start + needle.size(), cursor - (value_start + needle.size()));
-    }
-    cursor++;
+const char *zone_type_name(CachedZoneType type) {
+  switch (type) {
+    case CachedZoneType::DETECTION:
+      return "detection";
+    case CachedZoneType::FILTER:
+      return "filter";
+    case CachedZoneType::REDUCED:
+      return "reduced";
+    case CachedZoneType::DISABLED:
+      return "disabled";
+    case CachedZoneType::EXIT:
+      return "exit";
+    default:
+      return "detection";
   }
-  return fallback;
 }
 
-void append_target_json(std::string &out, const StateJsonTarget &target) {
+template<typename Output>
+void append_target_json(Output &out, const StateJsonTarget &target) {
   out += "{\"id\":";
   append_json_string(out, target.id);
   out += ",\"name\":";
@@ -85,20 +77,37 @@ void append_target_json(std::string &out, const StateJsonTarget &target) {
   out += std::to_string(static_cast<int>(std::lround(target.y)));
   out += ",\"active\":";
   out += target.active ? "true" : "false";
+  out += ",\"fused\":";
+  out += target.fused ? "true" : "false";
+  out += ",\"sourceCount\":";
+  out += std::to_string(target.source_count);
   out += "}";
 }
 
-void append_zone_json(std::string &out, const DeviceConfigCache &config_cache, int zone_index, int target_count) {
-  const std::string zone_config = config_cache.software_zone_config(zone_index);
-  const std::string zone_id = std::string("zone_") + std::to_string(zone_index);
-  const std::string zone_name = json_string_value(zone_config, "name", "");
-  const std::string zone_type = json_string_value(zone_config, "type", "detection");
+template<typename Output>
+void append_local_target_json(Output &out, const StateJsonLocalTarget &target) {
+  out += "{\"x\":";
+  out += std::to_string(static_cast<int>(std::lround(target.x)));
+  out += ",\"y\":";
+  out += std::to_string(static_cast<int>(std::lround(target.y)));
+  out += ",\"active\":";
+  out += target.active ? "true" : "false";
+  out += "}";
+}
+
+template<typename Output>
+void append_zone_json(Output &out, const DeviceConfigCache &config_cache,
+                      int zone_index, int target_count) {
+  const auto &zone = config_cache.software_zone(zone_index);
+  char zone_id[16];
+  std::snprintf(zone_id, sizeof(zone_id), "zone_%d", zone_index);
+  const std::string &zone_name = config_cache.software_zone_name(zone_index);
   out += "{\"id\":";
   append_json_string(out, zone_id);
   out += ",\"name\":";
-  append_json_string(out, zone_name.empty() ? zone_id : zone_name);
+  append_json_string(out, zone_name.empty() ? zone_id : zone_name.c_str());
   out += ",\"type\":";
-  append_json_string(out, zone_type);
+  append_json_string(out, zone_type_name(zone.type));
   out += ",\"presence\":";
   out += target_count > 0 ? "true" : "false";
   out += ",\"targetCount\":";
@@ -106,11 +115,114 @@ void append_zone_json(std::string &out, const DeviceConfigCache &config_cache, i
   out += "}";
 }
 
-}  // namespace
+template<typename Output>
+void append_automation_zone_json(Output &out,
+                                 const DeviceConfigCache &config_cache,
+                                 int zone_index, int target_count,
+                                 bool available) {
+  const auto &zone = config_cache.software_zone(zone_index);
+  char zone_id[16];
+  std::snprintf(zone_id, sizeof(zone_id), "zone_%d", zone_index);
+  const std::string &zone_name = config_cache.software_zone_name(zone_index);
+  out += "{\"zoneId\":";
+  append_json_string(out, zone_id);
+  out += ",\"name\":";
+  append_json_string(out, zone_name.empty() ? zone_id : zone_name.c_str());
+  out += ",\"type\":";
+  append_json_string(out, zone_type_name(zone.type));
+  out += ",\"presence\":";
+  if (available)
+    out += target_count > 0 ? "true" : "false";
+  else
+    out += "null";
+  out += ",\"targetCount\":";
+  if (available)
+    out += std::to_string(target_count);
+  else
+    out += "null";
+  out += "}";
+}
 
-std::string build_device_state_json(const DeviceConfigCache &config_cache, const SoftwareZoneEvidence &zone_evidence,
-                                    const std::string &tracker_debug_json, const DeviceStateJsonInput &input) {
-  std::string out = "{\"version\":1,\"connected\":true,\"updatedAt\":";
+template<typename Output>
+void append_shared_area_json(Output &out, const SharedAutomationArea &area,
+                             int target_count, bool available) {
+  out += "{\"areaId\":";
+  append_json_string(out, area.area_id);
+  out += ",\"name\":";
+  append_json_string(out, area.name[0] != '\0' ? area.name : area.area_id);
+  out += ",\"presence\":";
+  if (available)
+    out += target_count > 0 ? "true" : "false";
+  else
+    out += "null";
+  out += ",\"targetCount\":";
+  if (available)
+    out += std::to_string(target_count);
+  else
+    out += "null";
+  out += "}";
+}
+
+int count_local_area_targets(const SharedAutomationArea &area,
+                             const DeviceStateJsonInput &input) {
+  int count = 0;
+  for (const auto &target : input.targets) {
+    if (target.active && area.contains(target.x, target.y))
+      ++count;
+  }
+  return count;
+}
+
+int count_automation_area_targets(const SharedAutomationArea &area,
+                                  const FusionAutomationSnapshot *automation) {
+  if (automation == nullptr)
+    return 0;
+  int count = 0;
+  for (const auto &target : automation->fusion.targets) {
+    if (target.valid && area.contains(target.x_mm, target.y_mm))
+      ++count;
+  }
+  return count;
+}
+
+template<typename Output, typename Counter>
+void append_shared_area_collection(Output &out,
+                                   const SharedAutomationAreaCache *cache,
+                                   bool source_available, Counter counter) {
+  const bool contract_available =
+      cache != nullptr && cache->configuration_valid();
+  out += ",\"floorplanId\":";
+  if (cache != nullptr && cache->floorplan_id()[0] != '\0')
+    append_json_string(out, cache->floorplan_id());
+  else
+    out += "null";
+  out += ",\"areasRevision\":";
+  out += std::to_string(cache != nullptr ? cache->revision() : 0);
+  out += ",\"areasAvailable\":";
+  out += contract_available && source_available ? "true" : "false";
+  out += ",\"areas\":[";
+  bool first = true;
+  if (cache != nullptr && contract_available) {
+    for (std::size_t index = 0; index < cache->size(); ++index) {
+      const auto &area = cache->area(index);
+      if (!area.occupied)
+        continue;
+      if (!first)
+        out += ",";
+      append_shared_area_json(out, area, counter(area), source_available);
+      first = false;
+    }
+  }
+  out += "]";
+}
+
+template<typename Output>
+void append_device_state_json(Output &out,
+                              const DeviceConfigCache &config_cache,
+                              const SoftwareZoneEvidence &zone_evidence,
+                              const char *tracker_debug_json,
+                              const DeviceStateJsonInput &input) {
+  out += "{\"version\":1,\"connected\":true,\"updatedAt\":";
   out += std::to_string(input.now_ms);
   out += ",\"pirMotion\":";
   out += input.pir_motion ? "true" : "false";
@@ -128,6 +240,158 @@ std::string build_device_state_json(const DeviceConfigCache &config_cache, const
   out += std::to_string(input.moving_target_count);
   out += ",\"stillTargetCount\":";
   out += std::to_string(input.still_target_count);
+  out += ",\"fusion\":{\"buildEnabled\":";
+  out += input.fusion_build_enabled ? "true" : "false";
+  out += ",\"authoritative\":";
+  out += input.fusion_authoritative ? "true" : "false";
+  out += ",\"state\":";
+  append_json_string(out, input.fusion_state);
+  const auto *automation = input.automation;
+  const bool automation_available =
+      automation != nullptr &&
+      ((automation->authoritative &&
+        automation->health == FusionAutomationHealth::HEALTHY) ||
+       (!automation->authoritative && automation->continuity_held &&
+        automation->health == FusionAutomationHealth::RECOVERING &&
+        FusionAutomationState::continuity_remaining_ms(*automation,
+                                                        input.now_ms) > 0));
+  if (automation != nullptr) {
+    out += ",\"source\":";
+    append_json_string(
+        out, fusion_automation_source_to_string(automation->source));
+    out += ",\"groupTerm\":";
+    out += std::to_string(automation->group_term);
+    out += ",\"sequence\":";
+    out += std::to_string(automation->sequence);
+    out += ",\"sourceSequence\":";
+    out += std::to_string(automation->source_sequence);
+  }
+  out += "}";
+  out += ",\"local\":{\"presence\":";
+  out += input.local_presence ? "true" : "false";
+  out += ",\"motion\":";
+  out += input.local_motion ? "true" : "false";
+  out += ",\"targetCount\":";
+  out += std::to_string(input.local_target_count);
+  out += ",\"targets\":[";
+  append_local_target_json(out, input.local_targets[0]);
+  out += ",";
+  append_local_target_json(out, input.local_targets[1]);
+  out += ",";
+  append_local_target_json(out, input.local_targets[2]);
+  out += "]";
+  out += "}";
+  out += ",\"automation\":{\"schemaVersion\":1,\"complete\":true,\"health\":";
+  append_json_string(
+      out, automation != nullptr
+               ? fusion_automation_health_to_string(automation->health)
+               : "disabled");
+  out += ",\"available\":";
+  out += automation_available ? "true" : "false";
+  out += ",\"continuityHeld\":";
+  out += automation != nullptr && automation->continuity_held ? "true"
+                                                               : "false";
+  out += ",\"holdAgeMs\":";
+  if (automation != nullptr && automation->continuity_held)
+    out += std::to_string(FusionAutomationState::continuity_age_ms(
+        *automation, input.now_ms));
+  else
+    out += "null";
+  out += ",\"holdRemainingMs\":";
+  if (automation != nullptr && automation->continuity_held)
+    out += std::to_string(FusionAutomationState::continuity_remaining_ms(
+        *automation, input.now_ms));
+  else
+    out += "null";
+  out += ",\"continuitySourceLeaderNodeId\":";
+  if (automation != nullptr && automation->continuity_held &&
+      automation->continuity_source_leader_node_id[0] != '\0')
+    append_json_string(out,
+                       automation->continuity_source_leader_node_id);
+  else
+    out += "null";
+  out += ",\"continuitySourceGroupTerm\":";
+  if (automation != nullptr && automation->continuity_held)
+    out += std::to_string(automation->continuity_source_group_term);
+  else
+    out += "null";
+  out += ",\"siteId\":";
+  if (automation != nullptr && automation->site_id[0] != '\0')
+    append_json_string(out, automation->site_id);
+  else
+    out += "null";
+  out += ",\"spaceId\":";
+  if (automation != nullptr && automation->space_id[0] != '\0')
+    append_json_string(out, automation->space_id);
+  else
+    out += "null";
+  out += ",\"groupId\":";
+  if (automation != nullptr && automation->group_id[0] != '\0')
+    append_json_string(out, automation->group_id);
+  else
+    out += "null";
+  out += ",\"leaderNodeId\":";
+  if (automation != nullptr && automation->leader_node_id[0] != '\0')
+    append_json_string(out, automation->leader_node_id);
+  else
+    out += "null";
+  out += ",\"bootId\":";
+  if (automation != nullptr && automation->boot_id[0] != '\0')
+    append_json_string(out, automation->boot_id);
+  else
+    out += "null";
+  out += ",\"source\":";
+  append_json_string(
+      out, automation != nullptr
+               ? fusion_automation_source_to_string(automation->source)
+               : "none");
+  out += ",\"groupTerm\":";
+  out += std::to_string(automation != nullptr ? automation->group_term : 0);
+  out += ",\"sequence\":";
+  out += std::to_string(automation != nullptr ? automation->sequence : 0);
+  out += ",\"sourceSequence\":";
+  out += std::to_string(
+      automation != nullptr ? automation->source_sequence : 0);
+  out += ",\"ageMs\":";
+  if (automation != nullptr && automation->updated_at_ms != 0 &&
+      input.now_ms >= automation->updated_at_ms)
+    out += std::to_string(input.now_ms - automation->updated_at_ms);
+  else
+    out += "null";
+  out += ",\"presence\":";
+  if (automation_available)
+    out += automation->presence ? "true" : "false";
+  else
+    out += "null";
+  out += ",\"motion\":";
+  if (automation_available)
+    out += automation->motion ? "true" : "false";
+  else
+    out += "null";
+  out += ",\"targetCount\":";
+  if (automation_available)
+    out += std::to_string(automation->fusion.target_count);
+  else
+    out += "null";
+  append_shared_area_collection(
+      out, input.shared_automation_areas, automation_available,
+      [automation](const SharedAutomationArea &area) {
+        return count_automation_area_targets(area, automation);
+      });
+  out += ",\"zones\":[";
+  bool first_automation_zone = true;
+  for (int zone_index = 1; zone_index <= MAX_SOFTWARE_ZONES; zone_index++) {
+    if (!config_cache.software_zone(zone_index).valid)
+      continue;
+    if (!first_automation_zone)
+      out += ",";
+    append_automation_zone_json(
+        out, config_cache, zone_index,
+        zone_evidence.state_zone_counts[zone_index - 1],
+        automation_available);
+    first_automation_zone = false;
+  }
+  out += "]}";
   append_float(out, "temperatureC", input.temperature_c, "%.1f");
   append_float(out, "humidityPercent", input.humidity_percent, "%.1f");
   append_float(out, "illuminanceLux", input.illuminance_lux, "%.0f");
@@ -287,16 +551,50 @@ std::string build_device_state_json(const DeviceConfigCache &config_cache, const
   append_target_json(out, input.targets[2]);
   out += "],\"zones\":[";
   bool first_zone = true;
-  for (int zone_index = 1; zone_index <= 6; zone_index++) {
-    if (!zone_config_valid(config_cache.software_zone_config(zone_index), zone_index))
+  for (int zone_index = 1; zone_index <= MAX_SOFTWARE_ZONES; zone_index++) {
+    if (!config_cache.software_zone(zone_index).valid)
       continue;
     if (!first_zone)
       out += ",";
     append_zone_json(out, config_cache, zone_index, zone_evidence.state_zone_counts[zone_index - 1]);
     first_zone = false;
   }
-  out += "]}";
+  out += "]";
+  append_shared_area_collection(
+      out, input.shared_automation_areas,
+      input.shared_automation_areas != nullptr &&
+          input.shared_automation_areas->configuration_valid(),
+      [&input](const SharedAutomationArea &area) {
+        return count_local_area_targets(area, input);
+      });
+  out += "}";
+}
+
+}  // namespace
+
+std::string build_device_state_json(
+    const DeviceConfigCache &config_cache,
+    const SoftwareZoneEvidence &zone_evidence,
+    const std::string &tracker_debug_json,
+    const DeviceStateJsonInput &input) {
+  std::string out;
+  out.reserve(4096);
+  const auto config = config_cache.read();
+  append_device_state_json(out, config.get(), zone_evidence,
+                           tracker_debug_json.c_str(), input);
   return out;
+}
+
+bool build_device_state_json(FixedTextBuffer &output,
+                             const DeviceConfigCache &config_cache,
+                             const SoftwareZoneEvidence &zone_evidence,
+                             const char *tracker_debug_json,
+                             const DeviceStateJsonInput &input) {
+  output.clear();
+  const auto config = config_cache.read();
+  append_device_state_json(output, config.get(), zone_evidence,
+                           tracker_debug_json, input);
+  return output.ok();
 }
 
 }  // namespace radar_api_server

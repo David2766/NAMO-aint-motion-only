@@ -126,9 +126,7 @@ void SetupHandler::finish_setup_scan_and_open_ap() const {
   this->server_->open_setup_ap_deferred();
 }
 
-bool SetupHandler::can_handle(AsyncWebServerRequest *request) const {
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
+bool SetupHandler::can_handle(AsyncWebServerRequest *request, StringRef url) const {
   if (request->method() == HTTP_GET) {
     return url == "/" || url == "/setup" || url == "/api/setup/status" || url == "/api/setup/networks" ||
            url == "/api/setup/ping";
@@ -141,12 +139,7 @@ bool SetupHandler::can_handle(AsyncWebServerRequest *request) const {
   return false;
 }
 
-bool SetupHandler::handle(AsyncWebServerRequest *request) {
-  if (!this->can_handle(request))
-    return false;
-
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
+bool SetupHandler::handle(AsyncWebServerRequest *request, StringRef url) {
   if (request->method() == HTTP_GET && url == "/") {
     ESP_LOGD(TAG, "setup_http: GET /");
     this->handle_root_(request);

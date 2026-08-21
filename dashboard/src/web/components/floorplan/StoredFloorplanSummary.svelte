@@ -9,7 +9,8 @@
     canSave = false,
     onView,
     onEdit,
-    onCreateNew,
+    onReplace,
+    onDelete,
     onSave
   } = $props();
 </script>
@@ -54,7 +55,8 @@
   >
     {text.storedEdit}
   </button>
-  <button type="button" class="danger-button" onclick={onCreateNew}>{text.storedCreateNew}</button>
+  <button type="button" onclick={onReplace}>{text.storedReplace}</button>
+  <button type="button" class="danger-button" onclick={onDelete}>{text.storedDelete}</button>
   <button type="button" onclick={onSave} disabled={!canSave}>
     {saveBusy ? text.storedSaving : dirty ? text.storedSaveChanges : text.storedSave}
   </button>

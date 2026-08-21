@@ -23,13 +23,15 @@ export function radarPointToFloorplanPx(
   { placement, scale, scaleFactor = 1 }: FloorplanRadarTransformOptions
 ): RadarScreenPoint {
   const angle = (placement.rotation * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
   const pxPerMmX = scaleFactor / scale.mmPerPxX;
   const pxPerMmY = scaleFactor / scale.mmPerPxY;
-  const dx = radarX * pxPerMmX;
-  const dy = -radarY * pxPerMmY;
+  const worldX = radarX * cos + radarY * sin;
+  const worldY = radarX * sin - radarY * cos;
   return {
-    x: placement.originX + dx * Math.cos(angle) - dy * Math.sin(angle),
-    y: placement.originY + dx * Math.sin(angle) + dy * Math.cos(angle)
+    x: placement.originX + worldX * pxPerMmX,
+    y: placement.originY + worldY * pxPerMmY
   };
 }
 
@@ -38,13 +40,13 @@ export function floorplanPxToRadarPoint(
   { placement, scale, scaleFactor = 1 }: FloorplanRadarTransformOptions
 ): ZonePoint {
   const angle = (placement.rotation * Math.PI) / 180;
-  const dx = point.x - placement.originX;
-  const dy = point.y - placement.originY;
-  const unrotatedX = dx * Math.cos(angle) + dy * Math.sin(angle);
-  const unrotatedY = -dx * Math.sin(angle) + dy * Math.cos(angle);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const worldX = (point.x - placement.originX) * (scale.mmPerPxX / scaleFactor);
+  const worldY = (point.y - placement.originY) * (scale.mmPerPxY / scaleFactor);
   return [
-    unrotatedX * (scale.mmPerPxX / scaleFactor),
-    -unrotatedY * (scale.mmPerPxY / scaleFactor)
+    worldX * cos + worldY * sin,
+    worldX * sin - worldY * cos
   ];
 }
 
@@ -63,4 +65,3 @@ export function radarZoneToFloorplanPolygon(zone: Pick<WebZone, "points">, optio
 export function floorplanPolygonToRadarZonePoints(points: RadarScreenPoint[], options: FloorplanRadarTransformOptions): ZonePoint[] {
   return floorplanPxToRadarPoints(points, options);
 }
-

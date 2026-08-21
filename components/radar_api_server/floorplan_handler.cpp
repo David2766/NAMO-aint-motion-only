@@ -1,6 +1,8 @@
 #include "floorplan_handler.h"
 
+#include "radar_api_server.h"
 #include "http_response.h"
+#include "strict_parse.h"
 #include "esphome/core/log.h"
 
 #include <algorithm>
@@ -305,10 +307,7 @@ const char *payload_not_found_code(RadarPayloadTarget target) {
 
 }  // namespace
 
-bool FloorplanHandler::can_handle(AsyncWebServerRequest *request) const {
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
-
+bool FloorplanHandler::can_handle(AsyncWebServerRequest *request, StringRef url) const {
   if (request->method() == HTTP_GET) {
     return url == "/api/floorplan/status" || url == "/api/floorplan" || url == "/api/floorplan/image";
   }
@@ -323,13 +322,7 @@ bool FloorplanHandler::can_handle(AsyncWebServerRequest *request) const {
   return false;
 }
 
-bool FloorplanHandler::handle(AsyncWebServerRequest *request) {
-  if (!this->can_handle(request))
-    return false;
-
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
-
+bool FloorplanHandler::handle(AsyncWebServerRequest *request, StringRef url) {
   if (request->method() == HTTP_GET) {
     if (url == "/api/floorplan/status") {
       this->handle_status_(request);
@@ -348,6 +341,12 @@ bool FloorplanHandler::handle(AsyncWebServerRequest *request) {
   }
 
   if (request->method() == HTTP_POST) {
+    if (url == "/api/floorplan/radar") {
+      this->handle_patch_radar_(request);
+      return true;
+    }
+    if (!this->allow_shared_write_(request))
+      return true;
     if (url == "/api/floorplan/upload/start") {
       this->handle_upload_start_(request);
       return true;
@@ -358,10 +357,6 @@ bool FloorplanHandler::handle(AsyncWebServerRequest *request) {
     }
     if (url == "/api/floorplan/upload/commit") {
       this->handle_upload_commit_(request);
-      return true;
-    }
-    if (url == "/api/floorplan/radar") {
-      this->handle_patch_radar_(request);
       return true;
     }
     if (url == "/api/floorplan/room-name") {
@@ -385,17 +380,40 @@ bool FloorplanHandler::handle(AsyncWebServerRequest *request) {
   return false;
 }
 
+bool FloorplanHandler::allow_shared_write_(
+    AsyncWebServerRequest *request) const {
+  if (this->server_ == nullptr || !this->server_->site_configuration_ready())
+    return true;
+  const auto &configuration = this->server_->site_configuration_snapshot();
+  if (configuration.configuration_owner_node_id[0] != '\0' &&
+      std::strcmp(configuration.configuration_owner_node_id,
+                  this->server_->platform_identity().node_id) != 0) {
+    http_response::send_error_info(
+        request, 403, "site_configuration_owner_required",
+        "site_configuration_owner_required", "warning", "{}");
+    return false;
+  }
+  if (!this->server_->shared_site_configuration_writable(millis())) {
+    http_response::send_error_info(
+        request, 409, "site_configuration_continuity_unavailable",
+        "site_configuration_continuity_unavailable", "warning", "{}");
+    return false;
+  }
+  return true;
+}
+
 void FloorplanHandler::handle_status_(AsyncWebServerRequest *request) {
   const auto status = this->storage_->status();
   const auto &header = status.header;
 
   auto *stream = request->beginResponseStream("application/json");
   stream->printf(
-      R"({"ok":%s,"storage":"raw-partition","partition":"%s","hasConfig":%s,"hasImage":%s,"totalBytes":%u,"usedBytes":%u,"configBytes":%u,"imageBytes":%u,"uploadTarget":%u,"uploadSize":%u,"uploadWritten":%u})",
+      R"({"ok":%s,"storage":"raw-partition","partition":"%s","hasConfig":%s,"hasImage":%s,"totalBytes":%u,"usedBytes":%u,"configBytes":%u,"imageBytes":%u,"configHash":%u,"imageHash":%u,"uploadTarget":%u,"uploadSize":%u,"uploadWritten":%u})",
       status.ok ? "true" : "false", status.partition_label, header.config_size > 0 ? "true" : "false",
       header.image_size > 0 ? "true" : "false", static_cast<unsigned>(status.total_bytes),
       static_cast<unsigned>(status.used_bytes), static_cast<unsigned>(header.config_size),
-      static_cast<unsigned>(header.image_size), static_cast<unsigned>(header.upload_target),
+      static_cast<unsigned>(header.image_size), static_cast<unsigned>(header.config_hash),
+      static_cast<unsigned>(header.image_hash), static_cast<unsigned>(header.upload_target),
       static_cast<unsigned>(header.upload_size), static_cast<unsigned>(header.upload_written));
   request->send(stream);
 }
@@ -466,8 +484,13 @@ void FloorplanHandler::handle_upload_start_(AsyncWebServerRequest *request) {
     return;
   }
 
-  const uint32_t size = std::strtoul(request->arg("size").c_str(), nullptr, 10);
-  if (size == 0 || size > this->storage_->payload_max_size(target)) {
+  uint32_t size = 0;
+  if (!parse_uint32_strict(request->arg("size"), &size, false, false)) {
+    http_response::send_error_info(request, 400, "invalid_size",
+                                   "invalid_request", "error", "{}");
+    return;
+  }
+  if (size > this->storage_->payload_max_size(target)) {
     http_response::send_error_info(request, 413, "payload_too_large", "upload_payload_too_large", "error", "{}");
     return;
   }
@@ -496,7 +519,12 @@ void FloorplanHandler::handle_upload_chunk_(AsyncWebServerRequest *request) {
     return;
   }
 
-  const uint32_t offset = std::strtoul(request->arg("offset").c_str(), nullptr, 10);
+  uint32_t offset = 0;
+  if (!parse_uint32_strict(request->arg("offset"), &offset)) {
+    http_response::send_error_info(request, 400, "invalid_offset",
+                                   "invalid_request", "error", "{}");
+    return;
+  }
   std::string decoded;
   if (!this->decode_hex_(request->arg("data"), &decoded)) {
     http_response::send_error_info(request, 400, "invalid_hex", "invalid_request", "error", "{}");
@@ -654,10 +682,39 @@ void FloorplanHandler::handle_delete_storage_(AsyncWebServerRequest *request) {
     http_response::send_error_info(request, 400, "missing_confirm", "invalid_request", "error", detail.c_str());
     return;
   }
+  if (this->server_ != nullptr &&
+      this->server_->site_configuration_ready() &&
+      site_configuration_has_remote_members(
+          this->server_->platform_identity(),
+          this->server_->site_configuration_snapshot())) {
+    http_response::send_error_info(
+        request, 409, "floorplan_delete_requires_standalone",
+        "floorplan_delete_requires_standalone", "warning", "{}");
+    return;
+  }
+  if (this->server_ != nullptr &&
+      this->server_->site_configuration_ready() &&
+      std::strcmp(
+          this->server_->site_configuration_snapshot()
+              .configuration_owner_node_id,
+          this->server_->platform_identity().node_id) == 0 &&
+      !this->server_->shared_site_configuration_writable(millis())) {
+    http_response::send_error_info(
+        request, 409, "site_configuration_continuity_unavailable",
+        "site_configuration_continuity_unavailable", "warning", "{}");
+    return;
+  }
 
   if (!this->storage_->delete_floorplan()) {
     http_response::send_error_info(request, 500, "delete_failed", "internal_error", "error",
                                    R"({"target":"floorplan","where":"delete_floorplan"})");
+    return;
+  }
+  if (this->server_ != nullptr &&
+      !this->server_->clear_owned_floorplan_manifest()) {
+    http_response::send_error_info(
+        request, 500, "delete_manifest_failed", "internal_error", "error",
+        R"({"target":"floorplan","where":"clear_shared_manifest"})");
     return;
   }
 
@@ -673,8 +730,8 @@ bool FloorplanHandler::parse_floorplan_target_(AsyncWebServerRequest *request, R
 bool FloorplanHandler::parse_upload_session_(AsyncWebServerRequest *request, uint32_t *session_id) const {
   if (!request->hasArg("session"))
     return false;
-  const uint32_t parsed = std::strtoul(request->arg("session").c_str(), nullptr, 0);
-  if (parsed == 0)
+  uint32_t parsed = 0;
+  if (!parse_uint32_strict(request->arg("session"), &parsed, true, false))
     return false;
   *session_id = parsed;
   return true;

@@ -8,6 +8,10 @@ import {
   type FloorplanScaleEstimate
 } from "../floorplan/floorplan-scale";
 import { roomCandidatePoints } from "../floorplan/room-candidate-points";
+import {
+  storedFloorplanViewBounds,
+  type StoredFloorplanViewBounds
+} from "../floorplan/stored-floorplan-view";
 import type { StoredRadarPlacement } from "./useStoredRadarPlacementEditor.svelte";
 
 interface FloorplanFurniturePlacementContext {
@@ -45,9 +49,12 @@ export function createStoredFloorplanWorkspaceSession({
   }
 
   function imageFrameStyle(): string {
-    const width = getDocument()?.image?.width ?? 1;
-    const height = getDocument()?.image?.height ?? 1;
-    return floorplanImageFrameStyle(width, height, 72);
+    const bounds = viewBounds();
+    return floorplanImageFrameStyle(bounds.width, bounds.height, 72);
+  }
+
+  function viewBounds(): StoredFloorplanViewBounds {
+    return storedFloorplanViewBounds(getDocument());
   }
 
   function defaultFurniturePlacementContext(): FloorplanFurniturePlacementContext | null {
@@ -93,6 +100,7 @@ export function createStoredFloorplanWorkspaceSession({
 
   return {
     scaleEstimate,
+    viewBounds,
     imageFrameStyle,
     defaultFurniturePlacementContext,
     furnitureRooms,

@@ -1,26 +1,43 @@
 #include "stats_store.h"
 
+#include "esphome/core/log.h"
+
 #include <algorithm>
 #include <cstring>
 #include <esp_http_server.h>
+#include <new>
+
+#ifdef USE_ESP32
+#include "esphome/core/defines.h"
+#include <esp_heap_caps.h>
+#endif
 
 namespace esphome {
 namespace radar_api_server {
 
+struct StatsStore::ResponseWorkspace {
+  static constexpr size_t HTTP_BUFFER_SIZE = 768;
+
+  Totals today{};
+  std::array<Totals, 4> summaries{};
+  Totals daily{};
+  httpd_req *request{nullptr};
+  char http_buffer[HTTP_BUFFER_SIZE]{};
+  size_t http_used{0};
+};
+
 namespace {
 
+static const char *const TAG = "stats_store";
 static constexpr uint32_t STATS_INTERNAL_UPLOAD_SESSION = 0x53544154u;
 static constexpr size_t STATS_STORAGE_WRITE_CHUNK_SIZE = 512;
 static constexpr size_t STATS_STORAGE_READ_CHUNK_SIZE = 512;
 static constexpr size_t MAX_STATS_JSON_VALUE_SIZE = 16 * 1024;
 static constexpr size_t MAX_STATS_DAILY_ENTRIES = 30;
+static constexpr std::array<int, 4> SUMMARY_DAYS{{3, 7, 15, 30}};
 
 struct CountJsonContext {
   uint32_t size{0};
-};
-
-struct HttpJsonContext {
-  httpd_req *request{nullptr};
 };
 
 struct StorageJsonContext {
@@ -101,9 +118,39 @@ bool count_json_write(void *context, const char *, size_t size) {
   return true;
 }
 
+bool flush_http_json(StatsStore::ResponseWorkspace *workspace) {
+  if (workspace == nullptr || workspace->request == nullptr)
+    return false;
+  if (workspace->http_used == 0)
+    return true;
+  if (httpd_resp_send_chunk(workspace->request, workspace->http_buffer,
+                            workspace->http_used) != ESP_OK)
+    return false;
+  workspace->http_used = 0;
+  return true;
+}
+
 bool http_json_write(void *context, const char *data, size_t size) {
-  auto *http = static_cast<HttpJsonContext *>(context);
-  return http != nullptr && http->request != nullptr && httpd_resp_send_chunk(http->request, data, size) == ESP_OK;
+  auto *workspace =
+      static_cast<StatsStore::ResponseWorkspace *>(context);
+  if (workspace == nullptr || data == nullptr)
+    return false;
+
+  size_t cursor = 0;
+  while (cursor < size) {
+    if (workspace->http_used >= sizeof(workspace->http_buffer) &&
+        !flush_http_json(workspace))
+      return false;
+    const size_t chunk =
+        std::min<size_t>(sizeof(workspace->http_buffer) -
+                             workspace->http_used,
+                         size - cursor);
+    std::memcpy(workspace->http_buffer + workspace->http_used,
+                data + cursor, chunk);
+    workspace->http_used += chunk;
+    cursor += chunk;
+  }
+  return true;
 }
 
 bool flush_storage_json(StorageJsonContext *context) {
@@ -136,6 +183,156 @@ bool storage_json_write(void *context, const char *data, size_t size) {
     cursor += chunk;
   }
   return true;
+}
+
+using StatsJsonWrite =
+    bool (*)(void *context, const char *data, size_t size);
+
+bool write_json_cstr(StatsJsonWrite write, void *context,
+                     const char *value) {
+  return write != nullptr && value != nullptr &&
+         write(context, value, std::strlen(value));
+}
+
+bool write_json_unsigned(StatsJsonWrite write, void *context,
+                         uint64_t value) {
+  if (write == nullptr)
+    return false;
+  uint64_t divisor = 1;
+  while (value / divisor >= 10)
+    divisor *= 10;
+  do {
+    const char digit = static_cast<char>(
+        '0' + static_cast<unsigned>(value / divisor));
+    if (!write(context, &digit, 1))
+      return false;
+    value %= divisor;
+    divisor /= 10;
+  } while (divisor != 0);
+  return true;
+}
+
+bool write_json_signed(StatsJsonWrite write, void *context, int64_t value) {
+  if (value >= 0)
+    return write_json_unsigned(write, context,
+                               static_cast<uint64_t>(value));
+  if (!write_json_cstr(write, context, "-"))
+    return false;
+  return write_json_unsigned(
+      write, context, static_cast<uint64_t>(-(value + 1)) + 1);
+}
+
+bool write_totals_json(StatsJsonWrite write, void *context,
+                       const StatsStore::Totals &totals, int days) {
+  if (!write_json_cstr(write, context, "{\"days\":") ||
+      !write_json_signed(write, context, days) ||
+      !write_json_cstr(write, context, ",\"f\":") ||
+      !write_json_signed(write, context, totals.f) ||
+      !write_json_cstr(write, context, ",\"r\":") ||
+      !write_json_signed(write, context, totals.r) ||
+      !write_json_cstr(write, context, ",\"fz\":["))
+    return false;
+  for (size_t index = 0; index < 4; ++index) {
+    if ((index != 0 && !write_json_cstr(write, context, ",")) ||
+        !write_json_signed(write, context, totals.fz[index]))
+      return false;
+  }
+  if (!write_json_cstr(write, context, "],\"rz\":["))
+    return false;
+  for (size_t index = 0; index < 4; ++index) {
+    if ((index != 0 && !write_json_cstr(write, context, ",")) ||
+        !write_json_signed(write, context, totals.rz[index]))
+      return false;
+  }
+  if (!write_json_cstr(write, context, "],\"sz\":["))
+    return false;
+  for (size_t index = 0; index < 6; ++index) {
+    if ((index != 0 && !write_json_cstr(write, context, ",")) ||
+        !write_json_signed(write, context, totals.sz[index]))
+      return false;
+  }
+  return write_json_cstr(write, context, "]}");
+}
+
+bool write_heatmap_rle_json(StatsJsonWrite write, void *context,
+                            const uint16_t *cells, size_t cell_count) {
+  if (write == nullptr || cells == nullptr || cell_count == 0 ||
+      !write_json_cstr(write, context, "\""))
+    return false;
+
+  uint16_t value = cells[0];
+  size_t run = 1;
+  bool first = true;
+  for (size_t index = 1; index <= cell_count; ++index) {
+    if (index < cell_count && cells[index] == value) {
+      ++run;
+      continue;
+    }
+    if ((!first && !write_json_cstr(write, context, ",")) ||
+        !write_json_unsigned(write, context, value) ||
+        !write_json_cstr(write, context, "x") ||
+        !write_json_unsigned(write, context, run))
+      return false;
+    first = false;
+    if (index < cell_count) {
+      value = cells[index];
+      run = 1;
+    }
+  }
+  return write_json_cstr(write, context, "\"");
+}
+
+template<typename T>
+T *allocate_stats_workspace(const char *component, bool *in_psram) {
+  if (in_psram == nullptr)
+    return nullptr;
+  *in_psram = false;
+#if defined(USE_ESP32) && defined(USE_PSRAM)
+  void *memory = heap_caps_calloc(
+      1, sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (memory != nullptr) {
+    auto *workspace = new (memory) T();
+    *in_psram = true;
+    ESP_LOGI(TAG,
+             "Workspace allocation component=%s region=psram size=%u",
+             component, static_cast<unsigned>(sizeof(T)));
+    return workspace;
+  }
+  ESP_LOGW(TAG,
+           "Workspace allocation component=%s region=psram_failed size=%u",
+           component, static_cast<unsigned>(sizeof(T)));
+#endif
+  auto *workspace = new (std::nothrow) T();
+  if (workspace != nullptr) {
+    ESP_LOGW(TAG,
+             "Workspace allocation component=%s region=internal_fallback "
+             "size=%u",
+             component, static_cast<unsigned>(sizeof(T)));
+  } else {
+    ESP_LOGE(TAG,
+             "Workspace allocation component=%s region=allocation_failed "
+             "size=%u",
+             component, static_cast<unsigned>(sizeof(T)));
+  }
+  return workspace;
+}
+
+template<typename T>
+void destroy_stats_workspace(T **workspace, bool *in_psram) {
+  if (workspace == nullptr || *workspace == nullptr || in_psram == nullptr)
+    return;
+#if defined(USE_ESP32) && defined(USE_PSRAM)
+  if (*in_psram) {
+    (*workspace)->~T();
+    heap_caps_free(*workspace);
+    *workspace = nullptr;
+    *in_psram = false;
+    return;
+  }
+#endif
+  delete *workspace;
+  *workspace = nullptr;
+  *in_psram = false;
 }
 
 bool skip_json_ws(StorageJsonReader *reader) {
@@ -404,11 +601,48 @@ bool parse_stats_document(StorageJsonReader *reader, StatsJsonParts *parts) {
 
 }  // namespace
 
+StatsStore::~StatsStore() {
+  destroy_stats_workspace(&this->persist_workspace_,
+                          &this->persist_workspace_in_psram_);
+  destroy_stats_workspace(&this->response_workspace_,
+                          &this->response_workspace_in_psram_);
+  destroy_stats_workspace(&this->today_heatmap_cells_,
+                          &this->today_heatmap_cells_in_psram_);
+}
+
+bool StatsStore::setup() { return this->ensure_workspaces_(); }
+
+bool StatsStore::ensure_workspaces_() {
+  if (this->today_heatmap_cells_ == nullptr) {
+    this->today_heatmap_cells_ = allocate_stats_workspace<HeatmapCells>(
+        "stats_heatmap_cells", &this->today_heatmap_cells_in_psram_);
+  }
+  if (this->response_workspace_ == nullptr) {
+    this->response_workspace_ =
+        allocate_stats_workspace<ResponseWorkspace>(
+            "stats_response",
+            &this->response_workspace_in_psram_);
+  }
+  if (this->persist_workspace_ == nullptr) {
+    this->persist_workspace_ =
+        allocate_stats_workspace<ResponseWorkspace>(
+            "stats_persist",
+            &this->persist_workspace_in_psram_);
+  }
+  return this->today_heatmap_cells_ != nullptr &&
+         this->response_workspace_ != nullptr &&
+         this->persist_workspace_ != nullptr;
+}
+
 void StatsStore::load(RadarStorage *storage) {
+  if (!this->ensure_workspaces_()) {
+    ESP_LOGE(TAG, "Statistics workspaces unavailable");
+    return;
+  }
   this->storage_ = storage;
   this->today_json_.clear();
   this->daily_.clear();
-  this->today_heatmap_cells_.fill(0);
+  this->today_heatmap_cells_->fill(0);
   this->heatmap_daily_.clear();
 
   if (storage != nullptr)
@@ -418,6 +652,9 @@ void StatsStore::load(RadarStorage *storage) {
 void StatsStore::update_today(const std::string &today_json) { this->today_json_ = today_json; }
 
 void StatsStore::record_heatmap_hit(float tx, float ty) {
+  if (this->today_heatmap_cells_ == nullptr &&
+      !this->ensure_workspaces_())
+    return;
   const int cell_mm = 300;
   const int x_min = -4800;
   const int y_min = 0;
@@ -430,11 +667,13 @@ void StatsStore::record_heatmap_hit(float tx, float ty) {
   if (row < 0) row = 0;
   if (row >= rows) row = rows - 1;
   const int index = row * cols + col;
-  if (this->today_heatmap_cells_[index] < 65535)
-    this->today_heatmap_cells_[index]++;
+  if ((*this->today_heatmap_cells_)[index] < 65535)
+    (*this->today_heatmap_cells_)[index]++;
 }
 
 bool StatsStore::finish_day(const std::string &finished_day_json, const std::string &new_today_json) {
+  if (!this->ensure_workspaces_())
+    return false;
   if (!finished_day_json.empty()) {
     const int finished_day = parse_totals_(finished_day_json).day;
     if (finished_day > 0) {
@@ -458,85 +697,120 @@ bool StatsStore::finish_day(const std::string &finished_day_json, const std::str
     }
   }
   this->today_json_ = new_today_json;
-  this->today_heatmap_cells_.fill(0);
+  this->today_heatmap_cells_->fill(0);
   return this->persist_();
 }
 
 bool StatsStore::reset_today(const std::string &new_today_json) {
+  if (!this->ensure_workspaces_())
+    return false;
   this->today_json_ = new_today_json;
-  this->today_heatmap_cells_.fill(0);
+  this->today_heatmap_cells_->fill(0);
   return this->persist_();
 }
 
 void StatsStore::clear() {
   this->today_json_.clear();
   this->daily_.clear();
-  this->today_heatmap_cells_.fill(0);
+  if (this->today_heatmap_cells_ != nullptr)
+    this->today_heatmap_cells_->fill(0);
   this->heatmap_daily_.clear();
 }
 
-bool StatsStore::write_json_(bool (*write)(void *context, const char *data, size_t size), void *context) const {
-  if (write == nullptr)
+bool StatsStore::write_json_(
+    bool (*write)(void *context, const char *data, size_t size),
+    void *context, ResponseWorkspace *workspace) const {
+  if (write == nullptr || workspace == nullptr ||
+      this->today_heatmap_cells_ == nullptr)
     return false;
 
-  const std::string today = this->today_json_.empty()
-                                ? "{\"d\":0,\"f\":0,\"r\":0,\"fz\":[0,0,0,0],\"rz\":[0,0,0,0],\"sz\":[0,0,0,0,0,0]}"
-                                : this->today_json_;
-  const Totals today_totals = parse_totals_(today);
-  const int today_serial = day_serial_(today_totals.day);
+  static constexpr char EMPTY_TODAY[] =
+      "{\"d\":0,\"f\":0,\"r\":0,\"fz\":[0,0,0,0],"
+      "\"rz\":[0,0,0,0],\"sz\":[0,0,0,0,0,0]}";
+  workspace->today =
+      this->today_json_.empty() ? Totals{} : parse_totals_(this->today_json_);
+  workspace->summaries = {};
+  workspace->daily = {};
 
-  auto build_summary = [&](int days) -> std::string {
-    Totals result;
-    if (today_serial > 0 && day_serial_(today_totals.day) >= today_serial - days + 1) {
-      add_totals_(&result, today_totals);
-    }
-    if (today_serial > 0) {
-      for (const auto &entry : this->daily_) {
-        const Totals daily = parse_totals_(entry);
-        if (daily.day == today_totals.day)
-          continue;
-        const int daily_serial = day_serial_(daily.day);
-        if (daily_serial >= today_serial - days + 1 && daily_serial <= today_serial) {
-          add_totals_(&result, daily);
-        }
+  const int today_serial = day_serial_(workspace->today.day);
+  if (today_serial > 0) {
+    for (auto &summary : workspace->summaries)
+      add_totals_(&summary, workspace->today);
+    for (const auto &entry : this->daily_) {
+      workspace->daily = parse_totals_(entry);
+      if (workspace->daily.day == workspace->today.day)
+        continue;
+      const int daily_serial = day_serial_(workspace->daily.day);
+      const int age_days = today_serial - daily_serial;
+      if (daily_serial <= 0 || age_days < 0)
+        continue;
+      for (size_t index = 0; index < SUMMARY_DAYS.size(); ++index) {
+        if (age_days < SUMMARY_DAYS[index])
+          add_totals_(&workspace->summaries[index], workspace->daily);
       }
     }
-    return totals_json_(result, days);
-  };
+  }
 
-  auto write_cstr = [&](const char *value) -> bool { return write(context, value, std::strlen(value)); };
-  auto write_string = [&](const std::string &value) -> bool { return write(context, value.data(), value.size()); };
-
-  if (!write_cstr("{\"version\":1,\"today\":") || !write_string(today) || !write_cstr(",\"daily\":["))
+  if (!write_json_cstr(write, context, "{\"version\":1,\"today\":") ||
+      !(this->today_json_.empty()
+            ? write_json_cstr(write, context, EMPTY_TODAY)
+            : write(context, this->today_json_.data(),
+                    this->today_json_.size())) ||
+      !write_json_cstr(write, context, ",\"daily\":["))
     return false;
   for (size_t index = 0; index < this->daily_.size(); index++) {
-    if (index > 0 && !write_cstr(","))
+    if (index > 0 && !write_json_cstr(write, context, ","))
       return false;
-    if (!write_string(this->daily_[index]))
+    if (!write(context, this->daily_[index].data(),
+               this->daily_[index].size()))
       return false;
   }
-  if (!write_cstr("],\"summary\":{\"last3Days\":") || !write_string(build_summary(3)) ||
-      !write_cstr(",\"last7Days\":") || !write_string(build_summary(7)) ||
-      !write_cstr(",\"last15Days\":") || !write_string(build_summary(15)) ||
-      !write_cstr(",\"last30Days\":") || !write_string(build_summary(30)) ||
-      !write_cstr("},\"heatmap\":{\"version\":1,\"cols\":33,\"rows\":26,\"cellMm\":300,\"encoding\":\"rle\","
-                  "\"today\":") ||
-      !write_string(json_string_(this->compact_today_heatmap_rle_())) || !write_cstr(",\"daily\":["))
+
+  static constexpr std::array<const char *, 4> SUMMARY_PREFIXES{{
+      "],\"summary\":{\"last3Days\":",
+      ",\"last7Days\":",
+      ",\"last15Days\":",
+      ",\"last30Days\":",
+  }};
+  for (size_t index = 0; index < SUMMARY_DAYS.size(); ++index) {
+    if (!write_json_cstr(write, context, SUMMARY_PREFIXES[index]) ||
+        !write_totals_json(write, context, workspace->summaries[index],
+                           SUMMARY_DAYS[index]))
+      return false;
+  }
+
+  if (!write_json_cstr(
+          write, context,
+          "},\"heatmap\":{\"version\":1,\"cols\":33,\"rows\":26,"
+          "\"cellMm\":300,\"encoding\":\"rle\",\"today\":") ||
+      !write_heatmap_rle_json(
+          write, context, this->today_heatmap_cells_->data(),
+          this->today_heatmap_cells_->size()) ||
+      !write_json_cstr(write, context, ",\"daily\":["))
     return false;
   for (size_t index = 0; index < this->heatmap_daily_.size(); index++) {
-    if (index > 0 && !write_cstr(","))
+    if (index > 0 && !write_json_cstr(write, context, ","))
       return false;
-    if (!write_string(this->heatmap_daily_[index]))
+    if (!write(context, this->heatmap_daily_[index].data(),
+               this->heatmap_daily_[index].size()))
       return false;
   }
-  return write_cstr("]}}");
+  return write_json_cstr(write, context, "]}}");
 }
 
 bool StatsStore::stream_json(httpd_req *request) const {
-  if (request == nullptr)
+  if (request == nullptr || this->response_workspace_ == nullptr)
     return false;
-  HttpJsonContext context{request};
-  return this->write_json_(http_json_write, &context) && httpd_resp_send_chunk(request, nullptr, 0) == ESP_OK;
+  this->response_workspace_->request = request;
+  this->response_workspace_->http_used = 0;
+  const bool content_ok =
+      this->write_json_(http_json_write, this->response_workspace_,
+                        this->response_workspace_) &&
+      flush_http_json(this->response_workspace_);
+  this->response_workspace_->request = nullptr;
+  this->response_workspace_->http_used = 0;
+  return content_ok &&
+         httpd_resp_send_chunk(request, nullptr, 0) == ESP_OK;
 }
 
 bool StatsStore::load_from_storage_(RadarStorage *storage) {
@@ -553,12 +827,9 @@ bool StatsStore::load_from_storage_(RadarStorage *storage) {
   if (!parse_stats_document(&reader, &parts))
     return false;
 
-  std::array<uint16_t, 858> heatmap_cells{};
-  decode_heatmap_rle_(parts.heatmap_today, &heatmap_cells);
-
   this->today_json_ = parts.today;
   this->daily_ = parts.daily;
-  this->today_heatmap_cells_ = heatmap_cells;
+  decode_heatmap_rle_(parts.heatmap_today, this->today_heatmap_cells_);
   this->heatmap_daily_ = parts.heatmap_daily;
   this->trim_daily_();
   this->trim_heatmap_daily_();
@@ -641,35 +912,6 @@ void StatsStore::add_totals_(Totals *target, const Totals &source) {
   }
 }
 
-std::string StatsStore::totals_json_(const Totals &totals, int days) {
-  std::string json = "{\"days\":";
-  json += std::to_string(days);
-  json += ",\"f\":";
-  json += std::to_string(totals.f);
-  json += ",\"r\":";
-  json += std::to_string(totals.r);
-  json += ",\"fz\":[";
-  for (int index = 0; index < 4; index++) {
-    if (index > 0)
-      json += ",";
-    json += std::to_string(totals.fz[index]);
-  }
-  json += "],\"rz\":[";
-  for (int index = 0; index < 4; index++) {
-    if (index > 0)
-      json += ",";
-    json += std::to_string(totals.rz[index]);
-  }
-  json += "],\"sz\":[";
-  for (int index = 0; index < 6; index++) {
-    if (index > 0)
-      json += ",";
-    json += std::to_string(totals.sz[index]);
-  }
-  json += "]}";
-  return json;
-}
-
 std::string StatsStore::default_heatmap_rle_() { return "0x858"; }
 
 std::string StatsStore::json_string_(const std::string &value) {
@@ -730,11 +972,14 @@ void StatsStore::decode_heatmap_rle_(const std::string &rle, std::array<uint16_t
 }
 
 std::string StatsStore::compact_today_heatmap_rle_() const {
+  if (this->today_heatmap_cells_ == nullptr)
+    return default_heatmap_rle_();
   std::string out;
-  uint16_t value = this->today_heatmap_cells_[0];
+  uint16_t value = (*this->today_heatmap_cells_)[0];
   int run = 1;
-  for (size_t index = 1; index < this->today_heatmap_cells_.size(); index++) {
-    const uint16_t next = this->today_heatmap_cells_[index];
+  for (size_t index = 1; index < this->today_heatmap_cells_->size();
+       index++) {
+    const uint16_t next = (*this->today_heatmap_cells_)[index];
     if (next == value) {
       run++;
       continue;
@@ -776,14 +1021,20 @@ bool StatsStore::persist_() const {
     return false;
 
   CountJsonContext count_context;
-  if (!this->write_json_(count_json_write, &count_context) || count_context.size == 0)
+  if (this->persist_workspace_ == nullptr)
+    return false;
+
+  if (!this->write_json_(count_json_write, &count_context,
+                         this->persist_workspace_) ||
+      count_context.size == 0)
     return false;
 
   if (!this->storage_->start_upload(RadarPayloadTarget::STATS, count_context.size, STATS_INTERNAL_UPLOAD_SESSION))
     return false;
 
   StorageJsonContext storage_context{this->storage_, STATS_INTERNAL_UPLOAD_SESSION};
-  if (!this->write_json_(storage_json_write, &storage_context))
+  if (!this->write_json_(storage_json_write, &storage_context,
+                         this->persist_workspace_))
     return false;
   if (!flush_storage_json(&storage_context))
     return false;

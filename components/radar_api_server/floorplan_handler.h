@@ -8,14 +8,18 @@
 namespace esphome {
 namespace radar_api_server {
 
+class RadarApiServer;
+
 class FloorplanHandler {
  public:
-  explicit FloorplanHandler(RadarStorage *storage) : storage_(storage) {}
+  FloorplanHandler(RadarApiServer *server, RadarStorage *storage)
+      : server_(server), storage_(storage) {}
 
-  bool can_handle(AsyncWebServerRequest *request) const;
-  bool handle(AsyncWebServerRequest *request);
+  bool can_handle(AsyncWebServerRequest *request, StringRef url) const;
+  bool handle(AsyncWebServerRequest *request, StringRef url);
 
  private:
+  RadarApiServer *server_;
   RadarStorage *storage_;
 
   void handle_status_(AsyncWebServerRequest *request);
@@ -31,6 +35,7 @@ class FloorplanHandler {
   void handle_delete_storage_(AsyncWebServerRequest *request);
 
   bool parse_floorplan_target_(AsyncWebServerRequest *request, RadarPayloadTarget *target) const;
+  bool allow_shared_write_(AsyncWebServerRequest *request) const;
   bool parse_upload_session_(AsyncWebServerRequest *request, uint32_t *session_id) const;
   bool decode_hex_(const std::string &hex, std::string *out) const;
   bool patch_floorplan_member_(const char *key, const std::string &value, std::string *out) const;

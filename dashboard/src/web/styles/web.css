@@ -163,6 +163,22 @@ button:disabled {
   color: #ffd7dd;
 }
 
+.fusion-status-pill {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .top-bar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .top-status-group {
+    margin-left: auto;
+  }
+}
+
 .toast {
   position: fixed;
   top: 72px;
@@ -420,6 +436,10 @@ button:disabled {
   background: #111820;
 }
 
+.floorplan-image-layer.manual {
+  background: #f4f6f3;
+}
+
 .floorplan-image-layer.panning {
   cursor: grabbing;
 }
@@ -580,6 +600,89 @@ button:disabled {
   will-change: transform;
 }
 
+.floorplan-manual-grid {
+  pointer-events: none;
+}
+
+.floorplan-manual-grid line {
+  pointer-events: none;
+}
+
+.floorplan-manual-grid-minor {
+  stroke: #e5e9e6;
+}
+
+.floorplan-manual-grid-snap {
+  stroke: #d2dad5;
+}
+
+.floorplan-manual-grid-major {
+  stroke: #aebcb4;
+}
+
+.floorplan-automation-area-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.floorplan-automation-area {
+  fill: rgba(6, 214, 160, 0.14);
+  stroke: rgba(6, 214, 160, 0.88);
+  stroke-width: var(--rz-edit-stroke-width);
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-automation-area[data-editable="true"] {
+  cursor: move;
+  pointer-events: auto;
+}
+
+.floorplan-automation-area-group[data-selected="true"] .floorplan-automation-area {
+  fill: rgba(6, 214, 160, 0.22);
+  stroke-width: var(--rz-edit-selected-stroke-width);
+}
+
+.floorplan-automation-area-group[data-enabled="false"] .floorplan-automation-area {
+  fill: rgba(123, 184, 216, 0.08);
+  stroke: rgba(215, 238, 252, 0.48);
+  stroke-dasharray: 5 5;
+}
+
+.floorplan-automation-area-edge {
+  cursor: copy;
+  stroke: var(--rz-edit-edge-hit);
+  stroke-linecap: round;
+  stroke-width: 14;
+  pointer-events: stroke;
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-automation-area-point {
+  cursor: grab;
+  fill: var(--rz-edit-handle-fill);
+  stroke: var(--rz-edit-handle-stroke);
+  stroke-width: var(--rz-edit-stroke-width);
+  pointer-events: auto;
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-automation-area-point:active {
+  cursor: grabbing;
+}
+
+.floorplan-automation-area-point[data-active="true"] {
+  fill: var(--rz-edit-handle-selected-fill);
+  stroke: var(--rz-edit-handle-selected-stroke);
+  stroke-width: var(--rz-edit-selected-stroke-width);
+}
+
 .floorplan-radar-placement-layer {
   position: absolute;
   inset: 0;
@@ -594,6 +697,23 @@ button:disabled {
 
 .floorplan-radar-placement {
   pointer-events: none;
+}
+
+.floorplan-physical-wall-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.floorplan-physical-wall-layer line {
+  stroke: #000;
+  stroke-width: 3;
+  stroke-linecap: square;
+  vector-effect: non-scaling-stroke;
 }
 
 .floorplan-radar-coverage {
@@ -695,6 +815,12 @@ button:disabled {
 .floorplan-radar-zone.exit {
   fill: var(--rz-zone-exit-fill);
   stroke: var(--rz-zone-exit-stroke);
+}
+
+.floorplan-radar-zone.placeholder {
+  fill: var(--rz-zone-placeholder-fill);
+  stroke: var(--rz-zone-placeholder-stroke);
+  stroke-dasharray: 5 5;
 }
 
 .floorplan-radar-exit-line-display,
@@ -804,11 +930,38 @@ button:disabled {
 
 .floorplan-radar-target {
   pointer-events: none;
+  transform-origin: 0 0;
+  transition: transform 300ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: transform;
 }
 
 .floorplan-radar-target circle {
   fill: var(--target-color);
   stroke: rgba(17, 24, 32, 0.92);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-radar-target .target-fusion-ring {
+  fill: none;
+  stroke: rgba(72, 199, 255, 0.96);
+  stroke-width: 2.5;
+}
+
+.floorplan-peer-radar {
+  pointer-events: none;
+}
+
+.floorplan-peer-radar polygon {
+  fill: rgba(17, 24, 32, 0.72);
+  stroke: rgba(72, 199, 255, 0.96);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-peer-radar line {
+  stroke: rgba(72, 199, 255, 0.82);
+  stroke-linecap: round;
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
@@ -1200,6 +1353,22 @@ button:disabled {
   vector-effect: non-scaling-stroke;
 }
 
+.floorplan-manual-outline {
+  fill: none;
+  stroke: #000000;
+  stroke-width: 5;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-manual-room-wall {
+  fill: none;
+  stroke: #000000;
+  stroke-width: 3;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
 .floorplan-manual-draft-line {
   fill: none;
   stroke: rgba(72, 199, 255, 0.95);
@@ -1226,6 +1395,30 @@ button:disabled {
   stroke-width: 4;
   pointer-events: none;
   vector-effect: non-scaling-stroke;
+}
+
+.floorplan-metric-edge-label {
+  fill: #f5fbf7;
+  font-size: 13px;
+  font-weight: var(--rz-weight-button);
+  paint-order: stroke;
+  stroke: rgba(20, 34, 27, 0.94);
+  stroke-width: 4px;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-candidate-vertex circle.floorplan-vertex-hit,
+.floorplan-manual-draft-point circle.floorplan-vertex-hit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 0;
+  pointer-events: auto;
+}
+
+.floorplan-candidate-vertex circle.floorplan-vertex-marker,
+.floorplan-manual-draft-point circle.floorplan-vertex-marker {
+  pointer-events: none;
 }
 
 .floorplan-snap-edge,
@@ -1405,7 +1598,8 @@ button:disabled {
 .floorplan-controls span,
 .floorplan-candidates span,
 .floorplan-empty-note span,
-.floorplan-file-info span {
+.floorplan-file-info span,
+.floorplan-status span {
   color: rgba(215, 238, 252, 0.68);
   font-size: var(--rz-font-help);
   line-height: 1.5;
@@ -1422,6 +1616,69 @@ button:disabled {
   font-size: var(--rz-font-button);
   font-weight: var(--rz-weight-button);
   cursor: pointer;
+}
+
+.floorplan-source-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.floorplan-source-actions .floorplan-upload-button,
+.floorplan-source-actions button {
+  width: 100%;
+  min-height: 42px;
+}
+
+.floorplan-source-status,
+.floorplan-manual-guide {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.floorplan-source-status span,
+.floorplan-source-help,
+.floorplan-manual-guide span {
+  color: rgba(215, 238, 252, 0.68);
+  font-size: var(--rz-font-help);
+  line-height: 1.5;
+}
+
+.floorplan-source-status[data-tone="error"] strong {
+  color: #ffb4bd;
+}
+
+.floorplan-source-status[data-tone="ok"] strong {
+  color: #7de8c5;
+}
+
+.floorplan-source-help {
+  display: block;
+}
+
+.floorplan-manual-guide {
+  padding-top: 10px;
+  border-top: 1px solid rgba(123, 184, 216, 0.16);
+}
+
+.floorplan-manual-guide > button,
+.floorplan-manual-guide-actions button {
+  min-height: 38px;
+}
+
+.floorplan-manual-guide-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.floorplan-outline-edit-edge {
+  stroke: rgba(6, 214, 160, 0.9);
+}
+
+.floorplan-outline-edit-vertex circle {
+  fill: #06d6a0;
 }
 
 .floorplan-clear-button {
@@ -1782,6 +2039,64 @@ button:disabled {
   font-weight: var(--rz-weight-button);
 }
 
+.floorplan-radar-advanced-options {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(123, 184, 216, 0.16);
+}
+
+.floorplan-radar-advanced-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 24px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.floorplan-radar-advanced-toggle > strong {
+  overflow: hidden;
+  color: rgba(125, 232, 197, 0.9);
+  font-size: var(--rz-font-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floorplan-radar-advanced-toggle > span:last-child {
+  font-size: 18px;
+  text-align: center;
+}
+
+.floorplan-radar-advanced-content {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0 0;
+}
+
+.floorplan-radar-advanced-content > span,
+.floorplan-radar-advanced-content > em {
+  color: rgba(215, 238, 252, 0.68);
+  font-size: var(--rz-font-help);
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.floorplan-radar-advanced-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.floorplan-radar-advanced-actions button {
+  min-height: 38px;
+  padding: 0 9px;
+  font-size: var(--rz-font-button);
+}
+
 .floorplan-radar-occlusion-toggle[data-active="true"] {
   border-color: rgba(255, 209, 102, 0.48);
   background: rgba(255, 209, 102, 0.15);
@@ -1982,6 +2297,196 @@ button:disabled {
   font-size: var(--rz-font-help);
   font-style: normal;
   line-height: 1.45;
+}
+
+.floorplan-candidate-card > span {
+  color: rgba(215, 238, 252, 0.66);
+  font-size: var(--rz-font-help);
+  line-height: 1.5;
+}
+
+.floorplan-door-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(123, 184, 216, 0.16);
+  border-radius: 6px;
+  background: rgba(123, 184, 216, 0.06);
+}
+
+.floorplan-door-card > strong {
+  font-size: var(--rz-font-title-card);
+  font-weight: var(--rz-weight-title);
+}
+
+.floorplan-door-card > span {
+  color: rgba(215, 238, 252, 0.66);
+  font-size: var(--rz-font-help);
+  line-height: 1.5;
+}
+
+.floorplan-door-card > span[data-tone="error"] {
+  color: #ffb4bd;
+}
+
+.floorplan-door-kind-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.floorplan-door-kind-control button {
+  min-height: 34px;
+  padding: 0 9px;
+  font-size: var(--rz-font-caption);
+  font-weight: var(--rz-weight-button);
+}
+
+.floorplan-door-kind-control button[data-active="true"] {
+  border-color: rgba(6, 214, 160, 0.52);
+  background: rgba(6, 214, 160, 0.16);
+  color: rgba(238, 255, 251, 0.96);
+}
+
+.floorplan-door-card ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.floorplan-door-card li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 5px 5px 9px;
+  border: 1px solid rgba(123, 184, 216, 0.18);
+  border-radius: 6px;
+  background: rgba(17, 24, 32, 0.28);
+}
+
+.floorplan-door-card li[data-selected="true"] {
+  border-color: rgba(6, 214, 160, 0.58);
+  background: rgba(6, 214, 160, 0.11);
+}
+
+.floorplan-door-select {
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+  color: rgba(215, 238, 252, 0.86);
+  font-size: var(--rz-font-button);
+  font-weight: var(--rz-weight-button);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floorplan-door-remove {
+  width: 32px;
+  min-width: 32px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  color: #ffb4bd;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.floorplan-manual-door-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.floorplan-manual-door-layer[data-active="true"] {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.floorplan-manual-door-layer[data-active="true"][data-snapped="true"] {
+  cursor: none;
+}
+
+.floorplan-manual-door-hit {
+  fill: transparent;
+  pointer-events: auto;
+}
+
+.floorplan-manual-door-opening {
+  stroke: #6b7280;
+  stroke-width: 7;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-manual-door {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.floorplan-manual-door-layer[data-interactive="false"] .floorplan-manual-door {
+  pointer-events: none;
+  cursor: default;
+}
+
+.floorplan-manual-door.preview {
+  opacity: 0.58;
+  pointer-events: none;
+}
+
+.floorplan-manual-door.selected .floorplan-manual-door-panel,
+.floorplan-manual-door.selected .floorplan-manual-door-swing,
+.floorplan-manual-door.selected .floorplan-manual-door-detail {
+  stroke: #06d6a0;
+}
+
+.floorplan-manual-door.selected {
+  cursor: move;
+}
+
+.floorplan-manual-door-panel {
+  fill: none;
+  stroke: #334155;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-manual-door-swing,
+.floorplan-manual-door-detail {
+  fill: none;
+  stroke: #94a3b8;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-manual-door-post {
+  fill: #334155;
+  stroke: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.floorplan-manual-door-resize-handle {
+  fill: #d7eefc;
+  stroke: #067a65;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: all;
+  cursor: ew-resize;
 }
 
 .floorplan-candidate-editor {
@@ -3234,6 +3739,20 @@ button:disabled {
   gap: 5px;
 }
 
+.floorplan-automation-area-enabled {
+  display: flex;
+  min-height: 34px;
+  gap: 8px;
+  align-items: center;
+  color: rgba(215, 238, 252, 0.76);
+  font-size: var(--rz-font-help);
+  font-weight: var(--rz-weight-label);
+}
+
+.floorplan-automation-area-enabled input {
+  margin: 0;
+}
+
 .zone-name-field input {
   width: 100%;
   min-height: 34px;
@@ -3261,6 +3780,13 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 6px;
+}
+
+.zone-type-placeholder {
+  grid-column: 1 / -1;
+  color: rgba(215, 238, 252, 0.62);
+  font-size: var(--rz-font-help);
+  line-height: 1.45;
 }
 
 .zone-type-button {
@@ -3738,6 +4264,32 @@ button:disabled {
   gap: 8px;
 }
 
+.dashboard-zone-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.dashboard-zone-summary-grid > div {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.dashboard-zone-summary-grid > div + div {
+  padding-left: 12px;
+  border-left: 1px solid rgba(123, 184, 216, 0.14);
+}
+
+.dashboard-zone-summary-grid > div > strong {
+  overflow-wrap: anywhere;
+  color: rgba(230, 244, 255, 0.9);
+  font-size: var(--rz-font-label);
+  font-weight: var(--rz-weight-label);
+}
+
 .dashboard-secondary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3784,7 +4336,7 @@ button:disabled {
 
 .dashboard-visual-frame {
   position: relative;
-  min-height: clamp(360px, 54vh, 620px);
+  min-height: clamp(420px, 68vh, 760px);
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -3854,7 +4406,7 @@ button:disabled {
 }
 
 .dashboard-floorplan-preview .floorplan-image-frame {
-  max-height: min(62vh, 620px);
+  max-height: min(72vh, 760px);
 }
 
 .dashboard-floorplan-room-layer {
@@ -3899,6 +4451,14 @@ button:disabled {
 .dashboard-control-dialog {
   width: min(92vw, 420px);
   gap: 12px;
+}
+
+.floorplan-delete-dialog.firmware-completion-dialog .dashboard-dialog-heading strong {
+  color: #bff6e7;
+}
+
+.floorplan-delete-dialog.firmware-completion-dialog .dashboard-dialog-heading span {
+  color: rgba(215, 238, 252, 0.76);
 }
 
 .dashboard-dialog-heading {
@@ -4775,6 +5335,18 @@ button:disabled {
   stroke-width: 1.5;
 }
 
+.target {
+  transform-origin: 0 0;
+  transition: transform 300ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: transform;
+}
+
+.target .target-fusion-ring {
+  fill: none;
+  stroke: rgba(72, 199, 255, 0.96);
+  stroke-width: 2.5;
+}
+
 .target.filtered circle {
   fill: rgba(180, 190, 198, 0.72);
   stroke: rgba(255, 107, 122, 0.92);
@@ -4817,6 +5389,13 @@ button:disabled {
 
 .target.filtered text {
   fill: rgba(235, 239, 242, 0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .target,
+  .floorplan-radar-target {
+    transition: none;
+  }
 }
 
 .web-zone polygon {
@@ -4904,6 +5483,11 @@ button:disabled {
   stroke-width: var(--rz-edit-selected-stroke-width);
   stroke-dasharray: none;
   cursor: move;
+}
+
+.web-zone.owner-required polygon,
+.web-zone.owner-required.selected polygon {
+  cursor: help;
 }
 
 .zone-edge-hit:hover {
@@ -5048,6 +5632,62 @@ button:disabled {
   margin: 0;
   color: rgba(230, 244, 255, 0.9);
   font-weight: var(--rz-weight-label);
+}
+
+.floorplan-stored-summary .dashboard-platform-id {
+  max-width: 68%;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.firmware-summary div {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.firmware-summary dt {
+  white-space: nowrap;
+}
+
+.firmware-summary dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.alpha-firmware-control {
+  display: grid;
+  gap: 7px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(123, 184, 216, 0.16);
+}
+
+.alpha-firmware-control label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  cursor: pointer;
+}
+
+.alpha-firmware-control label > span {
+  display: grid;
+  gap: 4px;
+}
+
+.alpha-firmware-control strong {
+  color: #d7eefc;
+  font-size: var(--rz-font-label);
+}
+
+.alpha-firmware-control small {
+  color: rgba(215, 238, 252, 0.66);
+  font-size: var(--rz-font-help);
+  line-height: 1.45;
+}
+
+.alpha-firmware-control > small.active {
+  color: #ffd166;
 }
 
 .floorplan-stored-tools {
@@ -5352,6 +5992,14 @@ button:disabled {
   .workspace.zone-workspace,
   .workspace.zone-workspace.edit-step {
     grid-template-columns: 1fr;
+  }
+
+  .zone-workflow-panel {
+    min-height: 0;
+  }
+
+  .backup-section-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .floorplan-debug-row {

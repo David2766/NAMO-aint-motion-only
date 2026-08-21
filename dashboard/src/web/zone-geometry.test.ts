@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addSoftwareZone } from "./zone-geometry";
+import { addSoftwareZone, addSoftwareZoneDraft } from "./zone-geometry";
 import type { WebDeviceConfig } from "../core/types";
 
 function emptyConfig(): WebDeviceConfig {
@@ -21,6 +21,16 @@ const englishLabels = {
 };
 
 describe("addSoftwareZone", () => {
+  it("creates a draft without a selected visible type", () => {
+    const result = addSoftwareZoneDraft(emptyConfig(), englishLabels);
+
+    expect(result.config.zones[0]).toMatchObject({
+      id: "zone_1",
+      type: "detection",
+      placeholder: true
+    });
+  });
+
   it("uses a detection-zone default name for normal zones", () => {
     const result = addSoftwareZone(emptyConfig(), "detection", koreanLabels);
 

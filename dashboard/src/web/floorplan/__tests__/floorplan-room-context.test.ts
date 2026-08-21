@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { MAX_FLOORPLAN_ROOM_BOUNDARY_POINTS } from "../../../core/constants";
 import type { FloorplanStorageDocument } from "../../../core/floorplan/floorplan-storage";
-import { buildFloorplanRoomContext, clipPolygon, findRadarRoom, findRoomContainingPoint } from "../floorplan-room-context";
+import {
+  buildFloorplanRoomContext,
+  clipPolygon,
+  findRadarRoom,
+  findRoomContainingPoint
+} from "../floorplan-room-context";
 
 function documentWithRoom(
   pointsPx: Array<[number, number]>,

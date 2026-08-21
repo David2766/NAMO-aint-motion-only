@@ -13,6 +13,29 @@ struct SoftwareZoneTarget {
   float y{0};
 };
 
+enum class ZonePolicyAction : uint8_t {
+  NONE = 0,
+  BLOCKED,
+  REDUCED,
+};
+
+enum class ZonePolicySource : uint8_t {
+  NONE = 0,
+  SOFTWARE,
+  CALIBRATION,
+};
+
+struct TargetZonePolicy {
+  ZonePolicyAction action{ZonePolicyAction::NONE};
+  ZonePolicySource source{ZonePolicySource::NONE};
+  uint8_t zone_index{0};
+
+  bool filtered() const { return this->action != ZonePolicyAction::NONE; }
+  bool filter_blocked() const { return this->action == ZonePolicyAction::BLOCKED; }
+  bool reduced() const { return this->action == ZonePolicyAction::REDUCED; }
+  int diagnostic_mode() const;
+};
+
 struct SoftwareZoneEvidence {
   bool configured{false};
   int detection_zone_count{0};
@@ -35,6 +58,8 @@ struct SoftwareZoneEvidence {
   int room_target_outside_count{0};
 };
 
+TargetZonePolicy compute_target_zone_policy(const DeviceConfigCache &config_cache,
+                                            float target_x, float target_y);
 SoftwareZoneEvidence compute_software_zone_evidence(const DeviceConfigCache &config_cache, uint32_t now_ms,
                                                     const SoftwareZoneTarget targets[3],
                                                     uint32_t *exit_zone_last_seen_ms);

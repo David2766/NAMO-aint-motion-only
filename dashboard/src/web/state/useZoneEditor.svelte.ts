@@ -1,5 +1,5 @@
 import {
-  addSoftwareZone,
+  addSoftwareZoneDraft,
   deleteZone,
   renameZone,
   setZoneType
@@ -18,6 +18,8 @@ interface ZoneEditorOptions {
   updateConfig: (mutator: (current: WebDeviceConfig) => WebDeviceConfig) => void;
   setStatus: (message: string, tone: StatusTone) => void;
   onSelect: (zoneId: string, resetPoint: boolean, render: boolean) => void;
+  canUseDetectionType?: () => boolean;
+  onDetectionOwnerRequired?: () => void;
 }
 
 export function createZoneEditor({
@@ -27,7 +29,9 @@ export function createZoneEditor({
   getMessages,
   updateConfig,
   setStatus,
-  onSelect
+  onSelect,
+  canUseDetectionType = () => true,
+  onDetectionOwnerRequired = () => undefined
 }: ZoneEditorOptions) {
   let selectedZoneId = $state("");
 
@@ -45,10 +49,10 @@ export function createZoneEditor({
     selectZone(getZones()[0]?.id || getCalibrationZones()[0]?.id || "");
   }
 
-  function addZone(type: WebZoneType = "detection"): void {
+  function addZone(): void {
     const config = getConfig();
     if (!config) return;
-    const result = addSoftwareZone(config, type, getMessages().zones);
+    const result = addSoftwareZoneDraft(config, getMessages().zones);
     if (!result.changed) {
       const message = zoneGeometryMessage(getMessages(), result.messageCode, result.messageParams);
       if (message) setStatus(message, "warn");
@@ -61,6 +65,10 @@ export function createZoneEditor({
   function deleteSelected(): void {
     const config = getConfig();
     if (!config || !selectedZoneId) return;
+    if (selectedZone?.type === "detection" && !canUseDetectionType()) {
+      onDetectionOwnerRequired();
+      return;
+    }
     const result = deleteZone(config, selectedZoneId);
     if (!result.changed) return;
     updateConfig(() => result.config);
@@ -69,11 +77,20 @@ export function createZoneEditor({
 
   function setSelectedZoneType(type: WebZoneType): void {
     if (!selectedZone) return;
+    if ((!selectedZone.placeholder && selectedZone.type === "detection" && !canUseDetectionType()) ||
+        (type === "detection" && !canUseDetectionType())) {
+      onDetectionOwnerRequired();
+      return;
+    }
     updateConfig((current) => setZoneType(current, selectedZone.id, type).config);
   }
 
   function setSelectedZoneName(name: string): void {
     if (!selectedZone) return;
+    if (selectedZone.type === "detection" && !selectedZone.placeholder && !canUseDetectionType()) {
+      onDetectionOwnerRequired();
+      return;
+    }
     updateConfig((current) => renameZone(current, selectedZone.id, name).config);
   }
 

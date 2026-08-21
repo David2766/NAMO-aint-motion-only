@@ -1,0 +1,89 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This NAMO system is already connected.",
+      "cannot_connect": "Could not connect to the NAMO device."
+    },
+    "error": {
+      "cannot_connect": "Could not connect. Check the address and try again."
+    },
+    "step": {
+      "user": {
+        "title": "Connect NAMO",
+        "description": "Enter the address of any connected NAMO device.",
+        "data": {
+          "host": "Device address"
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "Connect NAMO",
+        "description": "NAMO was found on your network. Add it to Home Assistant?"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "occupancy": {
+        "name": "Occupancy"
+      },
+      "motion": {
+        "name": "Motion"
+      }
+    },
+    "sensor": {
+      "target_count": {
+        "name": "Target count"
+      },
+      "health": {
+        "name": "Status",
+        "state": {
+          "healthy": "Normal",
+          "degraded": "Limited",
+          "unavailable": "Unavailable"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "unavailable": "Unavailable",
+              "device_disconnected": "Device disconnected",
+              "automation_degraded": "Detection limited",
+              "automation_unavailable": "Detection unavailable",
+              "route_unavailable": "Source device unavailable",
+              "request_failed": "Could not read source device",
+              "invalid_snapshot": "Invalid state received",
+              "route_removed": "Space is no longer reported"
+            }
+          }
+        }
+      },
+      "detection_mode": {
+        "name": "Detection mode",
+        "state": {
+          "standalone": "Standalone",
+          "single_sensor": "Single sensor",
+          "multi_sensor": "Multiple sensors"
+        }
+      },
+      "fusion_status": {
+        "name": "Fusion status",
+        "state": {
+          "not_used": "Not used",
+          "single_sensor": "Single sensor",
+          "active": "Active",
+          "limited": "Limited",
+          "unavailable": "Unavailable"
+        }
+      },
+      "devices_online": {"name": "Devices working"},
+      "devices_expected": {"name": "Devices configured"},
+      "data_age": {"name": "Data age"}
+    }
+  },
+  "issues": {
+    "site_unhealthy": {
+      "title": "NAMO detection needs attention",
+      "description": "{site} has not returned to normal for a while. Detection continues where possible. Check these spaces: {spaces}."
+    }
+  }
+}

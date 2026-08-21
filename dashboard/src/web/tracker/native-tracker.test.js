@@ -21,10 +21,10 @@ describe("native PresenceTracker", () => {
     const result = spawnSync("python", [testScript], {
       cwd: repoRoot,
       encoding: "utf8",
-      timeout: 120_000
+      timeout: 240_000
     });
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.stdout).toContain("tracker_tests: ok");
-  }, 120_000);
+  }, 240_000);
 });

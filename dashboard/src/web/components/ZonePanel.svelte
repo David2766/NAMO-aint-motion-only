@@ -46,6 +46,10 @@
   function zoneNameInputValue(zone: WebZone): string {
     return localizedZoneDisplayName(zone, text);
   }
+
+  function zoneTypeText(zone: WebZone): string {
+    return zone.placeholder ? text.zoneTypePlaceholder : zoneTypeLabels[zone.type];
+  }
 </script>
 
 <section>
@@ -58,7 +62,7 @@
     {:else}
       {#each zones as zone (zone.id)}
         <button
-          class={`zone-list-item ${zone.type}${zone.id === selectedZoneId ? " selected" : ""}`}
+          class={`zone-list-item ${zone.placeholder ? "placeholder" : zone.type}${zone.id === selectedZoneId ? " selected" : ""}`}
           type="button"
           onclick={() => onSelectZone(zone.id)}
         >
@@ -66,7 +70,7 @@
             <strong>{displayZoneName(zone)}</strong>
             <span>{zoneSlotName(zone.id)}</span>
           </div>
-          <em>{zoneTypeLabels[zone.type]}</em>
+          <em>{zoneTypeText(zone)}</em>
         </button>
       {/each}
     {/if}
@@ -84,7 +88,7 @@
 
   <div data-zone-type-controls>
     {#if selectedZone}
-      <div class={`zone-type-card ${selectedZone.type}`}>
+      <div class={`zone-type-card ${selectedZone.placeholder ? "unselected" : selectedZone.type}`}>
         <div>
           <strong>{displayZoneName(selectedZone)}</strong>
           <span>{text.zoneDescription}</span>
@@ -100,9 +104,12 @@
           />
         </label>
         <div class="zone-type-buttons">
-          {#each ["detection", "filter", "disabled", "exit"] as type}
+          {#if selectedZone.placeholder}
+            <span class="zone-type-placeholder">{text.zoneTypePlaceholder}</span>
+          {/if}
+          {#each ["detection", "filter", "reduced", "disabled", "exit"] as type}
             <button
-              class={`zone-type-button ${type}${selectedZone.type === type ? " selected" : ""}`}
+              class={`zone-type-button ${type}${!selectedZone.placeholder && selectedZone.type === type ? " selected" : ""}`}
               type="button"
               onclick={() => onSetZoneType(type as WebZoneType)}
             >

@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "coordinateCases": [
+    {
+      "name": "identity-anisotropic-scale",
+      "placement": { "originX": 100, "originY": 200, "rotation": 0 },
+      "scale": { "mmPerPxX": 10, "mmPerPxY": 20 },
+      "scaleFactor": 1,
+      "radarPointMm": [1000, 2000],
+      "floorplanPointPx": { "x": 200, "y": 100 }
+    },
+    {
+      "name": "clockwise-quarter-turn",
+      "placement": { "originX": 100, "originY": 200, "rotation": 90 },
+      "scale": { "mmPerPxX": 10, "mmPerPxY": 20 },
+      "scaleFactor": 1,
+      "radarPointMm": [0, 2000],
+      "floorplanPointPx": { "x": 300, "y": 200 }
+    },
+    {
+      "name": "counter-clockwise-quarter-turn",
+      "placement": { "originX": 100, "originY": 200, "rotation": -90 },
+      "scale": { "mmPerPxX": 10, "mmPerPxY": 20 },
+      "scaleFactor": 1,
+      "radarPointMm": [1000, 0],
+      "floorplanPointPx": { "x": 100, "y": 150 }
+    },
+    {
+      "name": "radar-scale-factor",
+      "placement": { "originX": 100, "originY": 200, "rotation": 0 },
+      "scale": { "mmPerPxX": 10, "mmPerPxY": 20 },
+      "scaleFactor": 0.5,
+      "radarPointMm": [1000, 2000],
+      "floorplanPointPx": { "x": 150, "y": 150 }
+    },
+    {
+      "name": "anisotropic-scale-after-arbitrary-rotation",
+      "placement": { "originX": 50, "originY": 70, "rotation": 30 },
+      "scale": { "mmPerPxX": 10, "mmPerPxY": 20 },
+      "scaleFactor": 1,
+      "radarPointMm": [1000, 2000],
+      "floorplanPointPx": { "x": 236.60254037844385, "y": 8.397459621556138 }
+    }
+  ],
+  "valid": {
+    "descriptors": [
+      {
+        "protocolVersion": 1,
+        "participantId": "namo-bedroom-west",
+        "participantType": "namo_node",
+        "product": "namo-spatial-sensor",
+        "softwareVersion": "1.0.0",
+        "capabilities": {
+          "pointTracks": true,
+          "velocity": true,
+          "positionUncertainty": true,
+          "range": true,
+          "presence": true,
+          "motion": true,
+          "zonePresence": false,
+          "bridge": false,
+          "maxTargets": 3
+        },
+        "protocolRange": { "minimum": 1, "maximum": 1 }
+      },
+      {
+        "protocolVersion": 1,
+        "participantId": "satellite-bedroom-static",
+        "participantType": "satellite",
+        "product": "community-presence-bridge",
+        "softwareVersion": "0.1.0",
+        "capabilities": {
+          "pointTracks": false,
+          "velocity": false,
+          "positionUncertainty": false,
+          "range": true,
+          "presence": true,
+          "motion": false,
+          "zonePresence": false,
+          "bridge": true,
+          "maxTargets": 0
+        },
+        "protocolRange": { "minimum": 1, "maximum": 1 }
+      }
+    ],
+    "observations": [
+      {
+        "protocolVersion": 1,
+        "siteId": "site-home",
+        "participantId": "namo-bedroom-west",
+        "participantType": "namo_node",
+        "bootId": "boot-7d3e0d7c",
+        "groupId": "group-bedroom",
+        "sequence": 1842,
+        "observedAtMs": 12345678,
+        "ttlMs": 1500,
+        "frame": {
+          "id": "sensor-local",
+          "poseVersion": 4,
+          "calibrationVersion": 2
+        },
+        "tracks": [
+          {
+            "localTrackId": 7,
+            "xMm": 840,
+            "yMm": 2110,
+            "vxMmS": -40,
+            "vyMmS": 15,
+            "qualityScore": 82,
+            "sampleAgeMs": 28,
+            "positionVarianceMm2": [14400, 0, 0, 32400]
+          }
+        ],
+        "evidence": {
+          "presence": true,
+          "motion": false,
+          "rangeMm": 2270,
+          "zonePresence": []
+        },
+        "health": {
+          "state": "healthy",
+          "sampleAgeMs": 28
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "siteId": "site-home",
+        "participantId": "satellite-bedroom-static",
+        "participantType": "satellite",
+        "bootId": "boot-static-1",
+        "groupId": "group-bedroom",
+        "sequence": 9,
+        "observedAtMs": 3500,
+        "ttlMs": 1500,
+        "frame": {
+          "id": "sensor-local",
+          "poseVersion": 1,
+          "calibrationVersion": 1
+        },
+        "tracks": [],
+        "evidence": {
+          "presence": true,
+          "motion": false,
+          "rangeMm": 2300,
+          "zonePresence": []
+        },
+        "health": {
+          "state": "healthy",
+          "sampleAgeMs": 40
+        }
+      }
+    ],
+    "groupStates": [
+      {
+        "protocolVersion": 1,
+        "siteId": "site-home",
+        "floorplanId": "floorplan-main",
+        "spaceId": "space-bedroom",
+        "groupId": "group-bedroom",
+        "configVersion": 12,
+        "term": 7,
+        "sequence": 991,
+        "leaderNodeId": "namo-bedroom-west",
+        "observedAtMs": 12345999,
+        "ttlMs": 3000,
+        "occupancy": true,
+        "motion": false,
+        "targetCount": 1,
+        "zones": [
+          { "zoneId": "zone-bed", "occupancy": true, "targetCount": 1 }
+        ],
+        "health": "healthy",
+        "participantsOnline": 2,
+        "participantsExpected": 2
+      }
+    ],
+    "errors": [
+      {
+        "protocolVersion": 1,
+        "code": "invalid_observation",
+        "severity": "error",
+        "message": "Observation failed schema validation.",
+        "details": { "path": "$.tracks[0].xMm" }
+      }
+    ]
+  },
+  "invalid": [
+    {
+      "name": "presence-only-spatial-track",
+      "kind": "observation",
+      "descriptorIndex": 1,
+      "observationIndex": 1,
+      "patch": { "tracks": [{ "localTrackId": 1, "xMm": 0, "yMm": 1000, "qualityScore": 50 }] },
+      "errorCode": "authority_violation"
+    },
+    {
+      "name": "local-policy-leak",
+      "kind": "observation",
+      "observationIndex": 0,
+      "patch": { "evidence": { "staticAssistActive": true } },
+      "errorCode": "local_policy_field_forbidden"
+    },
+    {
+      "name": "non-finite-coordinate",
+      "kind": "observation",
+      "observationIndex": 0,
+      "specialPatch": "nonFiniteTrackX",
+      "errorCode": "invalid_number"
+    },
+    {
+      "name": "too-many-tracks",
+      "kind": "observation",
+      "observationIndex": 0,
+      "specialPatch": "fourTracks",
+      "errorCode": "too_many_items"
+    },
+    {
+      "name": "wrong-protocol-version",
+      "kind": "descriptor",
+      "descriptorIndex": 0,
+      "patch": { "protocolVersion": 2 },
+      "errorCode": "unsupported_protocol_version"
+    }
+  ]
+}

@@ -4,57 +4,6 @@ number:
     presence_timeout:
       name: "Presence Timeout"
       entity_category: config
-    zone_1:
-      x1:
-        name: "Zone 1 X1"
-        id: zone_1_x1
-        entity_category: config
-      y1:
-        name: "Zone 1 Y1"
-        id: zone_1_y1
-        entity_category: config
-      x2:
-        name: "Zone 1 X2"
-        id: zone_1_x2
-        entity_category: config
-      y2:
-        name: "Zone 1 Y2"
-        id: zone_1_y2
-        entity_category: config
-    zone_2:
-      x1:
-        name: "Zone 2 X1"
-        id: zone_2_x1
-        entity_category: config
-      y1:
-        name: "Zone 2 Y1"
-        id: zone_2_y1
-        entity_category: config
-      x2:
-        name: "Zone 2 X2"
-        id: zone_2_x2
-        entity_category: config
-      y2:
-        name: "Zone 2 Y2"
-        id: zone_2_y2
-        entity_category: config
-    zone_3:
-      x1:
-        name: "Zone 3 X1"
-        id: zone_3_x1
-        entity_category: config
-      y1:
-        name: "Zone 3 Y1"
-        id: zone_3_y1
-        entity_category: config
-      x2:
-        name: "Zone 3 X2"
-        id: zone_3_x2
-        entity_category: config
-      y2:
-        name: "Zone 3 Y2"
-        id: zone_3_y2
-        entity_category: config
 
   - platform: ld2410
     ld2410_id: ld2410_radar

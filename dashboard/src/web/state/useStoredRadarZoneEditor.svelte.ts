@@ -1,9 +1,8 @@
 import type { RadarScreenPoint, WebDeviceConfig, WebZone, WebZoneType } from "../../core/types";
-import { normalizeZoneType } from "../../core/zones";
 import type { Messages } from "../i18n/types";
 import { zoneGeometryMessage } from "../i18n/zone-geometry";
 import {
-  addSoftwareZone,
+  addSoftwareZoneDraft,
   convertZoneToRectInConfig,
   deleteZone,
   deleteZonePointInConfig,
@@ -21,7 +20,7 @@ import {
 } from "../zone-geometry";
 import type { StoredFloorplanDirtyScope } from "./useStoredFloorplanEditSession.svelte";
 
-type StoredRadarZoneTool = "rooms" | "scale" | "radar" | "zones" | "exit" | "calibration" | "furniture" | string;
+type StoredRadarZoneTool = "rooms" | "scale" | "radar" | "zones" | "calibration" | "furniture" | string;
 type StoredRadarZoneSource = "zones" | "calibration" | "";
 type StoredCalibrationZoneType = Extract<WebZoneType, "filter" | "reduced" | "disabled">;
 
@@ -29,7 +28,6 @@ interface StoredRadarZoneEditorText {
   storedAddZoneUnavailable: string;
   storedAddPointUnavailable: string;
   storedCalibrationUpdated: string;
-  storedExitPointAdded: string;
   storedZoneAdded: string;
   storedZoneDeleted: string;
   storedZonePointAdded: string;
@@ -60,6 +58,8 @@ interface StoredRadarZoneEditorOptions {
   onSelectDeviceZone?: (zoneId: string) => void;
   getMessages: () => Messages;
   getText: () => StoredRadarZoneEditorText;
+  canUseDetectionType?: () => boolean;
+  onDetectionOwnerRequired?: () => void;
 }
 
 export function createStoredRadarZoneEditor({
@@ -72,12 +72,14 @@ export function createStoredRadarZoneEditor({
   editSession,
   onSelectDeviceZone,
   getMessages,
-  getText
+  getText,
+  canUseDetectionType = () => true,
+  onDetectionOwnerRequired = () => undefined
 }: StoredRadarZoneEditorOptions) {
   function editSource(): StoredRadarZoneSource {
     if (getMode() !== "edit") return "";
     const tool = getTool();
-    if (tool === "zones" || tool === "exit") return "zones";
+    if (tool === "zones") return "zones";
     if (tool === "calibration") return "calibration";
     return "";
   }
@@ -86,14 +88,13 @@ export function createStoredRadarZoneEditor({
     const config = getConfig();
     if (tool === "calibration") return config?.calibrationZones ?? [];
     const zones = config?.zones ?? [];
-    if (tool === "exit") return zones.filter((zone) => zone.type === "exit");
-    if (tool === "zones") return zones.filter((zone) => zone.type !== "exit");
+    if (tool === "zones") return zones;
     return zones;
   }
 
   function overlayZones(): WebZone[] {
     const tool = getTool();
-    if (getMode() === "edit" && (tool === "zones" || tool === "exit")) {
+    if (getMode() === "edit" && tool === "zones") {
       return toolZones(tool);
     }
     return getConfig()?.zones ?? [];
@@ -103,7 +104,7 @@ export function createStoredRadarZoneEditor({
     const config = getConfig();
     const zones = source === "calibration"
       ? (config?.calibrationZones ?? [])
-      : getMode() === "edit" && (getTool() === "zones" || getTool() === "exit")
+      : getMode() === "edit" && getTool() === "zones"
         ? toolZones(getTool())
         : (config?.zones ?? []);
     return zones.find((zone) => zone.id === editSession.selectedRadarZoneId) ?? null;
@@ -123,12 +124,6 @@ export function createStoredRadarZoneEditor({
     if (!zones.some((zone) => zone.id === editSession.selectedRadarZoneId)) {
       selectZone(zones[0]?.id ?? "", -1);
     }
-  }
-
-  function beginExitPointTool(): void {
-    beginTool("exit");
-    if (editSession.selectedRadarZoneId) return;
-    addExitPoint();
   }
 
   function updateZone(source: StoredRadarZoneSource, zoneId: string, updater: (zone: WebZone) => WebZone): void {
@@ -168,10 +163,9 @@ export function createStoredRadarZoneEditor({
     editSession.saveStatus = zoneGeometryMessage(getMessages(), messageCode, messageParams) || fallback;
   }
 
-  function addZone(type: WebZoneType | unknown = "detection"): void {
-    const zoneType = normalizeZoneType(type);
+  function addZone(): void {
     editSession.pushHistory();
-    const result = updateConfigWithResult((current) => addSoftwareZone(current, zoneType, getMessages().zones));
+    const result = updateConfigWithResult((current) => addSoftwareZoneDraft(current, getMessages().zones));
     if (!result) return;
     const text = getText();
     if (!result.changed) {
@@ -179,23 +173,22 @@ export function createStoredRadarZoneEditor({
       return;
     }
     selectZone(result.selectedZoneId ?? "", -1);
-    editSession.markChanged(zoneType === "exit" ? text.storedExitPointAdded : text.storedZoneAdded, ["config"]);
-  }
-
-  function addExitPoint(): void {
-    addZone("exit");
+    editSession.markChanged(text.storedZoneAdded, ["config"]);
   }
 
   function deleteSelectedZone(): void {
     if (!editSession.selectedRadarZoneId) return;
+    const current = selectedZone();
+    if (current?.type === "detection" && !current.placeholder && !canUseDetectionType()) {
+      onDetectionOwnerRequired();
+      return;
+    }
     editSession.pushHistory();
     const result = updateConfigWithResult((current) => deleteZone(current, editSession.selectedRadarZoneId));
     if (!result?.changed) return;
     const tool = getTool();
-    if (tool === "exit") {
-      selectZone(result.config.zones.find((zone) => zone.type === "exit")?.id ?? "", -1);
-    } else if (tool === "zones") {
-      selectZone(result.config.zones.find((zone) => zone.type !== "exit")?.id ?? "", -1);
+    if (tool === "zones") {
+      selectZone(result.config.zones[0]?.id ?? "", -1);
     } else {
       selectZone(result.selectedZoneId ?? "", -1);
     }
@@ -205,7 +198,12 @@ export function createStoredRadarZoneEditor({
   function renameSelectedZone(name: string): void {
     const zoneId = editSession.selectedRadarZoneId;
     const tool = getTool();
-    if (!zoneId || (tool !== "zones" && tool !== "exit")) return;
+    if (!zoneId || tool !== "zones") return;
+    const current = selectedZone();
+    if (current?.type === "detection" && !current.placeholder && !canUseDetectionType()) {
+      onDetectionOwnerRequired();
+      return;
+    }
     editSession.beginHistoryAction(`zone-name:${zoneId}`);
     updateConfigWithResult((current) => renameZone(current, zoneId, name));
     editSession.markChanged(getText().storedZoneUpdated, ["config"]);
@@ -214,6 +212,12 @@ export function createStoredRadarZoneEditor({
   function setSelectedZoneType(type: WebZoneType): void {
     const zoneId = editSession.selectedRadarZoneId;
     if (!zoneId || getTool() !== "zones") return;
+    const current = selectedZone();
+    if ((!current?.placeholder && current?.type === "detection" && !canUseDetectionType()) ||
+        (type === "detection" && !canUseDetectionType())) {
+      onDetectionOwnerRequired();
+      return;
+    }
     editSession.pushHistory();
     updateConfigWithResult((current) => setZoneType(current, zoneId, type));
     editSession.markChanged(getText().storedZoneUpdated, ["config"]);
@@ -230,6 +234,11 @@ export function createStoredRadarZoneEditor({
   function convertSelectedZoneToRect(): void {
     const zoneId = editSession.selectedRadarZoneId;
     if (!zoneId || getTool() !== "zones") return;
+    const current = selectedZone();
+    if (current?.type === "detection" && !canUseDetectionType()) {
+      onDetectionOwnerRequired();
+      return;
+    }
     editSession.pushHistory();
     const result = updateConfigWithResult((current) => convertZoneToRectInConfig(current, zoneId));
     if (!result?.changed) return;
@@ -238,6 +247,10 @@ export function createStoredRadarZoneEditor({
   }
 
   function moveSelectedZone(source: StoredRadarZoneSource, zone: WebZone, startPoint: [number, number], currentPoint: [number, number]): void {
+    if (source === "zones" && zone.type === "detection" && !canUseDetectionType()) {
+      onDetectionOwnerRequired();
+      return;
+    }
     editSession.beginHistoryAction(`zone-move:${source}:${zone.id}`);
     const start = { x: startPoint[0], y: startPoint[1] };
     const current = { x: currentPoint[0], y: currentPoint[1] };
@@ -249,6 +262,10 @@ export function createStoredRadarZoneEditor({
   }
 
   function moveSelectedZonePoint(source: StoredRadarZoneSource, zone: WebZone, pointIndex: number, point: [number, number]): void {
+    if (source === "zones" && zone.type === "detection" && !canUseDetectionType()) {
+      onDetectionOwnerRequired();
+      return;
+    }
     editSession.beginHistoryAction(`zone-point:${source}:${zone.id}:${pointIndex}`);
     const radarPoint: RadarScreenPoint = { x: point[0], y: point[1] };
     if (source === "zones" && zone.type === "exit") {
@@ -262,6 +279,10 @@ export function createStoredRadarZoneEditor({
 
   function addZonePoint(source: StoredRadarZoneSource, zone: WebZone, edgeIndex: number, point: [number, number]): void {
     if (source !== "zones") return;
+    if (zone.type === "detection" && !canUseDetectionType()) {
+      onDetectionOwnerRequired();
+      return;
+    }
     if (zone.type === "exit") return;
     editSession.pushHistory();
     const result = updateConfigWithResult((current) => insertZonePointInConfig(current, zone.id, edgeIndex, { x: point[0], y: point[1] }));
@@ -285,6 +306,11 @@ export function createStoredRadarZoneEditor({
     const zoneId = editSession.selectedRadarZoneId;
     const pointIndex = editSession.selectedRadarZonePointIndex;
     if (!zoneId || pointIndex < 0) return false;
+    const current = selectedZone();
+    if (current?.type === "detection" && !canUseDetectionType()) {
+      onDetectionOwnerRequired();
+      return false;
+    }
     editSession.pushHistory();
     const result = updateConfigWithResult((current) => deleteZonePointInConfig(current, zoneId, pointIndex));
     if (!result?.changed) return false;
@@ -300,9 +326,7 @@ export function createStoredRadarZoneEditor({
     selectedZone,
     selectZone,
     beginTool,
-    beginExitPointTool,
     addZone,
-    addExitPoint,
     deleteSelectedZone,
     renameSelectedZone,
     setSelectedZoneType,

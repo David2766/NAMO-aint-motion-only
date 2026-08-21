@@ -1,0 +1,19 @@
+from __future__ import annotations
+
+from typing import Final
+
+DOMAIN: Final = "namo"
+PLATFORMS: Final = ("binary_sensor", "sensor")
+
+CONF_SITE_ID: Final = "site_id"
+
+DIRECTORY_REFRESH_SECONDS: Final = 10
+SPACE_METADATA_REFRESH_SECONDS: Final = 60
+POLL_INTERVAL_SECONDS: Final = 1
+REQUEST_TIMEOUT_SECONDS: Final = 4
+TRANSIENT_FAILURE_GRACE_SECONDS: Final = 30
+MAX_SITE_GROUPS: Final = 8
+MAX_PARALLEL_REQUESTS: Final = 4
+MAX_AUTOMATION_AGE_MS: Final = 5000
+MAX_CONTINUITY_HOLD_MS: Final = 30000
+ISSUE_DELAY_SECONDS: Final = 30

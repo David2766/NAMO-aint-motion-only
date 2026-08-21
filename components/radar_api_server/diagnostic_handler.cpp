@@ -8,22 +8,14 @@
 namespace esphome {
 namespace radar_api_server {
 
-bool DiagnosticHandler::can_handle(AsyncWebServerRequest *request) const {
+bool DiagnosticHandler::can_handle(AsyncWebServerRequest *request, StringRef url) const {
   if (request->method() != HTTP_GET)
     return false;
-
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
   return url == "/api/diagnostics/events" || url == "/api/diagnostics/events.txt" ||
          url == "/api/diagnostics/replay.ndjson";
 }
 
-bool DiagnosticHandler::handle(AsyncWebServerRequest *request) {
-  if (!this->can_handle(request))
-    return false;
-
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
+bool DiagnosticHandler::handle(AsyncWebServerRequest *request, StringRef url) {
   if (url == "/api/diagnostics/replay.ndjson") {
     this->handle_replay_ndjson_(request);
   } else if (url == "/api/diagnostics/events.txt") {

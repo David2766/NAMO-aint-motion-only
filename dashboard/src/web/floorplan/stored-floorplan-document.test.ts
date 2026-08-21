@@ -6,7 +6,8 @@ import type {
 import {
   buildCurrentStoredFloorplanDocument,
   sanitizeStoredFloorplanDocument,
-  storedRoomToCandidate
+  storedRoomToCandidate,
+  withLocalFloorplanRadarPlacement
 } from "./stored-floorplan-document";
 
 function storageRoomFixture(): FloorplanStorageRoom {
@@ -55,6 +56,13 @@ function documentFixture(): FloorplanStorageDocument {
       y2: 10,
       length: 100
     }],
+    doors: [{
+      id: "door_1",
+      kind: "sliding",
+      centerPx: [100, 40],
+      widthPx: 80,
+      rotationDeg: 90
+    }],
     objects: []
   };
 }
@@ -97,6 +105,7 @@ describe("stored floorplan document helpers", () => {
 
     expect(next?.occlusion.ignoredEdges).toEqual(["wall:0,0-10,0"]);
     expect(next?.wallSegments).toEqual(document.wallSegments);
+    expect(next?.doors).toEqual(document.doors);
     expect(next?.objects?.[0]).toMatchObject({ ...object, roomId: "room_1" });
   });
 
@@ -128,5 +137,44 @@ describe("stored floorplan document helpers", () => {
       heightPx: 30,
       rotationDeg: 0
     }]);
+  });
+
+  it("keeps only valid structured doors for the shared door overlay", () => {
+    const document = {
+      ...documentFixture(),
+      doors: [
+        documentFixture().doors?.[0],
+        { id: "broken", kind: "sliding", centerPx: [10], widthPx: -1, rotationDeg: 0 }
+      ] as unknown as FloorplanStorageDocument["doors"]
+    };
+
+    expect(sanitizeStoredFloorplanDocument(document).doors).toEqual(documentFixture().doors);
+  });
+
+  it("keeps legacy baked-door documents distinguishable from structured door documents", () => {
+    const document = documentFixture();
+    delete document.doors;
+
+    expect(sanitizeStoredFloorplanDocument(document).doors).toBeUndefined();
+  });
+
+  it("keeps Node-local radar placement when shared geometry is loaded", () => {
+    const document = documentFixture();
+    const localized = withLocalFloorplanRadarPlacement(document, {
+      originX: 91,
+      originY: 47,
+      rotation: 135,
+      scale: 0.8,
+      poseVersion: 22
+    });
+
+    expect(localized.radar).toMatchObject({
+      originPx: [91, 47],
+      rotationDeg: 135,
+      scale: 0.8,
+      poseVersion: 22
+    });
+    expect(localized.rooms).toBe(document.rooms);
+    expect(document.radar.originPx).toEqual([50, 100]);
   });
 });

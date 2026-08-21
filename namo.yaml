@@ -3,7 +3,11 @@ substitutions:
   friendly_name: Presence Sensor
   name_add_mac_suffix: "true"
   project_name: truststorm.presence-sensor
-  project_version: "0.5.5"
+  project_version: "0.6.0"
+  shadow_transport_smoke: "false"
+  production_fusion: "true"
+  signed_ota: "false"
+  ota_policy: legacy
 
 packages:
   base: !include packages/namo/base.yaml
@@ -21,3 +25,4 @@ packages:
   text_sensors: !include packages/namo/text-sensors.yaml
   intervals: !include packages/namo/intervals.yaml
   web: !include packages/namo/web.yaml
+  ota_policy: !include packages/namo/ota-${ota_policy}.yaml

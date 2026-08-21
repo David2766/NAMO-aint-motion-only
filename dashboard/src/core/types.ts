@@ -92,7 +92,15 @@ export interface WebTarget {
   filtered?: boolean;
   reduced?: boolean;
   filterReason?: string;
+  fused?: boolean;
+  sourceCount?: number;
   displayMode?: "static-matched" | "static-uncertain";
+}
+
+export interface WebLocalTarget {
+  x: number;
+  y: number;
+  active: boolean;
 }
 
 export interface WebZone {
@@ -102,6 +110,8 @@ export interface WebZone {
   shape: "rect" | "polygon";
   points: Array<[number, number]>;
   placeholder?: boolean;
+  shared?: boolean;
+  sharedAreaId?: string;
   minSizeUnlocked?: boolean;
   minPoints?: Array<[number, number]>;
 }
@@ -118,6 +128,47 @@ export interface WebDeviceState {
   targetCount?: number;
   movingTargetCount?: number;
   stillTargetCount?: number;
+  fusion?: {
+    buildEnabled?: boolean;
+    authoritative?: boolean;
+    state?: string;
+    source?: string;
+    groupTerm?: number;
+    sequence?: number;
+    sourceSequence?: number;
+  };
+  local?: {
+    presence?: boolean;
+    motion?: boolean;
+    targetCount?: number;
+    targets?: WebLocalTarget[];
+  };
+  automation?: {
+    schemaVersion?: number;
+    complete?: boolean;
+    health?: "disabled" | "unavailable" | "degraded" | "healthy" | string;
+    available?: boolean;
+    siteId?: string | null;
+    spaceId?: string | null;
+    groupId?: string | null;
+    leaderNodeId?: string | null;
+    bootId?: string | null;
+    source?: "none" | "local_group_leader" | "group_leader_snapshot" | string;
+    groupTerm?: number;
+    sequence?: number;
+    sourceSequence?: number;
+    ageMs?: number | null;
+    presence?: boolean | null;
+    motion?: boolean | null;
+    targetCount?: number | null;
+    zones?: Array<{
+      zoneId: string;
+      name: string;
+      type: WebZoneType;
+      presence: boolean | null;
+      targetCount: number | null;
+    }>;
+  };
   temperatureC?: number | null;
   humidityPercent?: number | null;
   illuminanceLux?: number | null;
@@ -248,12 +299,15 @@ export interface WebDeviceConfig {
     enabled: boolean;
     hasImage: boolean;
     scaleMmPerPx?: number;
+    scaleMmPerPxX?: number;
+    scaleMmPerPxY?: number;
     radarOcclusionIgnoredEdges?: string[];
     radar?: {
       originX: number;
       originY: number;
       rotation: number;
       scale: number;
+      poseVersion?: number;
     };
     room?: {
       id: string;

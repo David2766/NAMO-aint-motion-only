@@ -46,6 +46,8 @@ void PresenceReplayLog::update(const PresenceTrackerInput &input, const Presence
     sample.targets[i].y_mm = clamp_i16_(input.targets[i].y_mm);
     sample.targets[i].speed_cm_s = clamp_i16_(input.targets[i].speed_cm_s);
     sample.targets[i].distance_mm = clamp_u16_(input.targets[i].distance_mm);
+    sample.targets[i].reduced_zone = input.targets[i].reduced_zone;
+    sample.targets[i].filtered = input.targets[i].filter_blocked;
   }
 
   sample.presence = snapshot.presence;
@@ -117,7 +119,7 @@ bool PresenceReplayLog::format_ndjson_sample(size_t offset, char *out, size_t ou
       out, out_size,
       "{\"q\":%u,\"t\":%u,\"p\":%u,\"lx\":%.1f,"
       "\"r\":[[%u,%d,%d,%d,%u,%d,%u,%u],[%u,%d,%d,%d,%u,%d,%u,%u],[%u,%d,%d,%d,%u,%d,%u,%u]],"
-      "\"tg\":[[%u,%d,%d,%d,%u],[%u,%d,%d,%d,%u],[%u,%d,%d,%d,%u]],"
+      "\"tg\":[[%u,%d,%d,%d,%u,%u,%u],[%u,%d,%d,%d,%u,%u,%u],[%u,%d,%d,%d,%u,%u,%u]],"
       "\"sr\":[%u,%u,%u,%u,%u,%u,%u,%u,%u],"
       "\"sf\":[%u,%u,%u,%u,%u,%u,%u],"
       "\"f\":[%u,%u,%d,%d,%d],"
@@ -135,11 +137,14 @@ bool PresenceReplayLog::format_ndjson_sample(size_t offset, char *out, size_t ou
       sample.raw_targets[2].speed_cm_s, sample.raw_targets[2].distance_mm, sample.raw_targets[2].filter_mode,
       sample.raw_targets[2].filtered ? 1 : 0, sample.raw_targets[2].range_valid ? 1 : 0,
       sample.targets[0].valid ? 1 : 0, sample.targets[0].x_mm, sample.targets[0].y_mm,
-      sample.targets[0].speed_cm_s, sample.targets[0].distance_mm,
+      sample.targets[0].speed_cm_s, sample.targets[0].distance_mm, sample.targets[0].reduced_zone ? 1 : 0,
+      sample.targets[0].filtered ? 1 : 0,
       sample.targets[1].valid ? 1 : 0, sample.targets[1].x_mm, sample.targets[1].y_mm,
-      sample.targets[1].speed_cm_s, sample.targets[1].distance_mm,
+      sample.targets[1].speed_cm_s, sample.targets[1].distance_mm, sample.targets[1].reduced_zone ? 1 : 0,
+      sample.targets[1].filtered ? 1 : 0,
       sample.targets[2].valid ? 1 : 0, sample.targets[2].x_mm, sample.targets[2].y_mm,
-      sample.targets[2].speed_cm_s, sample.targets[2].distance_mm,
+      sample.targets[2].speed_cm_s, sample.targets[2].distance_mm, sample.targets[2].reduced_zone ? 1 : 0,
+      sample.targets[2].filtered ? 1 : 0,
       sample.static_radar_available ? 1 : 0, sample.static_radar_presence ? 1 : 0,
       sample.static_radar_moving ? 1 : 0, sample.static_radar_still ? 1 : 0,
       sample.static_radar_moving_distance_mm, sample.static_radar_still_distance_mm,
@@ -300,6 +305,7 @@ uint8_t PresenceReplayLog::tracker_reason_code_(const char *value) {
   if (std::strcmp(reason, "lost_without_exit") == 0) return 14;
   if (std::strcmp(reason, "coasting_after_room_exit") == 0) return 15;
   if (std::strcmp(reason, "lost_after_room_exit") == 0) return 16;
+  if (std::strcmp(reason, "tentative_reduced_zone") == 0) return 17;
   return 255;
 }
 

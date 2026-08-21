@@ -91,18 +91,12 @@ sensor:
       x:
         id: target_1_x_raw
         internal: true
-        filters:
-          - throttle: 2s
       y:
         id: target_1_y_raw
         internal: true
-        filters:
-          - throttle: 2s
       speed:
         id: target_1_speed_raw
         internal: true
-        filters:
-          - throttle: 2s
       angle:
         id: target_1_angle_raw
         internal: true
@@ -111,24 +105,16 @@ sensor:
       distance:
         id: target_1_distance_raw
         internal: true
-        filters:
-          - throttle: 2s
     target_2:
       x:
         id: target_2_x_raw
         internal: true
-        filters:
-          - throttle: 2s
       y:
         id: target_2_y_raw
         internal: true
-        filters:
-          - throttle: 2s
       speed:
         id: target_2_speed_raw
         internal: true
-        filters:
-          - throttle: 2s
       angle:
         id: target_2_angle_raw
         internal: true
@@ -137,24 +123,16 @@ sensor:
       distance:
         id: target_2_distance_raw
         internal: true
-        filters:
-          - throttle: 2s
     target_3:
       x:
         id: target_3_x_raw
         internal: true
-        filters:
-          - throttle: 2s
       y:
         id: target_3_y_raw
         internal: true
-        filters:
-          - throttle: 2s
       speed:
         id: target_3_speed_raw
         internal: true
-        filters:
-          - throttle: 2s
       angle:
         id: target_3_angle_raw
         internal: true
@@ -163,32 +141,6 @@ sensor:
       distance:
         id: target_3_distance_raw
         internal: true
-        filters:
-          - throttle: 2s
-    zone_1:
-      target_count:
-        name: "Zone 1 Target Count Raw"
-        id: zone_1_target_count
-        entity_category: diagnostic
-        disabled_by_default: true
-        filters:
-          - throttle: 2s
-    zone_2:
-      target_count:
-        name: "Zone 2 Target Count Raw"
-        id: zone_2_target_count
-        entity_category: diagnostic
-        disabled_by_default: true
-        filters:
-          - throttle: 2s
-    zone_3:
-      target_count:
-        name: "Zone 3 Target Count Raw"
-        id: zone_3_target_count
-        entity_category: diagnostic
-        disabled_by_default: true
-        filters:
-          - throttle: 2s
   - platform: template
     name: "Still Target Count"
     id: still_target_count_filtered
@@ -196,8 +148,18 @@ sensor:
     update_interval: 500ms
     accuracy_decimals: 0
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        int count = 0;
+        for (const auto &target : fusion.targets) {
+          if (target.valid &&
+              std::hypot(target.vx_mm_s, target.vy_mm_s) <=
+                  id(dir_stationary_speed) * 10.0f) count++;
+        }
+        return count;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
-        if (id(target_1_filter_blocked) || id(target_2_filter_blocked) || id(target_3_filter_blocked)) return 0;
+        if (id(target_admission_fully_blocked)) return 0;
         return id(radar_api).tracker_output().still_track_count;
       }
       int count = 0;
@@ -212,8 +174,18 @@ sensor:
     update_interval: 500ms
     accuracy_decimals: 0
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        int count = 0;
+        for (const auto &target : fusion.targets) {
+          if (target.valid &&
+              std::hypot(target.vx_mm_s, target.vy_mm_s) >
+                  id(dir_stationary_speed) * 10.0f) count++;
+        }
+        return count;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
-        if (id(target_1_filter_blocked) || id(target_2_filter_blocked) || id(target_3_filter_blocked)) return 0;
+        if (id(target_admission_fully_blocked)) return 0;
         return id(radar_api).tracker_output().moving_track_count;
       }
       int count = 0;
@@ -305,6 +277,8 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) return fusion.targets[0].valid ? fusion.targets[0].x_mm : 0;
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[0];
         return track.valid ? track.x_mm : 0;
@@ -321,6 +295,8 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) return fusion.targets[0].valid ? fusion.targets[0].y_mm : 0;
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[0];
         return track.valid ? track.y_mm : 0;
@@ -337,6 +313,15 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        const auto &target = fusion.targets[0];
+        if (!target.valid) return 0;
+        const float distance = std::hypot(target.x_mm, target.y_mm);
+        return distance > 0.0f
+          ? (target.x_mm * target.vx_mm_s + target.y_mm * target.vy_mm_s) / distance / 10.0f
+          : 0.0f;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[0];
         return track.valid ? track.speed_cm_s : 0;
@@ -353,6 +338,13 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        const auto &target = fusion.targets[0];
+        if (!target.valid) return 0;
+        constexpr float radians_to_degrees = 57.295779513f;
+        return atan2f(target.x_mm, target.y_mm) * radians_to_degrees;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[0];
         if (!track.valid) return 0;
@@ -371,6 +363,11 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        const auto &target = fusion.targets[0];
+        return target.valid ? std::hypot(target.x_mm, target.y_mm) : 0;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[0];
         return track.valid ? track.distance_mm : 0;
@@ -389,6 +386,8 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) return fusion.targets[1].valid ? fusion.targets[1].x_mm : 0;
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[1];
         return track.valid ? track.x_mm : 0;
@@ -405,6 +404,8 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) return fusion.targets[1].valid ? fusion.targets[1].y_mm : 0;
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[1];
         return track.valid ? track.y_mm : 0;
@@ -421,6 +422,15 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        const auto &target = fusion.targets[1];
+        if (!target.valid) return 0;
+        const float distance = std::hypot(target.x_mm, target.y_mm);
+        return distance > 0.0f
+          ? (target.x_mm * target.vx_mm_s + target.y_mm * target.vy_mm_s) / distance / 10.0f
+          : 0.0f;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[1];
         return track.valid ? track.speed_cm_s : 0;
@@ -437,6 +447,13 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        const auto &target = fusion.targets[1];
+        if (!target.valid) return 0;
+        constexpr float radians_to_degrees = 57.295779513f;
+        return atan2f(target.x_mm, target.y_mm) * radians_to_degrees;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[1];
         if (!track.valid) return 0;
@@ -455,6 +472,11 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        const auto &target = fusion.targets[1];
+        return target.valid ? std::hypot(target.x_mm, target.y_mm) : 0;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[1];
         return track.valid ? track.distance_mm : 0;
@@ -473,6 +495,8 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) return fusion.targets[2].valid ? fusion.targets[2].x_mm : 0;
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[2];
         return track.valid ? track.x_mm : 0;
@@ -489,6 +513,8 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) return fusion.targets[2].valid ? fusion.targets[2].y_mm : 0;
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[2];
         return track.valid ? track.y_mm : 0;
@@ -505,6 +531,15 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        const auto &target = fusion.targets[2];
+        if (!target.valid) return 0;
+        const float distance = std::hypot(target.x_mm, target.y_mm);
+        return distance > 0.0f
+          ? (target.x_mm * target.vx_mm_s + target.y_mm * target.vy_mm_s) / distance / 10.0f
+          : 0.0f;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[2];
         return track.valid ? track.speed_cm_s : 0;
@@ -521,6 +556,13 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        const auto &target = fusion.targets[2];
+        if (!target.valid) return 0;
+        constexpr float radians_to_degrees = 57.295779513f;
+        return atan2f(target.x_mm, target.y_mm) * radians_to_degrees;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[2];
         if (!track.valid) return 0;
@@ -539,6 +581,11 @@ sensor:
     accuracy_decimals: 0
     update_interval: 2s
     lambda: |-
+      const auto &fusion = id(radar_api).spatial_automation_fusion_output(millis());
+      if (fusion.authoritative) {
+        const auto &target = fusion.targets[2];
+        return target.valid ? std::hypot(target.x_mm, target.y_mm) : 0;
+      }
       if (id(radar_api).tracker_assist_presence_enabled()) {
         const auto &track = id(radar_api).tracker_output().tracks[2];
         return track.valid ? track.distance_mm : 0;
@@ -547,5 +594,3 @@ sensor:
         return 0;
       }
       return id(target_3_distance_raw).state;
-
-# LD2450 and status LED controls

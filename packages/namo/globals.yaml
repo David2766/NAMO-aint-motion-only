@@ -99,6 +99,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: target_admission_fully_blocked
+    type: bool
+    restore_value: no
+    initial_value: 'false'
   - id: state_presence_stable
     type: bool
     restore_value: no

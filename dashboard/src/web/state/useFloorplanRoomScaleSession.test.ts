@@ -111,4 +111,24 @@ describe("floorplan room scale session", () => {
       heightMm: 1000
     });
   });
+
+  it("uses an explicit manual outline instead of treating the first room as the floorplan bounds", () => {
+    const session = createFloorplanRoomScaleSession({
+      getRoomCandidates: () => [roomFixture({
+        points: [[100, 100], [200, 100], [200, 150], [100, 150]]
+      })],
+      getOuterBounds: () => ({ x: 20, y: 30, width: 400, height: 250 }),
+      getText: () => text,
+      outerBoundsTouchTolerancePx: 8
+    });
+
+    session.updateTotalSize("width", "4000");
+    session.updateTotalSize("height", "2500");
+
+    expect(session.scaleEstimate()).toMatchObject({
+      outerBounds: { x: 20, y: 30, width: 400, height: 250 },
+      mmPerPxX: 10,
+      mmPerPxY: 10
+    });
+  });
 });

@@ -6,7 +6,6 @@
     onScale,
     onRadar,
     onZones,
-    onExitPoint,
     onCalibration,
     onFurniture
   } = $props();
@@ -40,13 +39,6 @@
     onclick={onZones}
   >
     {text.storedZoneEdit}
-  </button>
-  <button
-    type="button"
-    data-active={activeTool === "exit" ? "true" : "false"}
-    onclick={onExitPoint}
-  >
-    {text.storedExitPointEdit}
   </button>
   <button
     type="button"

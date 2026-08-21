@@ -6,6 +6,8 @@
   import FloorplanOcrDialog from "../FloorplanOcrDialog.svelte";
   import FloorplanRadarPlacementOverlay from "../FloorplanRadarPlacementOverlay.svelte";
   import FloorplanWizardSidebar from "./FloorplanWizardSidebar.svelte";
+  import ManualFloorplanDoorList from "./ManualFloorplanDoorList.svelte";
+  import ManualFloorplanDoorOverlay from "./ManualFloorplanDoorOverlay.svelte";
   import RoomEditStep from "./RoomEditStep.svelte";
 
   let {
@@ -43,6 +45,17 @@
       meta: state.imageMeta,
       busy: state.busy
     }}
+    manual={{
+      active: state.manualMode,
+      phase: state.manualPhase,
+      hasOutline: room.metricOutlinePoints.length >= 3,
+      outlineEditing: room.manualOutlineEditing,
+      activeTool: workspace.mapToolActive,
+      roomCount: room.candidates.filter((candidate) => candidate.status !== "rejected").length,
+      roomsValid: room.manualRoomsValid,
+      doorPlacementActive: room.doorPlacementActive
+    }}
+    replacement={state.replacement}
     status={{
       tone: state.statusTone,
       text: state.statusText,
@@ -59,12 +72,19 @@
       ...sidebar.radarStep,
       onScaleInput: actions.radarScaleInput,
       onScaleNudge: actions.radarScaleNudge,
-      onToggleOcclusionEdit: actions.toggleRadarOcclusionEdit
+      onToggleOcclusionEdit: actions.toggleRadarOcclusionEdit,
+      onResetOcclusion: actions.resetRadarOcclusionEdges
     }}
     finalStep={sidebar.finalStep}
     actions={{
       fileChange: actions.fileChange,
+      startManualFloorplan: actions.startManualFloorplan,
+      startManualOutline: actions.startManualOutline,
+      startManualRoom: actions.startManualRoomDraft,
+      editManualOutline: actions.editManualOutline,
+      startDoorPlacement: actions.startDoorPlacement,
       clearImage: actions.clearImage,
+      cancelReplacement: actions.cancelReplacement,
       totalWidthInput: actions.totalWidthInput,
       totalHeightInput: actions.totalHeightInput,
       togglePreciseRoomSizeEditing: actions.togglePreciseRoomSizeEditing,
@@ -83,6 +103,7 @@
   {#if state.step === "rooms" || state.step === "ocr"}
     <aside class="floorplan-middle-column">
       {#if state.step === "rooms"}
+        {#if !state.manualMode}
         <div class="floorplan-manual-card floorplan-fixed-text">
           <strong>{text.toolTitleManualRoom}</strong>
           <button
@@ -93,6 +114,7 @@
             {text.toolTitleManualRoom}
           </button>
         </div>
+        {/if}
         <RoomEditStep
           {messages}
           candidates={room.candidates}
@@ -109,7 +131,21 @@
           onStartSnapEdit={actions.startSnapEdit}
           onStartSplitDraft={actions.startSplitDraft}
           onStartMergeDraft={actions.startMergeDraft}
+          showDispositionActions={!state.manualMode}
         />
+        {#if state.manualMode && (room.doorPlacementActive || room.doors.length)}
+          <ManualFloorplanDoorList
+            {text}
+            doors={room.doors}
+            placementActive={room.doorPlacementActive}
+            placementKind={room.doorPlacementKind}
+            placementError={room.doorPlacementError}
+            selectedDoorId={room.selectedDoorId}
+            onKindChange={actions.setDoorPlacementKind}
+            onSelect={actions.selectDoor}
+            onRemove={actions.removeDoor}
+          />
+        {/if}
       {:else}
         <FloorplanCandidateList
           {messages}
@@ -134,7 +170,7 @@
     <div class="floorplan-stage">
       {#if state.imageUrl}
         <div
-          class={`floorplan-image-layer ${state.floorplanView.panning ? "panning" : ""}`}
+          class={`floorplan-image-layer ${state.floorplanView.panning ? "panning" : ""} ${state.manualMode ? "manual" : ""}`}
           style={workspace.imageLayerStyle}
           role="presentation"
           onwheel={actions.handleFloorplanWheel}
@@ -192,7 +228,7 @@
             transformStyle={workspace.transformStyle}
             candidates={room.candidates}
             selectedCandidateId={room.selectedCandidateId}
-            selectionLocked={room.snapEdit.active}
+            selectionLocked={room.snapEdit.active || room.manualOutlineEditing}
             imageWidth={state.debugInfo?.width ?? 1}
             imageHeight={state.debugInfo?.height ?? 1}
             ariaLabels={{
@@ -208,10 +244,16 @@
             splitDraftHoverPoint={room.roomSplitDraftHover}
             mergeDraftActive={room.roomMergeDraft.active}
             mergeDraftCandidateIds={room.roomMergeDraft.candidateIds}
-            allowCandidateEditing={state.step === "rooms"}
+            allowCandidateEditing={state.step === "rooms" && !room.manualOutlineEditing}
             ocrItems={ocr.overlayItems}
             showOcrItems={state.showOcrOverlay && state.step === "ocr"}
             showRoomSizeBounds={room.roomSizeBoundsVisible}
+            metricMmPerPx={state.manualMode ? room.metricMmPerPx : 0}
+            metricOutlinePoints={room.metricOutlinePoints}
+            manualOutlineEditable={room.manualOutlineEditing}
+            onManualOutlineVertexAdd={actions.addManualOutlineVertex}
+            onManualOutlineVertexDelete={actions.deleteManualOutlineVertex}
+            onManualOutlineVertexMove={actions.moveManualOutlineVertex}
             wallMaskCells={room.wallMaskCells}
             showWallMaskCells={state.showWallMaskOverlay && state.step === "rooms"}
             snapEdges={room.snapEdges}
@@ -235,6 +277,23 @@
             onCandidateVertexMove={actions.moveCandidateVertex}
             onCandidateVertexMoveEnd={actions.endCandidateVertexMove}
           />
+          {#if state.manualMode}
+            <ManualFloorplanDoorOverlay
+              doors={room.doors}
+              placementActive={state.step === "rooms" && room.doorPlacementActive}
+              selectedDoorId={room.selectedDoorId}
+              imageWidth={state.debugInfo?.width ?? 1}
+              imageHeight={state.debugInfo?.height ?? 1}
+              mmPerPx={room.metricMmPerPx}
+              transformStyle={workspace.transformStyle}
+              ariaLabel={text.manualPlaceDoorAria}
+              onPreview={actions.previewDoor}
+              onPlace={actions.placeDoor}
+              onSelect={actions.selectDoor}
+              onResize={actions.resizeDoor}
+              onMove={actions.moveDoor}
+            />
+          {/if}
           {#if state.step === "radar" || (state.step === "final" && state.showFinalRadarOverlay)}
             <FloorplanRadarPlacementOverlay
               transformStyle={workspace.transformStyle}
@@ -258,7 +317,7 @@
           {/if}
           <div class="floorplan-zoom-controls" aria-label="Floorplan zoom controls">
             <button type="button" title={text.zoomInTitle} onclick={() => actions.zoomFloorplan(1)}>+</button>
-            <button type="button" title={text.zoomOutTitle} onclick={() => actions.zoomFloorplan(-1)} disabled={workspace.floorplanScale <= 1}>-</button>
+            <button type="button" title={text.zoomOutTitle} onclick={() => actions.zoomFloorplan(-1)} disabled={!workspace.canZoomOut}>-</button>
             <button type="button" title={text.resetZoomTitle} onclick={actions.resetFloorplanZoom}>{Math.round(workspace.floorplanScale * 100)}%</button>
           </div>
         </div>

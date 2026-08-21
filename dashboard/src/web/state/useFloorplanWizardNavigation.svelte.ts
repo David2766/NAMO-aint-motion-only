@@ -34,6 +34,18 @@ export function createFloorplanWizardNavigation({
     }, transitionMs);
   }
 
+  function replace(
+    nextStep: FloorplanWizardStep,
+    nextDirection: FloorplanWizardDirection,
+    afterTransition?: () => void
+  ): void {
+    clearTimer();
+    direction = nextDirection;
+    step = nextStep;
+    animating = false;
+    afterTransition?.();
+  }
+
   function reset(): void {
     clearTimer();
     step = "image";
@@ -70,6 +82,7 @@ export function createFloorplanWizardNavigation({
       return direction;
     },
     transition,
+    replace,
     reset,
     destroy,
     title,

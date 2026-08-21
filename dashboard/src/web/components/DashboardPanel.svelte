@@ -1,21 +1,33 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { apiErrorMessage } from "../api/api-message";
   import type { FloorplanStorageDocument } from "../../core/floorplan/floorplan-storage";
   import { presenceDisplayTargets } from "../../core/presence-target-display";
   import {
     loadFloorplanStorageDocument,
     loadFloorplanStorageImage,
-    loadFloorplanStorageStatus
+    loadFloorplanStorageStatus,
+    floorplanStorageRevision,
+    hasCompleteFloorplanStorage,
+    type FloorplanStorageStatus
   } from "../floorplan/floorplan-storage-client";
-  import { buildBoundaryOcclusionSegments } from "../floorplan/floorplan-occlusion";
   import { floorplanImageFrameStyle } from "../floorplan/floorplan-image-frame";
-  import { findRoomContainingPoint } from "../floorplan/floorplan-room-context";
+  import { physicalWallOcclusionSegments } from "../floorplan/floorplan-physical-walls";
+  import {
+    storedRoomToCandidate,
+    withLocalFloorplanRadarPlacement
+  } from "../floorplan/stored-floorplan-document";
+  import { storedFloorplanViewBounds } from "../floorplan/stored-floorplan-view";
+  import FloorplanCandidateOverlay from "./FloorplanCandidateOverlay.svelte";
   import FloorplanImageFrame from "./floorplan/FloorplanImageFrame.svelte";
+  import FloorplanPhysicalWallOverlay from "./floorplan/FloorplanPhysicalWallOverlay.svelte";
+  import ManualFloorplanDoorOverlay from "./floorplan/ManualFloorplanDoorOverlay.svelte";
   import FloorplanRadarPlacementOverlay from "./FloorplanRadarPlacementOverlay.svelte";
   import DiagnosticDialog from "./DiagnosticDialog.svelte";
   import type { Messages } from "../i18n";
   import RadarScene from "./RadarScene.svelte";
+  import type { PlatformSiteConfigurationStatus } from "../api/platform-pairing";
+  import { platformFloorplanTargets, platformPeerRadarMarkers } from "../platform-radar-display";
   import type { WebControlStatus, WebDeviceConfig, WebDeviceState, WebSystemStatus } from "../types";
   import {
     detectBrowserTimezone,
@@ -34,6 +46,7 @@
     systemStatus: WebSystemStatus | null;
     systemStatusLoading: boolean;
     systemStatusError: string;
+    platformSiteConfiguration: PlatformSiteConfigurationStatus | null;
     controlStatus: WebControlStatus | null;
     controlStatusLoading: boolean;
     controlStatusError: string;
@@ -61,6 +74,7 @@
     systemStatus,
     systemStatusLoading,
     systemStatusError,
+    platformSiteConfiguration,
     controlStatus,
     controlStatusLoading,
     controlStatusError,
@@ -93,16 +107,40 @@
   let floorplanError = $state("");
   let floorplanDocument = $state<FloorplanStorageDocument | null>(null);
   let floorplanImageUrl = $state("");
+  let floorplanStatusLoading = false;
+  let loadedFloorplanRevision = "";
+  let floorplanStatusTimer = 0;
 
   const targetCount = $derived(deviceState?.targetCount ?? deviceState?.targets.filter((target) => target.active).length ?? 0);
   const movingTargetCount = $derived(deviceState?.movingTargetCount ?? 0);
   const stillTargetCount = $derived(deviceState?.stillTargetCount ?? 0);
   const displayTargets = $derived(presenceDisplayTargets(deviceState));
-  const hasFloorplan = $derived(Boolean(config?.floorplan?.enabled && config.floorplan.hasImage));
-  const zoneCount = $derived(config?.zones.length ?? 0);
-  const filterZoneCount = $derived(config?.zones.filter((zone) => zone.type === "filter").length ?? 0);
-  const reducedZoneCount = $derived(config?.zones.filter((zone) => zone.type === "reduced").length ?? 0);
-  const disabledZoneCount = $derived(config?.zones.filter((zone) => zone.type === "disabled").length ?? 0);
+  const floorplanDisplayTargets = $derived(platformFloorplanTargets(
+    deviceState,
+    displayTargets,
+    platformSiteConfiguration,
+    floorplanDocument,
+    systemStatus?.platform?.nodeId
+  ));
+  const configuredFloorplan = $derived(Boolean(config?.floorplan?.enabled && config.floorplan.hasImage));
+  const hasFloorplan = $derived(configuredFloorplan);
+  const canProjectFloorplanTargets = $derived(
+    Boolean(config?.floorplan?.radar || config?.floorplan?.room)
+  );
+  const userZones = $derived(config?.zones ?? []);
+  const calibrationZones = $derived(config?.calibrationZones ?? []);
+  const userFilterZoneCount = $derived(userZones.filter((zone) => zone.type === "filter").length);
+  const userReducedZoneCount = $derived(userZones.filter((zone) => zone.type === "reduced").length);
+  const userDisabledZoneCount = $derived(userZones.filter((zone) => zone.type === "disabled").length);
+  const calibrationFilterZoneCount = $derived(calibrationZones.filter((zone) => zone.type === "filter").length);
+  const calibrationReducedZoneCount = $derived(calibrationZones.filter((zone) => zone.type === "reduced").length);
+  const calibrationDisabledZoneCount = $derived(calibrationZones.filter((zone) => zone.type === "disabled").length);
+  const platformConnected = $derived(
+    systemStatus?.platform?.mode === "enrolled" ||
+      (systemStatus?.platform?.connectedRemoteParticipantCount ??
+        systemStatus?.platform?.activeRemoteParticipantCount ??
+        0) > 0
+  );
   const legacyPresenceFallback = $derived(config?.legacyPresenceFallback === true);
   const integrationModeButtonText = $derived(
     integrationMode === "edge"
@@ -192,40 +230,74 @@
   }
 
   $effect(() => {
-    if (!hasFloorplan || floorplanDocument || floorplanLoading) return;
-    void loadDashboardFloorplan();
+    if (!hasFloorplan) {
+      clearDashboardFloorplan();
+      return;
+    }
+    if (!floorplanDocument && !floorplanLoading) void refreshDashboardFloorplan();
   });
 
-  $effect(() => {
-    if (hasFloorplan) return;
-    floorplanDocument = null;
-    floorplanLoading = false;
-    floorplanError = "";
-    if (floorplanImageUrl) URL.revokeObjectURL(floorplanImageUrl);
-    floorplanImageUrl = "";
+  onMount(() => {
+    void refreshDashboardFloorplan();
+    floorplanStatusTimer = window.setInterval(() => {
+      void refreshDashboardFloorplan();
+    }, 5000);
   });
 
   onDestroy(() => {
+    window.clearInterval(floorplanStatusTimer);
     if (floorplanImageUrl) URL.revokeObjectURL(floorplanImageUrl);
   });
 
-  async function loadDashboardFloorplan(): Promise<void> {
-    floorplanLoading = true;
+  function clearDashboardFloorplan(): void {
+    floorplanDocument = null;
+    floorplanLoading = false;
     floorplanError = "";
+    loadedFloorplanRevision = "";
+    if (floorplanImageUrl) URL.revokeObjectURL(floorplanImageUrl);
+    floorplanImageUrl = "";
+  }
+
+  async function refreshDashboardFloorplan(): Promise<void> {
+    if (!hasFloorplan || floorplanStatusLoading || floorplanLoading) return;
+    floorplanStatusLoading = true;
     try {
-      const status = await loadFloorplanStorageStatus({ baseUrl: floorplanStorageBaseUrl, fetcher: floorplanStorageFetcher });
-      if (!status.hasConfig || !status.hasImage) {
-        floorplanDocument = null;
+      const status = await loadFloorplanStorageStatus({
+        baseUrl: floorplanStorageBaseUrl,
+        fetcher: floorplanStorageFetcher
+      });
+      const detected = hasCompleteFloorplanStorage(status);
+      if (!detected) {
+        clearDashboardFloorplan();
         floorplanError = messages.dashboard.noSavedFloorplan;
         return;
       }
+
+      const revision = floorplanStorageRevision(status);
+      if (floorplanDocument && floorplanImageUrl && revision === loadedFloorplanRevision) return;
+      await loadDashboardFloorplan(status, revision);
+    } catch (error) {
+      floorplanError = apiErrorMessage(messages, error);
+    } finally {
+      floorplanStatusLoading = false;
+    }
+  }
+
+  async function loadDashboardFloorplan(
+    status: FloorplanStorageStatus,
+    revision: string
+  ): Promise<void> {
+    floorplanLoading = true;
+    floorplanError = "";
+    try {
       const [document, image] = await Promise.all([
         loadFloorplanStorageDocument({ baseUrl: floorplanStorageBaseUrl, fetcher: floorplanStorageFetcher }),
         loadFloorplanStorageImage({ baseUrl: floorplanStorageBaseUrl, fetcher: floorplanStorageFetcher })
       ]);
       if (floorplanImageUrl) URL.revokeObjectURL(floorplanImageUrl);
-      floorplanDocument = document;
+      floorplanDocument = withLocalFloorplanRadarPlacement(document, config?.floorplan?.radar);
       floorplanImageUrl = URL.createObjectURL(image);
+      loadedFloorplanRevision = revision || floorplanStorageRevision(status);
     } catch (error) {
       floorplanError = apiErrorMessage(messages, error);
       floorplanDocument = null;
@@ -237,26 +309,16 @@
   }
 
   function floorplanPreviewStyle(): string {
-    const width = floorplanDocument?.image?.width ?? 1;
-    const height = floorplanDocument?.image?.height ?? 1;
-    return floorplanImageFrameStyle(width, height, 62);
+    const bounds = storedFloorplanViewBounds(floorplanDocument);
+    return floorplanImageFrameStyle(bounds.width, bounds.height, 72);
   }
 
-  function roomPoints(points: Array<[number, number]>): string {
-    return points.map(([x, y]) => `${x},${y}`).join(" ");
+  function floorplanViewBounds() {
+    return storedFloorplanViewBounds(floorplanDocument);
   }
 
-  function roomCenter(points: Array<[number, number]>): [number, number] {
-    if (!points.length) return [0, 0];
-    const sum = points.reduce(
-      (acc, [x, y]) => {
-        acc[0] += x;
-        acc[1] += y;
-        return acc;
-      },
-      [0, 0]
-    );
-    return [sum[0] / points.length, sum[1] / points.length];
+  function floorplanRoomCandidates() {
+    return floorplanDocument?.rooms.map(storedRoomToCandidate) ?? [];
   }
 
   function floorplanScaleEstimate() {
@@ -281,24 +343,17 @@
   }
 
   function roomBoundarySegments() {
-    if (!floorplanDocument) return [];
-    const placement = floorplanRadarPlacement();
-    if (!placement) return [];
-    const room = findRoomContainingPoint(
-      floorplanDocument.rooms,
-      { x: placement.originX, y: placement.originY },
-      (candidate) => candidate.pointsPx
-    );
-    if (!room) return [];
-    return buildBoundaryOcclusionSegments([{
-      id: room.id,
-      points: room.pointsPx,
-      segmentPrefix: "stored-room"
-    }]);
+    return physicalWallOcclusionSegments(floorplanDocument);
   }
 
   function radarOcclusionSegments() {
     return roomBoundarySegments();
+  }
+
+  function structuredManualFloorplan() {
+    return floorplanDocument?.source === "manual" &&
+      Array.isArray(floorplanDocument.doors) &&
+      Boolean(floorplanDocument.wallSegments?.length);
   }
 
   async function chooseStatusLed(enabled: boolean): Promise<void> {
@@ -450,36 +505,69 @@
               imageUrl={floorplanImageUrl}
               imageWidth={floorplanDocument.image.width}
               imageHeight={floorplanDocument.image.height}
+              viewBounds={floorplanViewBounds()}
               frameStyle={floorplanPreviewStyle()}
               ariaLabel={messages.dashboard.savedFloorplanAria}
+              showImage={!structuredManualFloorplan()}
+              backgroundFill={structuredManualFloorplan() ? "#f4f6f3" : ""}
             >
-            <svg
-              class="dashboard-floorplan-room-layer"
-              viewBox={`0 0 ${floorplanDocument.image.width} ${floorplanDocument.image.height}`}
-              preserveAspectRatio="none"
-              role="presentation"
-            >
-              {#each floorplanDocument.rooms as room}
-                {@const center = roomCenter(room.pointsPx)}
-                <polygon class="dashboard-floorplan-room" points={roomPoints(room.pointsPx)} />
-                <text class="dashboard-floorplan-room-label" x={center[0]} y={center[1]}>{room.name}</text>
-              {/each}
-            </svg>
-            <FloorplanRadarPlacementOverlay
+            <FloorplanCandidateOverlay
+              candidates={floorplanRoomCandidates()}
               imageWidth={floorplanDocument.image.width}
               imageHeight={floorplanDocument.image.height}
-              scaleEstimate={floorplanScaleEstimate()}
-              placement={floorplanRadarPlacement()}
-              scalePercent={(floorplanDocument.radar.scale ?? 1) * 100}
-              zones={config?.zones ?? []}
-              calibrationZones={config?.calibrationZones ?? []}
-              targets={displayTargets}
-              wallSegments={roomBoundarySegments()}
-              occlusionSegments={radarOcclusionSegments()}
-              ignoredOcclusionSegmentIds={floorplanDocument.occlusion?.ignoredEdges ?? []}
-              readOnly
-              showPlacementLabel={false}
+              viewBounds={floorplanViewBounds()}
+              ariaLabels={{
+                candidateLayer: messages.floorplan.panel.roomCandidateLayerAria,
+                addSplitPoint: messages.floorplan.panel.addRoomSplitPointAria,
+                addManualPoint: messages.floorplan.panel.addManualRoomPointAria
+              }}
+              allowCandidateEditing={false}
+              selectionLocked
+              metricMmPerPx={(floorplanDocument.scale.mmPerPxX + floorplanDocument.scale.mmPerPxY) / 2}
+              showMetricGrid={false}
             />
+            {#if structuredManualFloorplan()}
+              <FloorplanPhysicalWallOverlay
+                segments={roomBoundarySegments()}
+                imageWidth={floorplanDocument.image.width}
+                imageHeight={floorplanDocument.image.height}
+                viewBounds={floorplanViewBounds()}
+              />
+            {/if}
+            {#if structuredManualFloorplan() && floorplanDocument.doors?.length}
+              <ManualFloorplanDoorOverlay
+                doors={floorplanDocument.doors}
+                imageWidth={floorplanDocument.image.width}
+                imageHeight={floorplanDocument.image.height}
+                viewBounds={floorplanViewBounds()}
+                mmPerPx={(floorplanDocument.scale.mmPerPxX + floorplanDocument.scale.mmPerPxY) / 2}
+              />
+            {/if}
+            {#if canProjectFloorplanTargets}
+              <FloorplanRadarPlacementOverlay
+                imageWidth={floorplanDocument.image.width}
+                imageHeight={floorplanDocument.image.height}
+                viewBounds={floorplanViewBounds()}
+                scaleEstimate={floorplanScaleEstimate()}
+                placement={floorplanRadarPlacement()}
+                scalePercent={(floorplanDocument.radar.scale ?? 1) * 100}
+                zones={config?.zones ?? []}
+                calibrationZones={config?.calibrationZones ?? []}
+                targets={floorplanDisplayTargets}
+                peerRadars={platformPeerRadarMarkers(
+                  platformSiteConfiguration,
+                  floorplanDocument,
+                  systemStatus?.platform?.nodeId
+                )}
+                peerRadarLabel={messages.dashboard.connectedRadar}
+                fusionLabel={messages.common.fused}
+                wallSegments={roomBoundarySegments()}
+                occlusionSegments={radarOcclusionSegments()}
+                ignoredOcclusionSegmentIds={floorplanDocument.occlusion?.ignoredEdges ?? []}
+                readOnly
+                showPlacementLabel={false}
+              />
+            {/if}
             </FloorplanImageFrame>
           </div>
         {:else if hasFloorplan || floorplanLoading || floorplanError}
@@ -520,24 +608,42 @@
 
       <div class="floorplan-workflow-card dashboard-metric-card">
         <strong>{messages.dashboard.zoneStatus}</strong>
-        <dl class="floorplan-stored-summary">
+        <div class="dashboard-zone-summary-grid">
           <div>
-            <dt>{messages.dashboard.zone}</dt>
-            <dd>{messages.dashboard.countValue(zoneCount)}</dd>
+            <strong>{messages.dashboard.userZones(userZones.length)}</strong>
+            <dl class="floorplan-stored-summary">
+              <div>
+                <dt>{messages.dashboard.filter}</dt>
+                <dd>{messages.dashboard.countValue(userFilterZoneCount)}</dd>
+              </div>
+              <div>
+                <dt>{messages.dashboard.reduced}</dt>
+                <dd>{messages.dashboard.countValue(userReducedZoneCount)}</dd>
+              </div>
+              <div>
+                <dt>{messages.dashboard.disabled}</dt>
+                <dd>{messages.dashboard.countValue(userDisabledZoneCount)}</dd>
+              </div>
+            </dl>
           </div>
           <div>
-            <dt>{messages.dashboard.filter}</dt>
-            <dd>{messages.dashboard.countValue(filterZoneCount)}</dd>
+            <strong>{messages.dashboard.calibrationZones(calibrationZones.length)}</strong>
+            <dl class="floorplan-stored-summary">
+              <div>
+                <dt>{messages.dashboard.filter}</dt>
+                <dd>{messages.dashboard.countValue(calibrationFilterZoneCount)}</dd>
+              </div>
+              <div>
+                <dt>{messages.dashboard.reduced}</dt>
+                <dd>{messages.dashboard.countValue(calibrationReducedZoneCount)}</dd>
+              </div>
+              <div>
+                <dt>{messages.dashboard.disabled}</dt>
+                <dd>{messages.dashboard.countValue(calibrationDisabledZoneCount)}</dd>
+              </div>
+            </dl>
           </div>
-          <div>
-            <dt>{messages.dashboard.reduced}</dt>
-            <dd>{messages.dashboard.countValue(reducedZoneCount)}</dd>
-          </div>
-          <div>
-            <dt>{messages.dashboard.disabled}</dt>
-            <dd>{messages.dashboard.countValue(disabledZoneCount)}</dd>
-          </div>
-        </dl>
+        </div>
       </div>
 
       <div class="floorplan-workflow-card dashboard-metric-card">
@@ -570,6 +676,36 @@
             <dt>{messages.dashboard.uptime}</dt>
             <dd>{formatUptime(systemStatus?.firmware?.uptimeSeconds)}</dd>
           </div>
+          {#if systemStatus?.platform}
+            <div>
+              <dt>{messages.dashboard.platformStatus}</dt>
+              <dd>
+                {systemStatus.platform.identityReady
+                  ? messages.dashboard.platformReady
+                  : messages.dashboard.platformUnavailable}
+              </dd>
+            </div>
+            <div>
+              <dt>{messages.dashboard.platformMode}</dt>
+              <dd>
+                {platformConnected
+                  ? messages.dashboard.platformEnrolled
+                  : systemStatus.platform.mode === "standalone"
+                    ? messages.dashboard.platformStandalone
+                    : systemStatus.platform.mode ?? "-"}
+              </dd>
+            </div>
+            {#if systemStatus.platform.identityReady}
+              <div>
+                <dt>{messages.dashboard.nodeId}</dt>
+                <dd class="dashboard-platform-id">{systemStatus.platform.nodeId ?? "-"}</dd>
+              </div>
+              <div>
+                <dt>{messages.dashboard.siteId}</dt>
+                <dd class="dashboard-platform-id">{systemStatus.platform.siteId ?? "-"}</dd>
+              </div>
+            {/if}
+          {/if}
         </dl>
         {#if systemStatusError}
           <p class="dashboard-note">{messages.dashboard.systemInfoFailed(systemStatusError)}</p>

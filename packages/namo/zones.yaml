@@ -1,16 +1,4 @@
 globals:
-  - id: target_1_reduced_since_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: '0'
-  - id: target_2_reduced_since_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: '0'
-  - id: target_3_reduced_since_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: '0'
   - id: target_1_calibration_filter_active
     type: bool
     restore_value: no

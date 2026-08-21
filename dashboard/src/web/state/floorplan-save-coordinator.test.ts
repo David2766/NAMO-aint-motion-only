@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { FloorplanStorageDocument } from "../../core/floorplan/floorplan-storage";
 import type { WebDeviceConfig } from "../types";
-import { saveStoredFloorplanWithConfig } from "./floorplan-save-coordinator";
+import {
+  prepareFloorplanDocumentForSave,
+  saveStoredFloorplanWithConfig,
+  withStoredFloorplanAvailability
+} from "./floorplan-save-coordinator";
 
 function documentFixture(): FloorplanStorageDocument {
   return {
-    version: 1,
+    version: 2,
+    floorplanId: "fp-00112233445566778899aabbccddeeff",
+    geometryVersion: 7,
     image: {
       path: "/floorplan.webp",
       mime: "image/webp",
@@ -22,7 +28,8 @@ function documentFixture(): FloorplanStorageDocument {
     radar: {
       originPx: [50, 100],
       rotationDeg: 0,
-      scale: 1
+      scale: 1,
+      poseVersion: 11
     },
     rooms: [
       {
@@ -43,6 +50,164 @@ function documentFixture(): FloorplanStorageDocument {
 }
 
 describe("floorplan save coordinator", () => {
+  it("marks replicated floorplan storage available without replacing Node-local pose or zones", () => {
+    const config: WebDeviceConfig = {
+      version: 1,
+      zones: [{
+        id: "zone_1",
+        name: "Local zone",
+        type: "detection",
+        shape: "rect",
+        points: [[10, 20], [30, 40]]
+      }],
+      calibrationZones: [{
+        id: "calibration_1",
+        name: "Local filter",
+        type: "filter",
+        shape: "rect",
+        points: [[50, 60], [70, 80]]
+      }],
+      floorplan: {
+        enabled: false,
+        hasImage: false,
+        radar: {
+          originX: 91,
+          originY: 47,
+          rotation: 135,
+          scale: 0.8,
+          poseVersion: 22
+        }
+      }
+    };
+
+    const updated = withStoredFloorplanAvailability(config, true, undefined);
+
+    expect(updated.floorplan).toMatchObject({
+      enabled: true,
+      hasImage: true,
+      radar: config.floorplan?.radar
+    });
+    expect(updated.floorplan?.room).toBeUndefined();
+    expect(updated.zones).toBe(config.zones);
+    expect(updated.calibrationZones).toBe(config.calibrationZones);
+    expect(config.floorplan?.enabled).toBe(false);
+  });
+
+  it("does not invent a Node-local radar pose while enabling replicated storage", () => {
+    const config: WebDeviceConfig = {
+      version: 1,
+      zones: [],
+      calibrationZones: [],
+      floorplan: {
+        enabled: false,
+        hasImage: false
+      }
+    };
+
+    const updated = withStoredFloorplanAvailability(config, true, undefined);
+
+    expect(updated.floorplan?.enabled).toBe(true);
+    expect(updated.floorplan?.hasImage).toBe(true);
+    expect(updated.floorplan?.radar).toBeUndefined();
+    expect(updated.floorplan?.room).toBeUndefined();
+  });
+
+  it("advances coordinate-frame and radar pose revisions independently", () => {
+    const document = documentFixture();
+
+    const geometry = prepareFloorplanDocumentForSave(document, { document: true, coordinateFrame: true });
+    expect(geometry.geometryVersion).toBe(8);
+    expect(geometry.radar.poseVersion).toBe(11);
+
+    const pose = prepareFloorplanDocumentForSave(document, { radar: true });
+    expect(pose.geometryVersion).toBe(7);
+    expect(pose.radar.poseVersion).toBe(12);
+  });
+
+  it("keeps calibration geometry stable for room-layout document edits", () => {
+    const document = documentFixture();
+
+    const roomLayout = prepareFloorplanDocumentForSave(document, { document: true, roomContext: true });
+
+    expect(roomLayout.geometryVersion).toBe(7);
+    expect(roomLayout.radar.poseVersion).toBe(11);
+  });
+
+  it("advances shared area revision without changing geometry or radar pose", () => {
+    const document = documentFixture();
+    document.automationAreas = {
+      schemaVersion: 1,
+      revision: 4,
+      areas: [{
+        areaId: "area_1",
+        name: "Desk",
+        spaceId: "room_1",
+        enabled: true,
+        pointsPx: [[10, 10], [30, 10], [30, 30], [10, 30]]
+      }]
+    };
+
+    const prepared = prepareFloorplanDocumentForSave(document, { automationAreas: true });
+
+    expect(prepared.automationAreas?.revision).toBe(5);
+    expect(prepared.geometryVersion).toBe(7);
+    expect(prepared.radar.poseVersion).toBe(11);
+  });
+
+  it("keeps newly created shared areas when assigning their first revision", () => {
+    const document = documentFixture();
+    document.automationAreas = {
+      schemaVersion: 1,
+      revision: 0,
+      areas: [{
+        areaId: "area_1",
+        name: "Desk",
+        spaceId: "room_1",
+        enabled: true,
+        pointsPx: [[10, 10], [30, 10], [30, 30], [10, 30]]
+      }]
+    };
+
+    const prepared = prepareFloorplanDocumentForSave(document, { automationAreas: true });
+
+    expect(prepared.automationAreas?.revision).toBe(1);
+    expect(prepared.automationAreas?.areas).toEqual(document.automationAreas.areas);
+  });
+
+  it("persists legacy identity migration with a full document save", async () => {
+    const legacy = documentFixture();
+    delete legacy.floorplanId;
+    delete legacy.geometryVersion;
+    delete legacy.radar.poseVersion;
+    legacy.version = 1;
+    const savedDocuments: FloorplanStorageDocument[] = [];
+    let config: WebDeviceConfig = { version: 1, zones: [], calibrationZones: [] };
+    let configSaveCount = 0;
+
+    const result = await saveStoredFloorplanWithConfig({
+      document: legacy,
+      saveScopes: { radar: true },
+      saveDocument: async (document) => {
+        savedDocuments.push(document);
+      },
+      updateDeviceConfig: (mutator) => {
+        config = mutator(config);
+      },
+      saveDeviceConfig: async () => {
+        configSaveCount += 1;
+      }
+    });
+
+    expect(savedDocuments).toHaveLength(1);
+    expect(savedDocuments[0].version).toBe(2);
+    expect(savedDocuments[0].floorplanId).toMatch(/^fp-[0-9a-f]{32}$/);
+    expect(savedDocuments[0].geometryVersion).toBe(1);
+    expect(savedDocuments[0].radar.poseVersion).toBe(2);
+    expect(result).toBe(savedDocuments[0]);
+    expect(config.floorplan?.radar?.poseVersion).toBe(2);
+    expect(configSaveCount).toBe(1);
+  });
+
   it("saves the document before updating and saving config", async () => {
     const calls: string[] = [];
     let config: WebDeviceConfig = {
@@ -194,8 +359,9 @@ describe("floorplan save coordinator", () => {
     expect(config.floorplan?.room?.id).toBe("room_1");
   });
 
-  it("saves radar placement with a patch when only radar scope is dirty", async () => {
+  it("saves radar placement as Node-local device config without patching the shared document", async () => {
     const calls: string[] = [];
+    let config: WebDeviceConfig = { version: 1, zones: [], calibrationZones: [] };
 
     await saveStoredFloorplanWithConfig({
       document: documentFixture(),
@@ -205,18 +371,28 @@ describe("floorplan save coordinator", () => {
       saveDocument: async () => {
         calls.push("saveDocument");
       },
-      saveRadar: async (radar) => {
-        calls.push(`saveRadar:${radar.originPx.join(",")}`);
-      },
-      updateDeviceConfig: () => {
+      updateDeviceConfig: (mutator) => {
         calls.push("updateDeviceConfig");
+        config = mutator(config);
       },
       saveDeviceConfig: async () => {
         calls.push("saveDeviceConfig");
       }
     });
 
-    expect(calls).toEqual(["saveRadar:50,100"]);
+    expect(calls).toEqual(["updateDeviceConfig", "saveDeviceConfig"]);
+    expect(config.floorplan?.radar).toEqual({
+      originX: 50,
+      originY: 100,
+      rotation: 0,
+      scale: 1,
+      poseVersion: 12
+    });
+    expect(config.floorplan).toMatchObject({
+      scaleMmPerPx: 10,
+      scaleMmPerPxX: 10,
+      scaleMmPerPxY: 10
+    });
   });
 
   it("saves room-name patches without uploading the full document", async () => {
@@ -247,7 +423,7 @@ describe("floorplan save coordinator", () => {
     expect(calls).toEqual(["saveRoomName:room_1:Living"]);
   });
 
-  it("falls back to full document upload when a requested patch callback is missing", async () => {
+  it("does not require a floorplan patch callback for Node-local radar placement", async () => {
     const calls: string[] = [];
 
     await saveStoredFloorplanWithConfig({
@@ -266,7 +442,7 @@ describe("floorplan save coordinator", () => {
       }
     });
 
-    expect(calls).toEqual(["saveDocument"]);
+    expect(calls).toEqual(["updateDeviceConfig", "saveDeviceConfig"]);
   });
 
   it("saves furniture objects with a patch when only object scope is dirty", async () => {

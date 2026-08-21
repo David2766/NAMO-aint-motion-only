@@ -52,5 +52,46 @@ class ReplayStaticRadarTupleTest(unittest.TestCase):
             replay.parse_sample(make_row([0] * 10), 7)
 
 
+class ReplayTrackerTargetTupleTest(unittest.TestCase):
+    def test_legacy_five_item_tuple_defaults_reduced_zone(self) -> None:
+        row = make_row()
+        row["tg"] = [[1, 100, 2000, 0, 2002], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]
+
+        sample = replay.parse_sample(row, 1)
+
+        self.assertFalse(sample.targets[0].reduced_zone)
+        self.assertFalse(sample.targets[0].filter_blocked)
+
+    def test_six_item_tuple_reads_reduced_zone(self) -> None:
+        row = make_row()
+        row["tg"] = [[1, 100, 2000, 0, 2002, 1], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]]
+
+        sample = replay.parse_sample(row, 1)
+
+        self.assertTrue(sample.targets[0].reduced_zone)
+        self.assertFalse(sample.targets[0].filter_blocked)
+
+    def test_seven_item_tuple_reads_per_target_filter_block(self) -> None:
+        row = make_row()
+        row["tg"] = [[1, 100, 2000, 0, 2002, 0, 1], [0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0]]
+
+        sample = replay.parse_sample(row, 1)
+
+        self.assertFalse(sample.targets[0].reduced_zone)
+        self.assertTrue(sample.targets[0].filter_blocked)
+
+
+class ReplayRawTargetTupleTest(unittest.TestCase):
+    def test_software_reduced_mode_is_replayed_as_reduced(self) -> None:
+        row = make_row()
+        row["r"] = [[1, 100, 2000, 0, 2002, 3, 0, 1], [0] * 8, [0] * 8]
+
+        sample = replay.parse_sample(row, 1)
+
+        self.assertEqual(sample.raw_targets[0].filter_mode, 3)
+        self.assertTrue(sample.raw_targets[0].reduced_zone)
+        self.assertFalse(sample.raw_targets[0].filter_blocked)
+
+
 if __name__ == "__main__":
     unittest.main()

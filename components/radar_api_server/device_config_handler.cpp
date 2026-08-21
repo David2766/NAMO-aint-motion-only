@@ -1,6 +1,7 @@
 #include "device_config_handler.h"
 
 #include "http_response.h"
+#include "strict_parse.h"
 #include "esphome/core/log.h"
 
 #include <algorithm>
@@ -22,10 +23,7 @@ static constexpr uint32_t DEVICE_CONFIG_STREAM_CHUNK_SIZE = 512;
 
 }  // namespace
 
-bool DeviceConfigHandler::can_handle(AsyncWebServerRequest *request) const {
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
-
+bool DeviceConfigHandler::can_handle(AsyncWebServerRequest *request, StringRef url) const {
   if (request->method() == HTTP_GET)
     return url == "/api/config/status" || url == "/api/config";
   if (request->method() == HTTP_POST)
@@ -34,13 +32,7 @@ bool DeviceConfigHandler::can_handle(AsyncWebServerRequest *request) const {
   return false;
 }
 
-bool DeviceConfigHandler::handle(AsyncWebServerRequest *request) {
-  if (!this->can_handle(request))
-    return false;
-
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
-
+bool DeviceConfigHandler::handle(AsyncWebServerRequest *request, StringRef url) {
   if (request->method() == HTTP_GET) {
     if (url == "/api/config/status") {
       this->handle_status_(request);
@@ -139,9 +131,15 @@ void DeviceConfigHandler::handle_upload_start_(AsyncWebServerRequest *request) {
     return;
   }
 
-  const uint32_t size = std::strtoul(request->arg("size").c_str(), nullptr, 10);
+  uint32_t size = 0;
   const uint32_t max_size = this->storage_->payload_max_size(RadarPayloadTarget::DEVICE_CONFIG);
-  if (size == 0 || size > max_size) {
+  if (!parse_uint32_strict(request->arg("size"), &size, false, false)) {
+    http_response::send_error_info(request, 400, "invalid_size",
+                                   "invalid_request", "error",
+                                   R"({"field":"size"})");
+    return;
+  }
+  if (size > max_size) {
     std::string detail = R"({"target":"device_config","maxBytes":)";
     detail += std::to_string(max_size);
     detail += R"(,"receivedBytes":)";
@@ -174,7 +172,13 @@ void DeviceConfigHandler::handle_upload_chunk_(AsyncWebServerRequest *request) {
     return;
   }
 
-  const uint32_t offset = std::strtoul(request->arg("offset").c_str(), nullptr, 10);
+  uint32_t offset = 0;
+  if (!parse_uint32_strict(request->arg("offset"), &offset)) {
+    http_response::send_error_info(request, 400, "invalid_offset",
+                                   "invalid_request", "error",
+                                   R"({"field":"offset"})");
+    return;
+  }
   std::string decoded;
   if (!this->decode_hex_(request->arg("data"), &decoded)) {
     http_response::send_error_info(request, 400, "invalid_hex", "invalid_request", "error",
@@ -226,8 +230,8 @@ void DeviceConfigHandler::handle_upload_commit_(AsyncWebServerRequest *request) 
 bool DeviceConfigHandler::parse_upload_session_(AsyncWebServerRequest *request, uint32_t *session_id) const {
   if (!request->hasArg("session"))
     return false;
-  const uint32_t parsed = std::strtoul(request->arg("session").c_str(), nullptr, 0);
-  if (parsed == 0)
+  uint32_t parsed = 0;
+  if (!parse_uint32_strict(request->arg("session"), &parsed, true, false))
     return false;
   *session_id = parsed;
   return true;

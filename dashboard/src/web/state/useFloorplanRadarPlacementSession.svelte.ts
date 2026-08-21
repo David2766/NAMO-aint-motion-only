@@ -37,6 +37,7 @@ interface FloorplanRadarPlacementSessionOptions {
   getOuterBounds: () => FloorplanBounds | null;
   getImageSize: () => FloorplanImageSize | null;
   getConfirmedRoomCandidates: () => RoomCandidate[];
+  getPhysicalWallSegments?: () => FloorplanOcclusionSegment[];
   onUpdateDeviceConfig?: (updater: (current: WebDeviceConfig) => WebDeviceConfig) => void;
 }
 
@@ -46,6 +47,7 @@ export function createFloorplanRadarPlacementSession({
   getOuterBounds,
   getImageSize,
   getConfirmedRoomCandidates,
+  getPhysicalWallSegments,
   onUpdateDeviceConfig
 }: FloorplanRadarPlacementSessionOptions) {
   let scalePercent = $state(100);
@@ -117,6 +119,12 @@ export function createFloorplanRadarPlacementSession({
     commitOcclusionEdges();
   }
 
+  function resetOcclusionEdges(): void {
+    if (!ignoredOcclusionEdges.length) return;
+    ignoredOcclusionEdges = [];
+    commitOcclusionEdges();
+  }
+
   function commitOcclusionEdges(): void {
     if (!onUpdateDeviceConfig) return;
     onUpdateDeviceConfig((current) => ({
@@ -155,6 +163,8 @@ export function createFloorplanRadarPlacementSession({
         enabled: true,
         hasImage: true,
         scaleMmPerPx: (scaleEstimate.mmPerPxX + scaleEstimate.mmPerPxY) / 2,
+        scaleMmPerPxX: scaleEstimate.mmPerPxX,
+        scaleMmPerPxY: scaleEstimate.mmPerPxY,
         radar
       }
     }));
@@ -177,6 +187,8 @@ export function createFloorplanRadarPlacementSession({
     nextPlacement: FloorplanRadarPlacement | null,
     segmentPrefix: string
   ): FloorplanOcclusionSegment[] {
+    const physicalWalls = getPhysicalWallSegments?.() ?? [];
+    if (physicalWalls.length) return physicalWalls;
     const room = roomForPlacement(nextPlacement);
     if (!room) return [];
     return buildBoundaryOcclusionSegments([{
@@ -223,6 +235,7 @@ export function createFloorplanRadarPlacementSession({
     initialize,
     toggleOcclusionEdit,
     toggleOcclusionEdge,
+    resetOcclusionEdges,
     commitOcclusionEdges,
     updatePlacement,
     commitPlacement,

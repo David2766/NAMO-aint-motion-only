@@ -44,6 +44,7 @@ class PresenceReplayLog {
     int16_t y_mm{0};
     int16_t speed_cm_s{0};
     uint16_t distance_mm{0};
+    bool reduced_zone{false};
     int16_t filter_mode{0};
     bool filtered{false};
     bool range_valid{false};

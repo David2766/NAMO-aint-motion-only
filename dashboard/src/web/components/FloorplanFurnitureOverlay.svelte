@@ -13,6 +13,7 @@
     selectedObjectId = "",
     imageWidth = 1,
     imageHeight = 1,
+    viewBounds = null,
     bounds = null,
     rooms = [],
     editable = false,
@@ -24,6 +25,22 @@
   let draftObject = $state(null);
   const MIN_OBJECT_SIZE_PX = 18;
   const ROTATE_HANDLE_OFFSET_PX = 22;
+
+  function viewX() {
+    return viewBounds?.x ?? 0;
+  }
+
+  function viewY() {
+    return viewBounds?.y ?? 0;
+  }
+
+  function viewWidth() {
+    return viewBounds?.width ?? imageWidth;
+  }
+
+  function viewHeight() {
+    return viewBounds?.height ?? imageHeight;
+  }
 
   function assetFor(id) {
     return assets.find((asset) => asset.id === id) ?? null;
@@ -42,8 +59,8 @@
     const svg = event.currentTarget.ownerSVGElement ?? event.currentTarget;
     const rect = svg.getBoundingClientRect();
     return {
-      x: ((event.clientX - rect.left) / Math.max(1, rect.width)) * imageWidth,
-      y: ((event.clientY - rect.top) / Math.max(1, rect.height)) * imageHeight
+      x: viewX() + ((event.clientX - rect.left) / Math.max(1, rect.width)) * viewWidth(),
+      y: viewY() + ((event.clientY - rect.top) / Math.max(1, rect.height)) * viewHeight()
     };
   }
 
@@ -206,7 +223,7 @@
 <svg
   class="floorplan-furniture-layer"
   data-editable={editable ? "true" : "false"}
-  viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+  viewBox={`${viewX()} ${viewY()} ${viewWidth()} ${viewHeight()}`}
   preserveAspectRatio="none"
   role="presentation"
   onpointermove={updateDrag}

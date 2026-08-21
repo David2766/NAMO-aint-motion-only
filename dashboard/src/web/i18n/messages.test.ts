@@ -54,7 +54,22 @@ describe("i18n message dictionaries", () => {
       "invalid_password_length",
       "firmware_upload_failed",
       "firmware_network_error",
-      "firmware_upload_aborted"
+      "firmware_upload_aborted",
+      "firmware_trust_unavailable",
+      "firmware_header_invalid",
+      "signed_firmware_required",
+      "legacy_firmware_bin_required",
+      "firmware_session_invalid",
+      "busy",
+      "session_mismatch",
+      "header_mismatch",
+      "trust_rejected",
+      "offset_mismatch",
+      "size_mismatch",
+      "expired",
+      "sink_begin_failed",
+      "sink_write_failed",
+      "sink_finish_failed"
     ];
 
     for (const code of requiredCodes) {
@@ -71,7 +86,8 @@ describe("i18n message dictionaries", () => {
       "ha_handoff_started",
       "api_client_waiting",
       "api_client_connected",
-      "api_client_idle"
+      "api_client_idle",
+      "api_service_not_ready"
     ];
 
     for (const code of requiredCodes) {

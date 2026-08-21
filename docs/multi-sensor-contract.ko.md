@@ -1,130 +1,50 @@
 # 다중 센서 API 계약
 
-[api-contract.ko.md](api-contract.ko.md)에서 분리한 향후 다중 센서 및 coordinator API 메모다.
+상태: **대체된 설계 메모. 구현된 API 계약이 아님.**
 
-## 1. 향후 다중 센서 계약
+영문 문서: [multi-sensor-contract.md](multi-sensor-contract.md)
 
-향후 다중 센서 지원도 같은 API 기조를 따른다. 센서끼리는 사용자 표시 문장이 아니라
-구조화된 observation을 주고받아야 한다.
+이 문서는 이전에 고정 `primary` 및 `secondary` 센서 모델을 제안했습니다. 이 모델은 분산형
+NAMO 공간 플랫폼 설계로 대체되었습니다.
 
-권장 모델은 로컬 primary coordinator 구조다.
+향후 작업은 다음 문서를 사용합니다.
 
-- 각 센서는 독립적으로 동작할 수 있다.
-- 한 센서를 `primary`로 설정할 수 있다.
-- 다른 센서는 `secondary`로 설정할 수 있다.
-- primary는 peer observation을 읽고 최종 room summary를 제공한다.
-- Home Assistant, SmartThings, 로컬 대시보드는 자동화에 primary summary를 사용한다.
-- secondary 센서도 진단용 local state는 계속 노출할 수 있다.
+- [공간 플랫폼 아키텍처](platform/architecture.ko.md)
+- [Satellite 규약](platform/satellite-protocol.ko.md)
+- [구현 로드맵](platform/implementation-roadmap.ko.md)
+- [ADR-0001: 분산 공간 플랫폼](adr/0001-distributed-spatial-platform.ko.md)
+- [ADR-0002: 인증된 Observation Transport](adr/0002-authenticated-observation-transport.ko.md)
 
-### 1.1 Observation Snapshot
+새 설계도 이전 메모의 유효한 제약은 유지합니다.
 
-각 센서는 짧은 observation snapshot을 제공할 수 있어야 한다.
+- 사용자 표시 문장이 아닌 구조화된 observation을 교환합니다.
+- 명시적인 TTL과 ordering으로 오래된 observation을 만료합니다.
+- standalone 로컬 동작을 유지합니다.
+- 공간 fusion 전에 명시적인 sensor pose, Floorplan transform 및 calibration을 요구합니다.
+- confidence 병합과 충돌 해결을 HA 및 SmartThings에 맡기지 않습니다.
 
-예시:
+다음 가정은 교체합니다.
 
-```json
-{
-  "ok": true,
-  "data": {
-    "deviceId": "presence-sensor-desk",
-    "roomId": "room_main",
-    "role": "secondary",
-    "observedAtMs": 12345678,
-    "ttlMs": 3000,
-    "sequence": 1024,
-    "presence": {
-      "detected": true,
-      "confidence": 78,
-      "sources": ["mmwave", "pir"]
-    },
-    "zones": [
-      {
-        "id": "zone_1",
-        "presence": true,
-        "confidence": 76
-      }
-    ]
-  },
-  "status": {
-    "code": "observation_ready",
-    "severity": "info",
-    "detail": {}
-  }
-}
-```
+- 물리 NAMO Node를 자동화용 영구 `primary`로 설정하지 않습니다.
+- 각 Fusion Group에 NAMO Node가 최소 한 대 있으며, 승인된 NAMO Node 중에서 `term`과
+  `lease`를 가진 일시적인 Group Leader를 선출합니다.
+- Site, Space, Group 및 플랫폼 entity 식별자는 Leader나 IP 주소에 의존하지 않습니다.
+- capability 기반 개방형 Satellite 계약으로 타사 센서를 관측 전용으로 허용하되 Leader나
+  설정 권한을 부여하지 않습니다.
+- 공식 NAMO 하드웨어는 기기별 제조사 attestation을 사용하고, 명시적으로 승인된 community
+  NAMO Node도 계속 지원합니다.
+- presence-only 근거는 이미 준비된 재실 세션을 유지할 수 있지만 재실을 시작하거나 공간
+  타깃을 만들 수 없습니다.
+- 아키텍처는 저빈도 Site Leader와 고빈도 Group Leader를 분리하고 Site당 Group 최대 8개,
+  Group당 센싱 participant 최대 7개를 목표로 하며 두 한도 모두 roadmap의 자원 gate를
+  통과해야 지원을 선언합니다.
+- 모든 활성 Floorplan에는 독립적인 Configuration Owner 한 대가 있습니다. 배정된 Node는
+  원본에서 인증된 chunk를 한 session씩 직접 받고 replica를 로컬에 commit합니다.
+- Site Leader는 크기가 제한된 Floorplan/Group 원본, revision, 경로 및 health 메타데이터만
+  저장하며 역할상 Floorplan payload를 중계하지 않습니다.
+- 플랫폼 integration은 Site Leader를 Group directory로 사용하고 최종 논리 Space 상태는
+  각 Group Leader에서 직접 소비합니다.
 
-Peer observation에 필요한 개념:
-
-- `deviceId`: 안정적인 기기 식별자.
-- `roomId`: 논리적인 방 또는 그룹 식별자.
-- `role`: `standalone`, `primary`, `secondary` 중 하나.
-- `observedAtMs`: local observation timestamp.
-- `ttlMs`: 이 observation을 신뢰할 수 있는 시간.
-- `sequence`: 가능하면 단조 증가하는 sequence 번호.
-- `confidence`: 0-100 confidence 점수.
-- `sources`: `mmwave`, `pir`, `ble`, `peer` 같은 기여 source.
-
-### 1.2 Primary Summary
-
-Primary coordinator는 최종 room-level summary를 제공해야 한다.
-
-예시:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "deviceId": "presence-sensor-main",
-    "roomId": "room_main",
-    "role": "primary",
-    "roomPresence": true,
-    "confidence": 84,
-    "sources": ["self", "peer:presence-sensor-desk"],
-    "peersOnline": 1,
-    "peersTotal": 1,
-    "updatedAtMs": 12345999
-  },
-  "status": {
-    "code": "peer_sync_ok",
-    "severity": "info",
-    "detail": {
-      "peerCount": 1
-    }
-  }
-}
-```
-
-규칙:
-
-- 플랫폼 자동화는 primary summary를 사용하도록 안내한다.
-- `ttlMs`가 지난 peer observation은 만료 처리한다.
-- primary는 오래된 peer 데이터를 무조건 신뢰하면 안 된다.
-- peer가 offline이어도 primary의 local 동작은 가능해야 한다.
-- 여러 센서의 좌표는 센서 origin, rotation, floorplan transform이 명시적으로 설정되기 전까지
-  합치지 않는다.
-
-### 1.3 플랫폼 연동
-
-Home Assistant와 SmartThings에는 모든 센서가 발견될 수 있다. 이는 허용한다. 다만 자동화는
-primary coordinator의 summary entity를 사용하도록 안내한다.
-
-권장 플랫폼 동작:
-
-- primary는 room-level presence, motion, confidence, peer count, coordinator health를 제공한다.
-- secondary는 local presence, local targets, diagnostic state를 제공한다.
-- 플랫폼 integration은 confidence 병합, peer TTL 처리, 충돌 해결을 담당하지 않는다.
-- 다중 센서 coordination의 source of truth는 로컬 기기 API가 된다.
-
-### 1.4 다중 센서 코드 예시
-
-향후 registry 후보:
-
-| Code | Severity | HTTP | 의미 | Detail |
-|---|---|---:|---|---|
-| `observation_ready` | info | 200 | Local observation snapshot 사용 가능 | `deviceId`, `sequence` |
-| `peer_sync_ok` | info | 200 | Primary가 peer observation 병합 성공 | `peerCount` |
-| `peer_unreachable` | warning | 200 | 설정된 peer가 응답하지 않음 | `peerId`, `lastSeenMs` |
-| `peer_observation_expired` | warning | 200 | Peer data가 만료되어 무시됨 | `peerId`, `ttlMs` |
-| `coordinator_role_changed` | info | 200 | 기기 역할이 변경됨 | `role` |
-
----
+구현된 펌웨어 endpoint의 기준은 [현재 API 계약](api-contract.ko.md)입니다. 계획된 cluster 및
+Satellite endpoint는 구현과 테스트를 갖추고 현재 API 계약에 추가되기 전까지 사용할 수 있다고
+간주하면 안 됩니다.

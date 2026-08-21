@@ -5,8 +5,11 @@
 #include "esphome/core/hal.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <string>
 
 namespace esphome {
@@ -21,6 +24,18 @@ bool body_arg(AsyncWebServerRequest *request, std::string *out) {
   return true;
 }
 
+const char *skip_json_whitespace(const char *cursor) {
+  while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' ||
+         *cursor == '\n')
+    cursor++;
+  return cursor;
+}
+
+bool valid_json_value_end(const char *cursor) {
+  cursor = skip_json_whitespace(cursor);
+  return *cursor == ',' || *cursor == '}';
+}
+
 bool read_bool_field(const std::string &body, const char *field, bool *out) {
   const std::string key = std::string("\"") + field + "\"";
   const size_t key_pos = body.find(key);
@@ -33,10 +48,14 @@ bool read_bool_field(const std::string &body, const char *field, bool *out) {
   while (pos < body.size() && (body[pos] == ' ' || body[pos] == '\t' || body[pos] == '\r' || body[pos] == '\n'))
     pos++;
   if (body.compare(pos, 4, "true") == 0) {
+    if (!valid_json_value_end(body.c_str() + pos + 4))
+      return false;
     *out = true;
     return true;
   }
   if (body.compare(pos, 5, "false") == 0) {
+    if (!valid_json_value_end(body.c_str() + pos + 5))
+      return false;
     *out = false;
     return true;
   }
@@ -51,10 +70,14 @@ bool read_float_field(const std::string &body, const char *field, float *out) {
   const size_t colon = body.find(':', key_pos + key.size());
   if (colon == std::string::npos)
     return false;
-  const char *start = body.c_str() + colon + 1;
+  const char *start = skip_json_whitespace(body.c_str() + colon + 1);
+  if (*start == '+')
+    return false;
   char *end = nullptr;
+  errno = 0;
   const float value = strtof(start, &end);
-  if (end == start)
+  if (end == start || errno == ERANGE || !std::isfinite(value) ||
+      !valid_json_value_end(end))
     return false;
   *out = value;
   return true;
@@ -68,10 +91,16 @@ bool read_int_field(const std::string &body, const char *field, int *out) {
   const size_t colon = body.find(':', key_pos + key.size());
   if (colon == std::string::npos)
     return false;
-  const char *start = body.c_str() + colon + 1;
+  const char *start = skip_json_whitespace(body.c_str() + colon + 1);
+  if (*start == '+')
+    return false;
   char *end = nullptr;
+  errno = 0;
   const long value = strtol(start, &end, 10);
-  if (end == start)
+  if (end == start || errno == ERANGE ||
+      value < std::numeric_limits<int>::min() ||
+      value > std::numeric_limits<int>::max() ||
+      !valid_json_value_end(end))
     return false;
   *out = static_cast<int>(value);
   return true;
@@ -122,12 +151,43 @@ float clamp_humidity_offset(float value) {
   return value;
 }
 
+const char *static_radar_gate_operation_state_name(StaticRadarGateOperationState state) {
+  switch (state) {
+    case StaticRadarGateOperationState::PENDING:
+      return "pending";
+    case StaticRadarGateOperationState::DISPATCHING:
+      return "pending";
+    case StaticRadarGateOperationState::READBACK_SENT:
+      return "verifying";
+    case StaticRadarGateOperationState::APPLIED:
+      return "applied";
+    case StaticRadarGateOperationState::FAILED:
+      return "failed";
+    case StaticRadarGateOperationState::IDLE:
+    default:
+      return "idle";
+  }
+}
+
+const char *static_radar_tuning_phase_name(StaticRadarTuningPhase phase) {
+  switch (phase) {
+    case StaticRadarTuningPhase::STARTING:
+      return "starting";
+    case StaticRadarTuningPhase::ACTIVE:
+      return "active";
+    case StaticRadarTuningPhase::STOPPING:
+      return "stopping";
+    case StaticRadarTuningPhase::FAILED:
+      return "failed";
+    case StaticRadarTuningPhase::IDLE:
+    default:
+      return "idle";
+  }
+}
+
 }  // namespace
 
-bool ControlHandler::can_handle(AsyncWebServerRequest *request) const {
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
-
+bool ControlHandler::can_handle(AsyncWebServerRequest *request, StringRef url) const {
   if (request->method() == HTTP_GET)
     return url == "/api/control/status" || url == "/api/control/static-radar-tuning";
   if (request->method() == HTTP_POST)
@@ -135,17 +195,12 @@ bool ControlHandler::can_handle(AsyncWebServerRequest *request) const {
            url == "/api/control/environment-correction" || url == "/api/control/temperature-offset" ||
            url == "/api/control/humidity-offset" || url == "/api/control/timezone" ||
            url == "/api/control/static-radar-tuning/session" ||
-           url == "/api/control/static-radar-tuning/gate";
+           url == "/api/control/static-radar-tuning/gate" ||
+           url == "/api/control/static-radar-tuning/factory-reset";
   return false;
 }
 
-bool ControlHandler::handle(AsyncWebServerRequest *request) {
-  if (!this->can_handle(request))
-    return false;
-
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  auto url = request->url_to(url_buf);
-
+bool ControlHandler::handle(AsyncWebServerRequest *request, StringRef url) {
   if (request->method() == HTTP_GET && url == "/api/control/status") {
     this->handle_status_(request);
     return true;
@@ -194,6 +249,11 @@ bool ControlHandler::handle(AsyncWebServerRequest *request) {
 
   if (request->method() == HTTP_POST && url == "/api/control/static-radar-tuning/gate") {
     this->handle_static_radar_tuning_gate_(request);
+    return true;
+  }
+
+  if (request->method() == HTTP_POST && url == "/api/control/static-radar-tuning/factory-reset") {
+    this->handle_static_radar_factory_reset_(request);
     return true;
   }
 
@@ -324,9 +384,12 @@ void ControlHandler::handle_timezone_(AsyncWebServerRequest *request) {
 
 void ControlHandler::handle_static_radar_tuning_status_(AsyncWebServerRequest *request) {
   auto *stream = request->beginResponseStream("application/json");
-  stream->printf(R"({"ok":true,"available":%s,"active":%s,"resolutionMm":%u,"gates":[)",
+  stream->printf(R"({"ok":true,"available":%s,"recovering":%s,"active":%s,"phase":"%s","result":"%s","resolutionMm":%u,"gates":[)",
                  this->control_state_->static_radar_available ? "true" : "false",
+                 this->control_state_->static_radar_recovering ? "true" : "false",
                  this->control_state_->static_radar_tuning_active ? "true" : "false",
+                 static_radar_tuning_phase_name(this->control_state_->static_radar_tuning_phase),
+                 this->control_state_->static_radar_tuning_result,
                  static_cast<unsigned>(this->control_state_->static_radar_gate_resolution_mm));
 
   if (this->control_state_->static_radar_tuning_active) {
@@ -343,7 +406,23 @@ void ControlHandler::handle_static_radar_tuning_status_(AsyncWebServerRequest *r
     }
   }
 
-  stream->print("]}");
+  stream->printf(
+      R"(],"operation":{"id":%u,"state":"%s","result":"%s","gate":%u,"sensitivity":%u,"moveThreshold":)",
+      static_cast<unsigned>(this->control_state_->static_radar_gate_operation_id),
+      static_radar_gate_operation_state_name(this->control_state_->static_radar_gate_operation_state),
+      this->control_state_->static_radar_gate_operation_result,
+      static_cast<unsigned>(this->control_state_->requested_static_radar_gate),
+      static_cast<unsigned>(this->control_state_->requested_static_radar_sensitivity));
+  if (std::isfinite(this->control_state_->static_radar_gate_actual_move_threshold))
+    stream->printf("%.0f", this->control_state_->static_radar_gate_actual_move_threshold);
+  else
+    stream->print("null");
+  stream->print(R"(,"stillThreshold":)");
+  if (std::isfinite(this->control_state_->static_radar_gate_actual_still_threshold))
+    stream->printf("%.0f", this->control_state_->static_radar_gate_actual_still_threshold);
+  else
+    stream->print("null");
+  stream->print("}}");
   request->send(stream);
 }
 
@@ -360,12 +439,23 @@ void ControlHandler::handle_static_radar_tuning_session_(AsyncWebServerRequest *
                                    R"({"target":"ld2410c"})");
     return;
   }
+  if (this->control_state_->static_radar_recovering) {
+    http_response::send_error_info(request, 409, "static_radar_recovering",
+                                   "static_radar_recovering", "warning",
+                                   R"({"target":"ld2410c"})");
+    return;
+  }
 
   const bool changed = this->control_state_->static_radar_tuning_requested_active != active;
   this->control_state_->static_radar_tuning_requested_active = active;
   this->control_state_->static_radar_tuning_keepalive_ms = active ? millis() : 0;
   this->control_state_->pending_static_radar_tuning_session =
       this->control_state_->pending_static_radar_tuning_session || changed;
+  if (changed) {
+    this->control_state_->static_radar_tuning_phase =
+        active ? StaticRadarTuningPhase::STARTING : StaticRadarTuningPhase::STOPPING;
+    this->control_state_->static_radar_tuning_result = "pending";
+  }
   http_response::send_json(request, 200, R"({"ok":true})");
 }
 
@@ -380,16 +470,48 @@ void ControlHandler::handle_static_radar_tuning_gate_(AsyncWebServerRequest *req
                                    R"({"field":"gate,sensitivity","target":"static_radar_tuning"})");
     return;
   }
+  if (this->control_state_->static_radar_recovering) {
+    http_response::send_error_info(request, 409, "static_radar_recovering",
+                                   "static_radar_recovering", "warning",
+                                   R"({"target":"ld2410c"})");
+    return;
+  }
   if (!this->control_state_->static_radar_tuning_active) {
     http_response::send_error_info(request, 409, "static_radar_tuning_inactive", "static_radar_tuning_inactive",
                                    "warning", R"({"target":"ld2410c"})");
     return;
   }
 
-  this->control_state_->requested_static_radar_gate = static_cast<uint8_t>(gate);
-  this->control_state_->requested_static_radar_sensitivity = static_cast<uint8_t>(sensitivity);
-  this->control_state_->pending_static_radar_gate = true;
-  http_response::send_json(request, 200, R"({"ok":true})");
+  uint32_t operation_id = 0;
+  if (this->control_state_->request_static_radar_gate(
+          static_cast<uint8_t>(gate), static_cast<uint8_t>(sensitivity), &operation_id) ==
+      StaticRadarGateRequestResult::BUSY) {
+    http_response::send_error_info(request, 409, "static_radar_tuning_busy", "static_radar_tuning_busy",
+                                   "warning", R"({"target":"ld2410c"})");
+    return;
+  }
+
+  char response[96];
+  snprintf(response, sizeof(response), R"({"ok":true,"operationId":%u,"state":"pending"})",
+           static_cast<unsigned>(operation_id));
+  http_response::send_json(request, 200, response);
+}
+
+void ControlHandler::handle_static_radar_factory_reset_(AsyncWebServerRequest *request) {
+  const auto result = this->control_state_->request_static_radar_factory_reset();
+  if (result == StaticRadarFactoryResetRequestResult::UNAVAILABLE) {
+    http_response::send_error_info(request, 409, "static_radar_unavailable", "static_radar_unavailable", "warning",
+                                   R"({"target":"ld2410c"})");
+    return;
+  }
+  if (result == StaticRadarFactoryResetRequestResult::ALREADY_PENDING) {
+    http_response::send_error_info(request, 409, "static_radar_factory_reset_pending",
+                                   "static_radar_factory_reset_pending", "warning",
+                                   R"({"target":"ld2410c"})");
+    return;
+  }
+
+  http_response::send_json(request, 200, R"({"ok":true,"restartExpected":true})");
 }
 
 }  // namespace radar_api_server

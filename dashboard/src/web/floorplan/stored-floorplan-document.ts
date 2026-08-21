@@ -1,8 +1,11 @@
-import type {
-  FloorplanStorageDocument,
-  FloorplanStorageObject,
-  FloorplanStorageRoom,
-  FloorplanStorageScale
+import {
+  ensureFloorplanStorageIdentity,
+  sanitizeFloorplanAutomationAreas,
+  type FloorplanStorageDocument,
+  type FloorplanStorageDoor,
+  type FloorplanStorageObject,
+  type FloorplanStorageRoom,
+  type FloorplanStorageScale
 } from "../../core/floorplan/floorplan-storage";
 import { pointInPolygon } from "../../core/geometry";
 import type { FloorplanWallSegment, RoomCandidate } from "../../core/floorplan/floorplan-types";
@@ -20,6 +23,31 @@ interface StoredFloorplanDocumentInput extends StoredFloorplanRoomsInput {
   document: FloorplanStorageDocument | null | undefined;
   objects: unknown[];
   wallSegments?: FloorplanWallSegment[];
+}
+
+export interface LocalFloorplanRadarPlacement {
+  originX: number;
+  originY: number;
+  rotation: number;
+  scale: number;
+  poseVersion?: number;
+}
+
+export function withLocalFloorplanRadarPlacement(
+  document: FloorplanStorageDocument,
+  placement: LocalFloorplanRadarPlacement | null | undefined
+): FloorplanStorageDocument {
+  if (!placement) return document;
+  return {
+    ...document,
+    radar: {
+      ...document.radar,
+      originPx: [placement.originX, placement.originY],
+      rotationDeg: placement.rotation,
+      scale: placement.scale,
+      poseVersion: placement.poseVersion ?? document.radar.poseVersion
+    }
+  };
 }
 
 export function buildStoredFloorplanRooms({
@@ -79,14 +107,30 @@ export function buildCurrentStoredFloorplanDocument({
 }
 
 export function sanitizeStoredFloorplanDocument(document: FloorplanStorageDocument): FloorplanStorageDocument {
-  return {
+  const automationAreas = sanitizeFloorplanAutomationAreas(document.automationAreas);
+  const normalized = ensureFloorplanStorageIdentity({
     ...document,
     rooms: Array.isArray(document.rooms) ? document.rooms : [],
     occlusion: {
       ignoredEdges: Array.isArray(document.occlusion?.ignoredEdges) ? document.occlusion.ignoredEdges : []
     },
-    objects: sanitizeStoredFloorplanObjects(document.objects ?? [], Array.isArray(document.rooms) ? document.rooms : [])
-  };
+    doors: Array.isArray(document.doors) ? sanitizeStoredFloorplanDoors(document.doors) : undefined,
+    objects: sanitizeStoredFloorplanObjects(document.objects ?? [], Array.isArray(document.rooms) ? document.rooms : []),
+    automationAreas
+  });
+  if (automationAreas) return normalized;
+  const { automationAreas: _invalidAutomationAreas, ...withoutAutomationAreas } = normalized;
+  return withoutAutomationAreas;
+}
+
+export function sanitizeStoredFloorplanDoors(doors: unknown[]): FloorplanStorageDoor[] {
+  return doors.filter(isFloorplanStorageDoor).map((door) => ({
+    id: door.id,
+    kind: door.kind,
+    centerPx: [door.centerPx[0], door.centerPx[1]],
+    widthPx: door.widthPx,
+    rotationDeg: door.rotationDeg
+  }));
 }
 
 export function sanitizeStoredFloorplanObjects(
@@ -143,6 +187,21 @@ function isFloorplanStorageObject(value: unknown): value is FloorplanStorageObje
     object.heightPx > 0 &&
     (object.rotationDeg === undefined || isFiniteNumber(object.rotationDeg)) &&
     (object.roomId === undefined || typeof object.roomId === "string");
+}
+
+function isFloorplanStorageDoor(value: unknown): value is FloorplanStorageDoor {
+  if (!value || typeof value !== "object") return false;
+  const door = value as Partial<FloorplanStorageDoor>;
+  return typeof door.id === "string" &&
+    door.id.length > 0 &&
+    (door.kind === "hinged" || door.kind === "sliding") &&
+    Array.isArray(door.centerPx) &&
+    door.centerPx.length === 2 &&
+    isFiniteNumber(door.centerPx[0]) &&
+    isFiniteNumber(door.centerPx[1]) &&
+    isFiniteNumber(door.widthPx) &&
+    door.widthPx > 0 &&
+    isFiniteNumber(door.rotationDeg);
 }
 
 function isFiniteNumber(value: unknown): value is number {

@@ -89,19 +89,43 @@ export function clampZoneToHardwareBounds<T extends { points: Array<[number, num
 }
 
 export function normalizeSoftwareConfig(config: WebDeviceConfig): WebDeviceConfig {
-  return stripPlaceholders(config);
-}
-
-export function stripPlaceholders(config: WebDeviceConfig): WebDeviceConfig {
   const { trackerAssistPresence: _trackerAssistPresence, ...restConfig } = config;
+  const floorplan = normalizeFloorplanRadarPoseVersion(config.floorplan);
   return {
     ...restConfig,
+    ...(floorplan ? { floorplan } : {}),
     legacyPresenceFallback: config.legacyPresenceFallback === true,
     zones: config.zones
       .filter((zone) => !isEmptyZone(zone))
       .slice(0, MAX_SOFTWARE_ZONES)
+      .map((zone) => clampZoneToHardwareBounds({
+        ...zone,
+        type: normalizeZoneType((zone as { type?: unknown }).type)
+      })),
+    calibrationZones: (config.calibrationZones || [])
+      .filter((zone) => !isEmptyZone(zone))
+      .slice(0, MAX_CALIBRATION_ZONES)
+      .map((zone) => clampZoneToHardwareBounds({ ...zone, type: calibrationType((zone as { type?: unknown }).type) }))
+  };
+}
+
+export function stripPlaceholders(config: WebDeviceConfig): WebDeviceConfig {
+  const { trackerAssistPresence: _trackerAssistPresence, ...restConfig } = config;
+  const floorplan = normalizeFloorplanRadarPoseVersion(config.floorplan);
+  return {
+    ...restConfig,
+    ...(floorplan ? { floorplan } : {}),
+    legacyPresenceFallback: config.legacyPresenceFallback === true,
+    zones: config.zones
+      .filter((zone) => !zone.placeholder && !zone.shared && !isEmptyZone(zone))
+      .slice(0, MAX_SOFTWARE_ZONES)
       .map((zone) => {
-        const { placeholder: _placeholder, ...rest } = zone;
+        const {
+          placeholder: _placeholder,
+          shared: _shared,
+          sharedAreaId: _sharedAreaId,
+          ...rest
+        } = zone;
         return clampZoneToHardwareBounds({
           ...rest,
           type: normalizeZoneType((zone as { type?: unknown }).type)
@@ -111,6 +135,20 @@ export function stripPlaceholders(config: WebDeviceConfig): WebDeviceConfig {
       .filter((zone) => !isEmptyZone(zone))
       .slice(0, MAX_CALIBRATION_ZONES)
       .map((zone) => clampZoneToHardwareBounds({ ...zone, type: calibrationType((zone as { type?: unknown }).type) }))
+  };
+}
+
+function normalizeFloorplanRadarPoseVersion(
+  floorplan: WebDeviceConfig["floorplan"]
+): WebDeviceConfig["floorplan"] {
+  const radar = floorplan?.radar;
+  if (!floorplan || !radar || radar.poseVersion !== undefined) return floorplan;
+  return {
+    ...floorplan,
+    radar: {
+      ...radar,
+      poseVersion: 1
+    }
   };
 }
 

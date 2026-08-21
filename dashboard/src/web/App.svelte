@@ -3,10 +3,18 @@
   import { apiErrorMessage } from "./api/api-message";
   import { deviceApi } from "./api/device-api";
   import { deviceStorageQueue } from "./api/device-storage-queue";
+  import {
+    createPlatformPairingClient,
+    type PlatformGroupsStatus,
+    type PlatformParticipantsStatus,
+    type PlatformSiteConfigurationStatus
+  } from "./api/platform-pairing";
   import CalibrationDialog from "./components/CalibrationDialog.svelte";
+  import IncomingPairingDialog from "./components/IncomingPairingDialog.svelte";
   import ProtectedZoneDialog from "./components/ProtectedZoneDialog.svelte";
   import ShrinkConfirmDialog from "./components/ShrinkConfirmDialog.svelte";
   import {
+    hasCompleteFloorplanStorage,
     loadFloorplanStorageDocument,
     loadFloorplanStorageImage,
     loadFloorplanStorageStatus,
@@ -14,6 +22,11 @@
     saveFloorplanStorageDocument
   } from "./floorplan/floorplan-storage-client";
   import { buildFloorplanRoomContext } from "./floorplan/floorplan-room-context";
+  import {
+    floorplanCoordinateSize,
+    runFloorplanReplacementAction
+  } from "./floorplan/floorplan-replacement";
+  import { withLocalFloorplanRadarPlacement } from "./floorplan/stored-floorplan-document";
   import { MAX_SOFTWARE_ZONES } from "../core/constants";
   import type { BackupFloorplanData } from "../core/config-backup";
   import type { FloorplanStorageDocument } from "../core/floorplan/floorplan-storage";
@@ -21,26 +34,50 @@
     calibrationType,
     isEmptyZone,
     localizedZoneDisplayName,
-    normalizeSoftwareConfig
+    normalizeSoftwareConfig,
+    stripPlaceholders
   } from "../core/zones";
   import { createBackupRestore } from "./state/useBackupRestore.svelte";
   import { createCalibrationRun } from "./state/useCalibrationRun.svelte";
   import { createConfigHistory } from "./state/useConfigHistory.svelte";
   import { createConfigSave } from "./state/useConfigSave.svelte";
+  import { bootGuardRemainingSeconds as calculateBootGuardRemainingSeconds } from "./state/boot-guard";
+  import {
+    firmwareUpdateStore,
+    takeFirmwareUpdateCompletion,
+    type FirmwareStatusSnapshot,
+    type FirmwareUpdateCompletion
+  } from "./state/firmware-update-store";
+  import { esphomeWifiReady } from "./state/ha-setup-connectivity";
+  import { withStoredFloorplanAvailability } from "./state/floorplan-save-coordinator";
+  import { waitForSharedFloorplanWritable } from "./state/shared-floorplan-write";
   import { createRadarInteraction } from "./state/useRadarInteraction.svelte";
   import { createRadarPolling } from "./state/useRadarPolling.svelte";
   import { createZoneEditor } from "./state/useZoneEditor.svelte";
+  import {
+    localZoneConfig,
+    mergeSharedDetectionZones,
+    mergeSharedDetectionZonesAfterLocalSave,
+    sharedDetectionZoneEditable,
+    usesSharedDetectionZones,
+    withSharedDetectionZones
+  } from "./state/shared-detection-zones";
   import { APP_SELECTION_PRESERVE_SELECTOR } from "./dom/selection-preserve";
   import { languageOptions } from "./i18n";
   import { createI18n } from "./i18n/useI18n.svelte";
+  import {
+    platformFusionSummary
+  } from "./platform-radar-display";
   import BackupPage from "./pages/BackupPage.svelte";
   import DashboardPage from "./pages/DashboardPage.svelte";
   import FloorplanPage from "./pages/FloorplanPage.svelte";
+  import PairingPage from "./pages/PairingPage.svelte";
   import StatsPage from "./pages/StatsPage.svelte";
   import ZonesPage from "./pages/ZonesPage.svelte";
   import type {
     DeviceApi,
     FirmwareUploadProgress,
+    SaveState,
     WebControlStatus,
     WebDeviceConfig,
     WebDeviceState,
@@ -50,7 +87,14 @@
     WebZoneType
   } from "./types";
 
-  type AppTab = "dashboard" | "zones" | "floorplan" | "stats" | "backup";
+  type AppTab = "dashboard" | "zones" | "floorplan" | "pairing" | "stats" | "backup";
+
+  function appTabFromQuery(value: string | null): AppTab {
+    if (value === "zones" || value === "floorplan" || value === "pairing" || value === "stats" || value === "backup") {
+      return value;
+    }
+    return "dashboard";
+  }
 
   type AppProps = {
     api?: DeviceApi;
@@ -105,6 +149,25 @@
   let systemStatusLoading = $state(false);
   let systemStatusLoaded = $state(false);
   let systemStatusError = $state("");
+  let systemStatusObservedAt = $state(Date.now());
+  let systemStatusClock = $state(Date.now());
+  let firmwareUpdateCompletion = $state<FirmwareUpdateCompletion | null>(null);
+  let platformGroups = $state<PlatformGroupsStatus | null>(null);
+  let platformParticipants = $state<PlatformParticipantsStatus | null>(null);
+  let platformSiteConfiguration = $state<PlatformSiteConfigurationStatus | null>(null);
+  let sharedFloorplanDocument = $state<FloorplanStorageDocument | null>(null);
+  let sharedFloorplanRevision = "";
+  let sharedDetectionRefreshBusy = false;
+  let sharedDetectionMigrationBusy = false;
+  let sharedZoneSavePromise: Promise<void> | null = null;
+  let sharedZoneSaveRequestedVersion = 0;
+  let sharedZoneSaveCompletedVersion = 0;
+  let sharedZoneSaveState = $state<SaveState | null>(null);
+  let sharedZoneSaveStatusText = $state("");
+  let zoneDialog = $state<"" | "owner" | "validation">("");
+  let floorplanDialog = $state<"" | "owner" | "delete-connected" | "radar-relocated">("");
+  let floorplanRelocatedParticipantIds = $state<string[]>([]);
+  let invalidZoneIds = $state<string[]>([]);
   let controlStatus = $state<WebControlStatus | null>(null);
   let controlStatusLoading = $state(false);
   let controlStatusLoaded = $state(false);
@@ -116,7 +179,7 @@
   let statusTone = $state<"ok" | "warn" | "error">("warn");
   let errorText = $state("");
   let debugMode = $state(false);
-  let activeTab = $state<AppTab>("dashboard");
+  let activeTab = $state<AppTab>(appTabFromQuery(searchParams.get("tab")));
   let floorplanHasUnsavedChanges = $state(false);
   let languageMenuOpen = $state(false);
   let activeZoneTool = $state<"" | "zones" | "calibration" | "staticRadar">("");
@@ -124,13 +187,19 @@
   let haSetupGateMode = $state<HaSetupGateMode>(requiresHaSetupHandoff() ? "select" : "api-warmup");
   let haSetupGateBusy = $state(false);
   let haSetupGateMessage = $state(requiresHaSetupHandoff() ? i18n.msg.app.setupModeSelectMessage : i18n.msg.app.setupInitialChecking);
-  let haSetupGateDismissed = $state(false);
   let haSetupGateAllowContinue = $state(false);
+  let floorplanAvailabilityReconcileBusy = false;
+  const fusionSummary = $derived(
+    platformFusionSummary(state, platformGroups, platformSiteConfiguration)
+  );
+  const platformClient = createPlatformPairingClient({
+    fetcher: (input, init) => (floorplanStorageFetcher ?? fetch)(input, init)
+  });
 
   function createAppConfigSave() {
     return createConfigSave({
       api,
-      getConfig: () => config,
+      getConfig: () => config ? localZoneConfig(config, platformSiteConfiguration) : null,
       setStatus,
       errorMessage,
       getSaveStatusLabels: () => i18n.msg.common.saveStatus,
@@ -140,6 +209,8 @@
   }
 
   const configSave = createAppConfigSave();
+  const zoneSaveState = $derived(sharedZoneSaveState ?? configSave.saveState);
+  const zoneSaveStatusText = $derived(sharedZoneSaveState ? sharedZoneSaveStatusText : configSave.saveStatusText);
 
   const backupRestore = createBackupRestore({
     getConfig: () => config,
@@ -170,6 +241,7 @@
   });
 
   const calibration = createCalibrationRun({
+    getApi: () => api,
     getConfig: () => config,
     getState: () => state,
     getCalibrationZoneCount: () => calibrationZones.length,
@@ -182,7 +254,9 @@
   const radarPolling = createRadarPolling({
     loadConfig,
     refreshState,
-    refreshStats
+    refreshStats,
+    refreshFloorplanAvailability: reconcileStoredFloorplanAvailability,
+    refreshPlatformDisplay
   });
 
   const zones = $derived(config?.zones.filter((zone) => !isEmptyZone(zone)).slice(0, MAX_SOFTWARE_ZONES) ?? []);
@@ -195,6 +269,8 @@
     getMessages: () => i18n.msg,
     updateConfig: (mutator) => updateZoneDraftConfig(mutator),
     setStatus,
+    canUseDetectionType: () => !usesSharedDetectionZones(platformSiteConfiguration) || platformSiteConfiguration?.localOwner === true,
+    onDetectionOwnerRequired: showDetectionOwnerRequired,
     onSelect: (_zoneId, resetPoint, render) => {
       radarInteraction.resetShrinkWarning();
       if (resetPoint) selectedPointIndex = -1;
@@ -227,6 +303,9 @@
   const updatedText = $derived(state ? formatClock(state.updatedAt) : "-");
   const activeTargetCount = $derived(state?.targets.filter((target) => target.active).length ?? 0);
   let appRuntimeStarted = false;
+  const bootGuardRemainingSeconds = $derived(
+    calculateBootGuardRemainingSeconds(systemStatus, systemStatusObservedAt, systemStatusClock)
+  );
 
   function formatClock(timestamp: number): string {
     return new Intl.DateTimeFormat(i18n.msg.language.code === "ko" ? "ko-KR" : "en-US", {
@@ -235,6 +314,16 @@
       second: "2-digit",
       hour12: false
     }).format(new Date(timestamp));
+  }
+
+  function fusionStatusText(): string {
+    if (fusionSummary.state === "active") return i18n.msg.dashboard.fusionActive(fusionSummary.sensorCount);
+    if (fusionSummary.state === "sending") return i18n.msg.dashboard.fusionSending;
+    return i18n.msg.dashboard.fusionFallback;
+  }
+
+  function fusionStatusTone(): "ok" | "warn" {
+    return fusionSummary.state === "active" ? "ok" : "warn";
   }
 
   function displayZoneName(zone: WebZone): string {
@@ -259,6 +348,16 @@
     event.returnValue = "";
   }
 
+  function handleAppVisibilityChange(): void {
+    systemStatusClock = Date.now();
+    if (!document.hidden && activeTab === "backup") void refreshSystemStatus();
+  }
+
+  function handleWindowFocus(): void {
+    systemStatusClock = Date.now();
+    if (activeTab === "backup") void refreshSystemStatus();
+  }
+
   function setActiveTab(tab: AppTab): void {
     if (tab === activeTab) return;
     if (hasUnsavedChanges() && !window.confirm(i18n.msg.common.unsavedChangesConfirm)) return;
@@ -273,13 +372,33 @@
     if (appRuntimeStarted) return;
     appRuntimeStarted = true;
     radarPolling.start();
+    if (!demoMode && api.getSystemStatus) void firmwareUpdateStore.resume({ getSystemStatus: api.getSystemStatus });
 
     window.addEventListener("pointermove", radarInteraction.handlePointerMove);
     window.addEventListener("pointerup", radarInteraction.handlePointerUp);
     window.addEventListener("pointercancel", radarInteraction.handlePointerUp);
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleAppVisibilityChange);
     document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+  }
+
+  function firmwareSnapshotText(snapshot: FirmwareStatusSnapshot | null): string {
+    if (!snapshot?.version) return "-";
+    return snapshot.buildTime ? `${snapshot.version} · ${snapshot.buildTime}` : snapshot.version;
+  }
+
+  function firmwareCompletionMessage(completion: FirmwareUpdateCompletion): string {
+    const beforeVersion = completion.before?.version ?? "-";
+    const afterVersion = completion.after.version ?? completion.target?.version ?? "-";
+    if (completion.result === "updated") {
+      return i18n.msg.backup.firmwareUpdatedVersion(beforeVersion, afterVersion);
+    }
+    if (completion.result === "rebuilt") {
+      return i18n.msg.backup.firmwareRebuiltVersion(afterVersion);
+    }
+    return i18n.msg.backup.firmwareReinstalledVersion(afterVersion);
   }
 
   function stopAppRuntime(): void {
@@ -292,18 +411,31 @@
     window.removeEventListener("pointercancel", radarInteraction.handlePointerUp);
     window.removeEventListener("keydown", handleKeyDown);
     window.removeEventListener("beforeunload", handleBeforeUnload);
+    window.removeEventListener("focus", handleWindowFocus);
+    document.removeEventListener("visibilitychange", handleAppVisibilityChange);
     document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
   }
 
   onMount(() => {
+    firmwareUpdateCompletion = takeFirmwareUpdateCompletion();
     startAppRuntime();
     return stopAppRuntime;
   });
 
   $effect(() => {
-    if ((activeTab === "dashboard" || activeTab === "backup") && !systemStatusLoaded && !systemStatusLoading) {
+    if (activeTab === "backup") {
+      void refreshSystemStatus();
+    } else if ((activeTab === "dashboard" || activeTab === "pairing") && !systemStatusLoaded && !systemStatusLoading) {
       void refreshSystemStatus();
     }
+  });
+
+  $effect(() => {
+    if (!systemStatus?.boot?.initialGuardActive || bootGuardRemainingSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      systemStatusClock = Date.now();
+    }, 1000);
+    return () => window.clearInterval(timer);
   });
 
   $effect(() => {
@@ -312,14 +444,50 @@
     }
   });
 
+  $effect(() => {
+    if (activeTab) void refreshPlatformDisplay();
+  });
+
   async function loadConfig(): Promise<void> {
     try {
       config = normalizeSoftwareConfig(await api.getConfig());
+      await refreshPlatformDisplay();
       zoneEditor.selectFirstAvailable();
       selectedPointIndex = -1;
       setStatus(i18n.msg.app.configLoaded, "ok");
+      await reconcileStoredFloorplanAvailability();
     } catch (error) {
       setStatus(i18n.msg.app.configReadFailed(errorMessage(error)), "error");
+    }
+  }
+
+  async function reconcileStoredFloorplanAvailability(): Promise<void> {
+    if (demoMode || mockMode || floorplanAvailabilityReconcileBusy || !config) return;
+    if (config.floorplan?.enabled === true && config.floorplan.hasImage === true) return;
+
+    floorplanAvailabilityReconcileBusy = true;
+    try {
+      const status = await loadFloorplanStorageStatus({
+        baseUrl: deviceBaseUrl,
+        fetcher: floorplanStorageFetcher
+      });
+      if (!hasCompleteFloorplanStorage(status)) return;
+
+      const localRadar = config.floorplan?.radar;
+      const localDocument = localRadar
+        ? withLocalFloorplanRadarPlacement(
+            await loadFloorplanStorageDocument({
+              baseUrl: deviceBaseUrl,
+              fetcher: floorplanStorageFetcher
+            }),
+            localRadar
+          )
+        : undefined;
+      await markFloorplanAvailable(true, localDocument);
+    } catch {
+      // Replication may still be committing; the bounded polling interval retries.
+    } finally {
+      floorplanAvailabilityReconcileBusy = false;
     }
   }
 
@@ -357,9 +525,10 @@
     try {
       const nextStatus = await api.getSystemStatus();
       systemStatus = nextStatus;
+      systemStatusObservedAt = Date.now();
+      systemStatusClock = systemStatusObservedAt;
       systemStatusLoaded = true;
       systemStatusError = "";
-      updateHaSetupGateFromStatus(nextStatus);
     } catch (error) {
       systemStatusLoaded = true;
       systemStatusError = errorMessage(error);
@@ -368,11 +537,88 @@
     }
   }
 
+  async function refreshPlatformDisplay(): Promise<void> {
+    try {
+      const [groups, participants, site] = await Promise.all([
+        platformClient.getGroups(deviceBaseUrl),
+        platformClient.getParticipants(deviceBaseUrl),
+        platformClient.getSiteConfiguration(deviceBaseUrl)
+      ]);
+      platformGroups = groups;
+      platformParticipants = participants;
+      platformSiteConfiguration = site;
+      await refreshSharedDetectionZones(site);
+    } catch {
+      // Platform display data is optional; local sensing must remain available.
+    }
+  }
+
+  async function refreshSharedDetectionZones(site: PlatformSiteConfigurationStatus): Promise<void> {
+    if (!config || !usesSharedDetectionZones(site) || sharedDetectionRefreshBusy) return;
+    const revision = [site.floorplan.floorplanId, site.floorplan.geometryVersion, site.floorplan.configHash].join(":");
+    const pendingLegacyMigration = site.localOwner && sharedFloorplanDocument?.automationAreas === undefined &&
+      config.zones.some((zone) => zone.type === "detection" && !zone.shared && !zone.placeholder);
+    if (revision === sharedFloorplanRevision && sharedFloorplanDocument && !pendingLegacyMigration) return;
+    if (configSave.hasPendingChanges && site.localOwner) return;
+
+    sharedDetectionRefreshBusy = true;
+    let flushedLocalChanges = false;
+    try {
+      if (configSave.hasPendingChanges) {
+        await configSave.saveConfigNow();
+        flushedLocalChanges = true;
+      }
+      const document = withLocalFloorplanRadarPlacement(
+        await loadFloorplanStorageDocument({ baseUrl: deviceBaseUrl, fetcher: floorplanStorageFetcher }),
+        config.floorplan?.radar
+      );
+      if (configSave.hasPendingChanges) return;
+      sharedFloorplanDocument = document;
+      sharedFloorplanRevision = revision;
+      config = normalizeSoftwareConfig(flushedLocalChanges
+        ? mergeSharedDetectionZonesAfterLocalSave(config, document, site)
+        : mergeSharedDetectionZones(config, document, site));
+      zoneEditor.selectFirstAvailable();
+      await migrateLegacyDetectionZones(site, document);
+    } catch (error) {
+      if (flushedLocalChanges && !configSave.hasPendingChanges) configSave.markPending();
+      throw error;
+    } finally {
+      sharedDetectionRefreshBusy = false;
+    }
+  }
+
+  async function migrateLegacyDetectionZones(
+    site: PlatformSiteConfigurationStatus,
+    document: FloorplanStorageDocument
+  ): Promise<void> {
+    if (!config || sharedDetectionMigrationBusy || !site.localOwner || site.sharedWritesAllowed === false ||
+        document.automationAreas !== undefined ||
+        !config.zones.some((zone) => zone.type === "detection" && !zone.shared && !zone.placeholder)) {
+      return;
+    }
+    const migrated = withSharedDetectionZones(document, config);
+    if (migrated === document) return;
+    sharedDetectionMigrationBusy = true;
+    try {
+      await deviceStorageQueue.run("floorplan", () =>
+        saveFloorplanStorageDocument(migrated, { baseUrl: deviceBaseUrl, fetcher: floorplanStorageFetcher })
+      );
+      await publishSharedFloorplan(migrated);
+      sharedFloorplanDocument = migrated;
+      sharedFloorplanRevision = "";
+    } finally {
+      sharedDetectionMigrationBusy = false;
+    }
+  }
+
   function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function waitForHaApiReady(maxWaitMs = 30000): Promise<"ready" | "timeout"> {
+  async function waitForEspHomeWifiReady(
+    maxWaitMs = 30000
+  ): Promise<"ready" | "timeout"> {
     if (!api.getSystemStatus) return "timeout";
 
     const startedAt = Date.now();
@@ -385,15 +631,15 @@
         systemStatusLoaded = true;
         systemStatusError = "";
 
-        if (nextStatus.api?.connected) {
+        if (esphomeWifiReady(nextStatus)) {
           return "ready";
         }
 
         const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
         haSetupGateMessage =
           elapsedSeconds < 8
-            ? i18n.msg.app.haApiWarmupChecking
-            : i18n.msg.app.haApiWaitingElapsed(elapsedSeconds);
+            ? i18n.msg.app.deviceNetworkPreparing
+            : i18n.msg.app.deviceWaitingWifiSwitch;
       } catch (error) {
         systemStatusLoaded = true;
         systemStatusError = errorMessage(error);
@@ -490,7 +736,7 @@
     });
     config = nextConfig;
     try {
-      await api.saveConfig(nextConfig);
+      await api.saveConfig(stripPlaceholders(localZoneConfig(nextConfig, platformSiteConfiguration)));
       setStatus(enabled ? i18n.msg.app.legacyPresenceFallbackOn : i18n.msg.app.legacyPresenceFallbackOff, "ok");
     } catch (error) {
       config = previousConfig;
@@ -607,6 +853,10 @@
     if (!config) return;
     if (history) configHistory.pushHistory();
     config = normalizeSoftwareConfig(mutator(config));
+    if (sharedZoneSaveState === "error") {
+      sharedZoneSaveState = null;
+      sharedZoneSaveStatusText = "";
+    }
     if (save) configSave.markPending();
   }
 
@@ -638,9 +888,160 @@
     zoneEditor.addZone();
   }
 
-  function addExitZone(): void {
+  function showDetectionOwnerRequired(): void {
+    if (zoneDialog === "owner") return;
+    zoneDialog = "owner";
+  }
+
+  function ownerDashboardUrl(): string {
+    const ownerId = platformSiteConfiguration?.configurationOwnerNodeId;
+    const owner = platformParticipants?.participants.find((participant) => participant.participantId === ownerId);
+    const address = owner?.endpoint?.online ? owner.endpoint.address.trim() : "";
+    if (!address) return "";
+    const origin = /^https?:\/\//i.test(address) ? address : `http://${address}`;
+    return `${origin.replace(/\/$/, "")}/dashboard?tab=zones`;
+  }
+
+  function participantFloorplanUrl(participantId: string): string {
+    const localNodeId = systemStatus?.platform?.nodeId;
+    if (participantId === localNodeId) {
+      const origin = deviceBaseUrl.trim() || window.location.origin;
+      return `${origin.replace(/\/$/, "")}/dashboard?tab=floorplan`;
+    }
+    const participant = platformParticipants?.participants.find((candidate) =>
+      candidate.participantId === participantId
+    );
+    const address = participant?.endpoint?.online ? participant.endpoint.address.trim() : "";
+    if (!address) return "";
+    const origin = /^https?:\/\//i.test(address) ? address : `http://${address}`;
+    return `${origin.replace(/\/$/, "")}/dashboard?tab=floorplan`;
+  }
+
+  function participantDisplayAddress(participantId: string): string {
+    if (participantId === systemStatus?.platform?.nodeId) {
+      try {
+        return new URL(deviceBaseUrl || window.location.origin).hostname;
+      } catch {
+        return participantId;
+      }
+    }
+    return platformParticipants?.participants.find((candidate) =>
+      candidate.participantId === participantId
+    )?.endpoint?.address || participantId;
+  }
+
+  function floorplanOwnerDashboardUrl(): string {
+    const ownerId = platformSiteConfiguration?.configurationOwnerNodeId;
+    return ownerId ? participantFloorplanUrl(ownerId) : "";
+  }
+
+  function closeZoneDialogFromBackdrop(event: MouseEvent): void {
+    if (event.target === event.currentTarget) zoneDialog = "";
+  }
+
+  function invalidZoneName(zoneId: string): string {
+    const zone = config?.zones.find((candidate) => candidate.id === zoneId);
+    return zone ? localizedZoneDisplayName(zone, i18n.msg.zones) : zoneId;
+  }
+
+  function focusInvalidZone(zoneId: string): void {
+    zoneDialog = "";
+    activeTab = "zones";
     activeZoneTool = "zones";
-    zoneEditor.addZone("exit");
+    selectZone(zoneId);
+  }
+
+  async function saveZoneConfiguration(): Promise<void> {
+    if (!config) return;
+    const invalid = config.zones.filter((zone) => zone.placeholder).map((zone) => zone.id);
+    if (invalid.length) {
+      invalidZoneIds = invalid;
+      zoneDialog = "validation";
+      return;
+    }
+    await requestZoneConfigurationSave(false);
+  }
+
+  async function saveZoneConfigurationFromFloorplan(): Promise<void> {
+    const invalid = config?.zones.filter((zone) => zone.placeholder).map((zone) => zone.id) ?? [];
+    if (invalid.length) {
+      invalidZoneIds = invalid;
+      zoneDialog = "validation";
+      throw new Error(i18n.msg.zones.zoneValidationInstruction);
+    }
+    await requestZoneConfigurationSave(true);
+  }
+
+  async function requestZoneConfigurationSave(propagateError: boolean): Promise<void> {
+    sharedZoneSaveRequestedVersion += 1;
+    const alreadySaving = sharedZoneSavePromise !== null;
+    const activeSave = sharedZoneSavePromise ?? startZoneConfigurationSave();
+    if (alreadySaving) {
+      setSharedZoneSaveState("queued");
+    }
+    try {
+      await activeSave;
+    } catch (error) {
+      sharedZoneSaveState = "error";
+      sharedZoneSaveStatusText = errorMessage(error);
+      setStatus(i18n.msg.app.configSaveFailed(errorMessage(error)), "error");
+      if (propagateError) throw error;
+    }
+  }
+
+  function startZoneConfigurationSave(): Promise<void> {
+    const activeSave = flushZoneConfigurationSaves();
+    sharedZoneSavePromise = activeSave;
+    activeSave.then(
+      () => {
+        if (sharedZoneSavePromise === activeSave) sharedZoneSavePromise = null;
+      },
+      () => {
+        if (sharedZoneSavePromise === activeSave) sharedZoneSavePromise = null;
+      }
+    );
+    return activeSave;
+  }
+
+  async function flushZoneConfigurationSaves(): Promise<void> {
+    while (sharedZoneSaveCompletedVersion < sharedZoneSaveRequestedVersion) {
+      setSharedZoneSaveState("saving");
+      await configSave.saveConfigNow();
+      const site = await readPlatformSiteConfiguration();
+      let versionToSave = sharedZoneSaveRequestedVersion;
+      if (config && usesSharedDetectionZones(site) && site.localOwner) {
+        const currentDocument = sharedFloorplanDocument ?? withLocalFloorplanRadarPlacement(
+          await loadFloorplanStorageDocument({ baseUrl: deviceBaseUrl, fetcher: floorplanStorageFetcher }),
+          config.floorplan?.radar
+        );
+        let nextDocument = withSharedDetectionZones(currentDocument, config);
+        if (nextDocument !== currentDocument) {
+          await prepareSharedFloorplanSave(() => setSharedZoneSaveState("queued"));
+          await configSave.saveConfigNow();
+          if (!config) return;
+          versionToSave = sharedZoneSaveRequestedVersion;
+          nextDocument = withSharedDetectionZones(currentDocument, config);
+          setSharedZoneSaveState("saving");
+          await deviceStorageQueue.run("floorplan", () =>
+            saveFloorplanStorageDocument(nextDocument, {
+              baseUrl: deviceBaseUrl,
+              fetcher: floorplanStorageFetcher
+            })
+          );
+          await publishSharedFloorplan(nextDocument);
+          sharedFloorplanDocument = nextDocument;
+          sharedFloorplanRevision = "";
+        }
+      }
+      sharedZoneSaveCompletedVersion = versionToSave;
+    }
+    sharedZoneSaveState = null;
+    sharedZoneSaveStatusText = "";
+  }
+
+  function setSharedZoneSaveState(state: SaveState): void {
+    sharedZoneSaveState = state;
+    sharedZoneSaveStatusText = i18n.msg.common.saveStatus[state];
   }
 
   function deleteSelected(): void {
@@ -712,6 +1113,7 @@
   }
 
   async function applyFloorplanBackup(floorplan: BackupFloorplanData): Promise<void> {
+    await prepareSharedFloorplanSave();
     if (floorplan.image) {
       await deviceStorageQueue.run("floorplan", () =>
         saveFloorplanStorage(
@@ -723,12 +1125,14 @@
         )
       );
       await markFloorplanRestored(true, floorplan.document);
+      await publishSharedFloorplan(floorplan.document);
       return;
     }
     await deviceStorageQueue.run("floorplan", () =>
       saveFloorplanStorageDocument(floorplan.document, { baseUrl: deviceBaseUrl, fetcher: floorplanStorageFetcher })
     );
     await markFloorplanRestored(config?.floorplan?.hasImage === true, floorplan.document);
+    await publishSharedFloorplan(floorplan.document);
   }
 
   async function markFloorplanRestored(
@@ -753,9 +1157,60 @@
     ...[document, image]: Parameters<NonNullable<DeviceApi["saveFloorplan"]>>
   ): Promise<void> {
     if (!api.saveFloorplan) throw new Error(i18n.msg.app.floorplanSaveApiNotReady);
+    const result = await runFloorplanReplacementAction({
+      site: platformSiteConfiguration,
+      document,
+      prepare: () => prepareSharedFloorplanSave(),
+      savePayloads: () => api.saveFloorplan!(document, image),
+      commitManifest: async (coordinateSize) => {
+        if (demoMode || mockMode) return platformSiteConfiguration;
+        platformSiteConfiguration = await platformClient.commitFloorplanManifest(
+          deviceBaseUrl,
+          document.floorplanId,
+          document.geometryVersion,
+          coordinateSize.widthMm,
+          coordinateSize.heightMm
+        );
+        return platformSiteConfiguration;
+      },
+      finalizeLocalState: () => markFloorplanAvailable(true, document)
+    });
+    if (result.relocatedParticipantIds.length) {
+      floorplanRelocatedParticipantIds = result.relocatedParticipantIds;
+      floorplanDialog = "radar-relocated";
+    }
+    if (result.localFinalizationError) {
+      console.warn("Floorplan committed but local availability update failed", result.localFinalizationError);
+    }
+  }
+
+  async function readPlatformSiteConfiguration(): Promise<PlatformSiteConfigurationStatus> {
+    const site = await platformClient.getSiteConfiguration(deviceBaseUrl);
+    platformSiteConfiguration = site;
+    return site;
+  }
+
+  async function prepareSharedFloorplanSave(
+    onWaiting: (() => void) | undefined = undefined
+  ): Promise<PlatformSiteConfigurationStatus | null> {
     await configSave.saveConfigNow();
-    await api.saveFloorplan(document, image);
-    await markFloorplanAvailable(true, document);
+    if (demoMode || mockMode) return platformSiteConfiguration;
+    return waitForSharedFloorplanWritable({
+      readSite: readPlatformSiteConfiguration,
+      onWaiting
+    });
+  }
+
+  async function publishSharedFloorplan(document: FloorplanStorageDocument): Promise<void> {
+    if (demoMode || mockMode) return;
+    const coordinateSize = floorplanCoordinateSize(document);
+    platformSiteConfiguration = await platformClient.commitFloorplanManifest(
+      deviceBaseUrl,
+      document.floorplanId,
+      document.geometryVersion,
+      coordinateSize.widthMm,
+      coordinateSize.heightMm
+    );
   }
 
   async function markFloorplanAvailable(
@@ -764,15 +1219,7 @@
   ): Promise<void> {
     if (!config) return;
     const room = hasImage && document ? buildFloorplanRoomContext(document) : undefined;
-    config = normalizeSoftwareConfig({
-      ...config,
-      floorplan: {
-        ...(config.floorplan ?? {}),
-        enabled: hasImage,
-        hasImage,
-        room
-      }
-    });
+    config = normalizeSoftwareConfig(withStoredFloorplanAvailability(config, hasImage, room));
     await configSave.saveConfigNow();
   }
 
@@ -815,33 +1262,9 @@
     return mode === "edge" || mode === "ha" ? mode : "unknown";
   }
 
-  function updateHaSetupGateFromStatus(status: WebSystemStatus): void {
-    if (mockMode || requiresHaSetupHandoff() || haSetupGateDismissed || haSetupGateVisible || haSetupGateBusy) return;
-    if (!status.api?.warning || status.api?.connected) return;
-    if (!config) return;
-    const mode = integrationMode();
-    if (mode === "edge") return;
-    if (mode === "unknown") {
-      haSetupGateMode = "select";
-      haSetupGateMessage = i18n.msg.app.setupModeSelectMessage;
-      haSetupGateAllowContinue = false;
-      haSetupGateVisible = true;
-      return;
-    }
-    const uptimeSeconds = status.firmware?.uptimeSeconds ?? 0;
-    haSetupGateMode = uptimeSeconds < 300 ? "api-warmup" : "api-warning";
-    haSetupGateMessage =
-      haSetupGateMode === "api-warmup"
-        ? i18n.msg.app.haApiWarmupMessage
-        : i18n.msg.app.haApiWarningMessage;
-    haSetupGateAllowContinue = false;
-    haSetupGateVisible = true;
-  }
-
   function dismissHaSetupGate(): void {
     haSetupGateVisible = false;
     haSetupGateBusy = false;
-    haSetupGateDismissed = true;
     haSetupGateAllowContinue = false;
   }
 
@@ -896,7 +1319,7 @@
       integrationMode: mode
     });
     config = nextConfig;
-    await api.saveConfig(nextConfig);
+    await api.saveConfig(stripPlaceholders(localZoneConfig(nextConfig, platformSiteConfiguration)));
   }
 
   async function chooseIntegrationMode(mode: Exclude<IntegrationMode, "unknown">): Promise<void> {
@@ -926,7 +1349,6 @@
       haSetupGateMode = "select";
       haSetupGateMessage = i18n.msg.app.setupModeSelectMessage;
       haSetupGateAllowContinue = false;
-      haSetupGateDismissed = false;
       haSetupGateVisible = true;
       return;
     }
@@ -941,7 +1363,7 @@
         return;
       }
 
-      if (systemStatus?.api?.connected && systemStatus.api.warning === false) {
+      if (esphomeWifiReady(systemStatus)) {
         setStatus(i18n.msg.app.haModeSet, "ok");
         return;
       }
@@ -949,7 +1371,6 @@
       haSetupGateMode = "ha-setup";
       haSetupGateMessage = i18n.msg.app.haSetupNeeded;
       haSetupGateAllowContinue = false;
-      haSetupGateDismissed = false;
       haSetupGateVisible = true;
     } catch (error) {
       setStatus(i18n.msg.app.integrationModeChangeFailed(errorMessage(error)), "error");
@@ -975,12 +1396,11 @@
       return;
     }
 
-    haSetupGateMessage = i18n.msg.app.haApiCheckingLong;
-    const readyState = await waitForHaApiReady(60000);
+    haSetupGateMessage = i18n.msg.app.deviceNetworkPreparing;
+    const readyState = await waitForEspHomeWifiReady(60000);
 
-    if (readyState !== "ready") {
-      haSetupGateMessage =
-        i18n.msg.app.haSetupReadyNotice;
+    if (readyState === "timeout") {
+      haSetupGateMessage = i18n.msg.app.deviceWaitingWifiSwitch;
       haSetupGateBusy = false;
       haSetupGateAllowContinue = true;
       return;
@@ -995,6 +1415,7 @@
   async function completeHaSetupHandoff(): Promise<void> {
     if (haSetupGateBusy) return;
     if (haSetupGateAllowContinue) {
+      cleanSetupUrl();
       dismissHaSetupGate();
       return;
     }
@@ -1035,10 +1456,50 @@
           <button class="demo-reset-button" type="button" onclick={onResetDemoStorage}>{i18n.msg.common.reset}</button>
         {/if}
       {/if}
+      {#if fusionSummary.visible}
+        <div class="status-pill fusion-status-pill" data-tone={fusionStatusTone()}>{fusionStatusText()}</div>
+      {/if}
       <div class="status-pill" data-status data-tone={statusTone}>{statusText}</div>
     </div>
   </header>
   <div class="toast" data-toast data-visible={errorText ? "true" : "false"}>{errorText}</div>
+
+  <IncomingPairingDialog
+    available={systemStatus?.platform?.pairingSupported === true}
+    baseUrl={deviceBaseUrl}
+    fetcher={floorplanStorageFetcher}
+    messages={i18n.msg}
+  />
+
+  {#if firmwareUpdateCompletion}
+    <div class="dashboard-dialog-backdrop" role="presentation">
+      <div
+        class="floorplan-delete-dialog dashboard-control-dialog firmware-completion-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="firmware-completion-title"
+      >
+        <div class="dashboard-dialog-heading">
+          <strong id="firmware-completion-title">{i18n.msg.backup.firmwareSuccessTitle}</strong>
+          <span>{i18n.msg.backup.firmwareCompletionDescription}</span>
+        </div>
+        <dl class="floorplan-stored-summary firmware-summary">
+          <div>
+            <dt>{i18n.msg.backup.firmwarePreviousVersion}</dt>
+            <dd>{firmwareSnapshotText(firmwareUpdateCompletion.before)}</dd>
+          </div>
+          <div>
+            <dt>{i18n.msg.backup.firmwareInstalledVersion}</dt>
+            <dd>{firmwareSnapshotText(firmwareUpdateCompletion.after)}</dd>
+          </div>
+        </dl>
+        <p class="dashboard-note">{firmwareCompletionMessage(firmwareUpdateCompletion)}</p>
+        <div class="floorplan-delete-dialog-actions">
+          <button type="button" onclick={() => (firmwareUpdateCompletion = null)}>{i18n.msg.common.close}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   {#if haSetupGateVisible}
     <div class="ha-setup-gate-backdrop" role="dialog" aria-modal="true" aria-labelledby="ha-setup-gate-title">
@@ -1078,6 +1539,7 @@
       <button class:active={activeTab === "dashboard"} type="button" onclick={() => setActiveTab("dashboard")}>{i18n.msg.tabs.dashboard}</button>
       <button class:active={activeTab === "zones"} type="button" onclick={() => setActiveTab("zones")}>{i18n.msg.tabs.zones}</button>
       <button class:active={activeTab === "floorplan"} type="button" onclick={() => setActiveTab("floorplan")}>{i18n.msg.tabs.floorplan}</button>
+      <button class:active={activeTab === "pairing"} type="button" onclick={() => setActiveTab("pairing")}>{i18n.msg.dashboard.pairingButton}</button>
       <button class:active={activeTab === "stats"} type="button" onclick={() => setActiveTab("stats")}>{i18n.msg.tabs.stats}</button>
       <button class:active={activeTab === "backup"} type="button" onclick={() => setActiveTab("backup")}>{i18n.msg.tabs.backup}</button>
     </div>
@@ -1118,6 +1580,7 @@
       {systemStatus}
       {systemStatusLoading}
       {systemStatusError}
+      {platformSiteConfiguration}
       {controlStatus}
       {controlStatusLoading}
       {controlStatusError}
@@ -1144,6 +1607,7 @@
       messages={i18n.msg}
       {activeZoneTool}
       {activeTargetCount}
+      calibrationCanStart={calibration.canStart()}
       calibrationRun={Boolean(calibration.run)}
       calibrationStatusText={calibration.statusText()}
       {calibrationTypeLabels}
@@ -1153,10 +1617,8 @@
       {config}
       {debugMode}
       displayConfig={config ? displayConfig() : null}
-      hasState={Boolean(state)}
-      pirMotion={Boolean(state?.pirMotion)}
-      saveState={configSave.saveState}
-      saveStatusText={configSave.saveStatusText}
+      saveState={zoneSaveState}
+      saveStatusText={zoneSaveStatusText}
       {selectedCalibrationZone}
       {selectedLabel}
       {selectedPointIndex}
@@ -1167,7 +1629,6 @@
       {zoneTypeLabels}
       {zones}
       onAddZone={addZone}
-      onAddExitZone={addExitZone}
       onCalibrationInfoClick={(zoneId) => {
         selectZone(zoneId);
         radarInteraction.protectedZoneDialogOpen = true;
@@ -1179,7 +1640,7 @@
       }}
       onDeleteSelected={deleteSelected}
       onRedo={configHistory.redo}
-      onSaveConfig={configSave.saveConfigNow}
+      onSaveConfig={saveZoneConfiguration}
       onSelectZone={selectZone}
       onSetActiveZoneTool={(tool) => (activeZoneTool = tool)}
       onSetCalibrationZoneType={setCalibrationZoneType}
@@ -1193,21 +1654,42 @@
       onZonePointDoubleClick={radarInteraction.handlePointDoubleClick}
       onZonePointerDown={radarInteraction.handleRadarPointerDown}
       onCanvasClick={radarInteraction.handleRadarClick}
+      onDetectionOwnerRequired={showDetectionOwnerRequired}
+      isZoneEditable={(zone) => sharedDetectionZoneEditable(zone, platformSiteConfiguration)}
     />
   {:else if activeTab === "floorplan"}
     <FloorplanPage
       messages={i18n.msg}
       deviceConfig={displayConfig()}
       deviceState={state}
+      localNodeId={systemStatus?.platform?.nodeId}
+      siteConfiguration={platformSiteConfiguration}
       floorplanStorageBaseUrl={deviceBaseUrl}
       {floorplanStorageFetcher}
       onUpdateDeviceConfig={(mutator) => updateConfig(mutator)}
       onSelectDeviceZone={(zoneId) => selectZone(zoneId)}
-      onSaveDeviceConfig={configSave.saveConfigNow}
+      onSaveDeviceConfig={saveZoneConfigurationFromFloorplan}
       onSaveFloorplan={saveFloorplanFromPanel}
+      onBeforeSharedFloorplanSave={async () => { await prepareSharedFloorplanSave(); }}
+      onPublishSharedFloorplan={publishSharedFloorplan}
       onFloorplanDeleted={() => void markFloorplanAvailable(false)}
+      onFloorplanOwnerRequired={() => (floorplanDialog = "owner")}
+      onFloorplanDeleteBlocked={() => (floorplanDialog = "delete-connected")}
       onUnsavedChange={setFloorplanUnsavedChanges}
+      canUseDetectionType={!usesSharedDetectionZones(platformSiteConfiguration) || platformSiteConfiguration?.localOwner === true}
+      onDetectionOwnerRequired={showDetectionOwnerRequired}
     />
+  {:else if activeTab === "pairing"}
+    <section class="tab-page">
+      <PairingPage
+        available={systemStatus?.platform?.pairingSupported === true}
+        baseUrl={deviceBaseUrl}
+        fetcher={floorplanStorageFetcher}
+        messages={i18n.msg}
+        {mockMode}
+        {systemStatus}
+      />
+    </section>
   {:else if activeTab === "stats"}
     <StatsPage messages={i18n.msg} {stats} error={statsError} loading={statsLoading} onRefresh={refreshStats} />
   {:else}
@@ -1231,6 +1713,7 @@
       {systemStatus}
       {systemStatusLoading}
       {systemStatusError}
+      {bootGuardRemainingSeconds}
       {demoMode}
       issueText={backupRestore.issueText}
       onExport={backupRestore.exportBackup}
@@ -1241,8 +1724,11 @@
       onConfirmImport={backupRestore.confirmImport}
       onCancelImport={backupRestore.cancelImport}
       onGetSystemStatus={demoMode ? undefined : api.getSystemStatus}
+      onGetFirmwareTrust={demoMode ? undefined : api.getFirmwareTrust}
+      onSetAlphaFirmwareInstallAllowed={demoMode ? undefined : api.setAlphaFirmwareInstallAllowed}
       onUploadFirmware={demoMode ? undefined : api.uploadFirmware}
       onGetApiKey={demoMode ? undefined : api.getApiKey}
+      onRotateApiKey={demoMode ? undefined : api.rotateApiKey}
       onResetSystem={demoMode ? undefined : api.resetSystem}
       onRebootSystem={demoMode ? undefined : api.rebootSystem}
     />
@@ -1276,3 +1762,110 @@
   onCancel={radarInteraction.cancelCalibrationShrink}
   onConfirm={radarInteraction.unlockCalibrationMinSize}
 />
+
+{#if zoneDialog}
+  <div class="dashboard-dialog-backdrop" role="presentation" onclick={closeZoneDialogFromBackdrop}>
+    <div
+      class="floorplan-delete-dialog dashboard-control-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="zone-dialog-title"
+    >
+      <div class="dashboard-dialog-heading">
+        <strong id="zone-dialog-title">
+          {zoneDialog === "owner" ? i18n.msg.zones.ownerRequiredTitle : i18n.msg.zones.zoneValidationTitle}
+        </strong>
+        <span>
+          {zoneDialog === "owner" ? i18n.msg.zones.ownerRequiredDescription : i18n.msg.zones.zoneValidationInstruction}
+        </span>
+      </div>
+      {#if zoneDialog === "validation"}
+        <div class="dashboard-dialog-section">
+          {#each invalidZoneIds as zoneId}
+            <button type="button" onclick={() => focusInvalidZone(zoneId)}>
+              {i18n.msg.zones.zoneValidationItem(invalidZoneName(zoneId))}
+            </button>
+          {/each}
+        </div>
+      {:else if !ownerDashboardUrl()}
+        <div class="dashboard-dialog-section">
+          <span>{i18n.msg.zones.ownerUnavailable}</span>
+        </div>
+      {/if}
+      <div class="dashboard-dialog-actions">
+        {#if zoneDialog === "owner" && ownerDashboardUrl()}
+          <button type="button" onclick={() => window.location.assign(ownerDashboardUrl())}>
+            {i18n.msg.zones.openOwnerDevice}
+          </button>
+        {/if}
+        <button type="button" class="dashboard-dialog-close-button" onclick={() => (zoneDialog = "")}>
+          {i18n.msg.common.close}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if floorplanDialog}
+  <div
+    class="dashboard-dialog-backdrop"
+    role="presentation"
+    onclick={(event) => {
+      if (event.target === event.currentTarget) floorplanDialog = "";
+    }}
+  >
+    <div
+      class="floorplan-delete-dialog dashboard-control-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="floorplan-dialog-title"
+    >
+      <div class="dashboard-dialog-heading">
+        <strong id="floorplan-dialog-title">
+          {floorplanDialog === "owner"
+            ? i18n.msg.floorplan.panel.floorplanOwnerRequiredTitle
+            : floorplanDialog === "delete-connected"
+              ? i18n.msg.floorplan.panel.floorplanDeleteConnectedTitle
+              : i18n.msg.floorplan.panel.floorplanRadarRelocatedTitle}
+        </strong>
+        <span>
+          {floorplanDialog === "owner"
+            ? i18n.msg.floorplan.panel.floorplanOwnerRequiredDescription
+            : floorplanDialog === "delete-connected"
+              ? i18n.msg.floorplan.panel.floorplanDeleteConnectedDescription
+              : i18n.msg.floorplan.panel.floorplanRadarRelocatedDescription(floorplanRelocatedParticipantIds.length)}
+        </span>
+      </div>
+      {#if floorplanDialog === "owner" && !floorplanOwnerDashboardUrl()}
+        <div class="dashboard-dialog-section">
+          <span>{i18n.msg.floorplan.panel.floorplanOwnerUnavailable}</span>
+        </div>
+      {:else if floorplanDialog === "radar-relocated"}
+        <div class="dashboard-dialog-section">
+          {#each floorplanRelocatedParticipantIds as participantId (participantId)}
+            {@const targetUrl = participantFloorplanUrl(participantId)}
+            {#if targetUrl}
+              <button type="button" onclick={() => window.location.assign(targetUrl)}>
+                {i18n.msg.floorplan.panel.floorplanRadarRelocatedDevice(participantDisplayAddress(participantId))}
+              </button>
+            {:else}
+              <span>
+                {participantDisplayAddress(participantId)}: {i18n.msg.floorplan.panel.floorplanRadarRelocatedUnavailable}
+              </span>
+            {/if}
+          {/each}
+        </div>
+      {/if}
+      <div class="dashboard-dialog-actions">
+        {#if floorplanDialog === "owner" && floorplanOwnerDashboardUrl()}
+          <button type="button" onclick={() => window.location.assign(floorplanOwnerDashboardUrl())}>
+            {i18n.msg.floorplan.panel.floorplanOpenOwner}
+          </button>
+        {/if}
+        <button type="button" class="dashboard-dialog-close-button" onclick={() => (floorplanDialog = "") }>
+          {i18n.msg.common.close}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}

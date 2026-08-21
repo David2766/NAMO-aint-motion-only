@@ -85,6 +85,14 @@ interface RoomCandidateMapToolsText {
   mergeReady: string;
   manualNeedPoints: string;
   manualReady: string;
+  manualInvalid: string;
+}
+
+interface ManualDraftText {
+  title: string;
+  needPoints: string;
+  ready: string;
+  invalid: string;
 }
 
 interface RoomCandidateMapToolsOptions {
@@ -93,6 +101,11 @@ interface RoomCandidateMapToolsOptions {
   getImageSize: () => ImageSize | null;
   getWallSegments: () => FloorplanWallSegment[];
   getText: () => RoomCandidateMapToolsText;
+  getManualPointTransform?: () => ((points: PointTuple[], point: { x: number; y: number }) => { x: number; y: number }) | null;
+  getManualPointValidator?: () => ((points: PointTuple[], point: { x: number; y: number }) => boolean) | null;
+  getManualDraftValidator?: () => ((points: PointTuple[]) => boolean) | null;
+  getManualDraftText?: () => ManualDraftText | null;
+  onManualRoomFinished?: (candidate: RoomCandidate) => boolean | void;
 }
 
 export function createRoomCandidateMapTools({
@@ -100,7 +113,12 @@ export function createRoomCandidateMapTools({
   roomCandidateEdit,
   getImageSize,
   getWallSegments,
-  getText
+  getText,
+  getManualPointTransform = () => null,
+  getManualPointValidator = () => null,
+  getManualDraftValidator = () => null,
+  getManualDraftText = () => null,
+  onManualRoomFinished
 }: RoomCandidateMapToolsOptions) {
   let snapEdit = $state<SnapEdit>(defaultSnapEdit());
   let manualRoomDraft = $state<ManualRoomDraft>(defaultManualRoomDraft());
@@ -263,7 +281,9 @@ export function createRoomCandidateMapTools({
       ...first,
       id: `${first.id}_merge_${second.id}_${Date.now()}`,
       name: first.name || second.name || text.defaultRoomName(insertIndex + 1),
-      status: "candidate" satisfies RoomCandidateStatus,
+      status: getManualPointTransform()
+        ? first.status
+        : "candidate" satisfies RoomCandidateStatus,
       confidence: Math.max(first.confidence ?? 0, second.confidence ?? 0),
       shape: "polygon",
       rect: rectFromPoints(points),
@@ -372,7 +392,7 @@ export function createRoomCandidateMapTools({
       ...candidate,
       id: `${candidate.id}_split_${splitStamp}_${suffix}`,
       name: `${baseName}-${suffix}`,
-      status: "candidate",
+      status: getManualPointTransform() ? candidate.status : "candidate",
       shape: "polygon",
       rect: rectFromPoints(points),
       points,
@@ -399,7 +419,7 @@ export function createRoomCandidateMapTools({
     if (snapEdit.active) return text.toolTitleSnap;
     if (roomSplitDraft.active) return text.toolTitleSplit;
     if (roomMergeDraft.active) return text.toolTitleMerge;
-    if (manualRoomDraft.active) return text.toolTitleManualRoom;
+    if (manualRoomDraft.active) return getManualDraftText()?.title ?? text.toolTitleManualRoom;
     return "";
   }
 
@@ -423,8 +443,11 @@ export function createRoomCandidateMapTools({
       return text.mergeReady;
     }
     if (manualRoomDraft.active) {
-      if (manualRoomDraft.points.length < 3) return text.manualNeedPoints;
-      return text.manualReady;
+      const manualText = getManualDraftText();
+      if (manualRoomDraft.points.length < 3) return manualText?.needPoints ?? text.manualNeedPoints;
+      const validator = getManualDraftValidator();
+      if (validator && !validator(manualRoomDraft.points)) return manualText?.invalid ?? text.manualInvalid;
+      return manualText?.ready ?? text.manualReady;
     }
     return "";
   }
@@ -433,7 +456,10 @@ export function createRoomCandidateMapTools({
     if (snapEdit.active) return Boolean(snapEdit.edgeKey);
     if (roomSplitDraft.active) return canFinishRoomSplitDraft();
     if (roomMergeDraft.active) return canFinishRoomMergeDraft();
-    if (manualRoomDraft.active) return manualRoomDraft.points.length >= 3;
+    if (manualRoomDraft.active) {
+      const validator = getManualDraftValidator();
+      return validator ? validator(manualRoomDraft.points) : manualRoomDraft.points.length >= 3;
+    }
     return false;
   }
 
@@ -479,10 +505,13 @@ export function createRoomCandidateMapTools({
     const size = getImageSize();
     if (!manualRoomDraft.active || !size) return;
     const snapped = snapAndConstrainManualPoint(point);
-    manualRoomDraftHover = {
-      x: Math.round(Math.min(size.width ?? snapped.x, Math.max(0, snapped.x))),
-      y: Math.round(Math.min(size.height ?? snapped.y, Math.max(0, snapped.y)))
+    const preservePrecision = Boolean(getManualPointTransform());
+    const hover = {
+      x: roundedManualCoordinate(Math.min(size.width ?? snapped.x, Math.max(0, snapped.x)), preservePrecision),
+      y: roundedManualCoordinate(Math.min(size.height ?? snapped.y, Math.max(0, snapped.y)), preservePrecision)
     };
+    const validator = getManualPointValidator();
+    manualRoomDraftHover = validator && !validator(manualRoomDraft.points, hover) ? null : hover;
   }
 
   function clearManualRoomPointPreview(): void {
@@ -501,16 +530,26 @@ export function createRoomCandidateMapTools({
   }
 
   function snapAndConstrainManualPoint(point: { x: number; y: number }) {
-    return constrainManualPointToStraightLine(snapManualPoint(point));
+    const snapped = snapManualPoint(point);
+    const transform = getManualPointTransform();
+    return transform
+      ? transform(manualRoomDraft.points, snapped)
+      : constrainManualPointToStraightLine(snapped);
   }
 
   function addManualRoomPoint(point: { x: number; y: number }): void {
     const size = getImageSize();
     if (!manualRoomDraft.active || !size) return;
-    roomCandidateEdit.pushHistory();
     const snapped = snapAndConstrainManualPoint(point);
-    const x = Math.round(Math.min(size.width ?? snapped.x, Math.max(0, snapped.x)));
-    const y = Math.round(Math.min(size.height ?? snapped.y, Math.max(0, snapped.y)));
+    const preservePrecision = Boolean(getManualPointTransform());
+    const x = roundedManualCoordinate(Math.min(size.width ?? snapped.x, Math.max(0, snapped.x)), preservePrecision);
+    const y = roundedManualCoordinate(Math.min(size.height ?? snapped.y, Math.max(0, snapped.y)), preservePrecision);
+    const validator = getManualPointValidator();
+    if (validator && !validator(manualRoomDraft.points, { x, y })) {
+      manualRoomDraftHover = null;
+      return;
+    }
+    roomCandidateEdit.pushHistory();
     manualRoomDraft = {
       active: true,
       points: [...manualRoomDraft.points, [x, y]]
@@ -531,12 +570,14 @@ export function createRoomCandidateMapTools({
   function finishManualRoomDraft(): void {
     if (!getImageSize() || manualRoomDraft.points.length < 3) return;
     const points = clonePoints(manualRoomDraft.points);
+    const validator = getManualDraftValidator();
+    if (validator && !validator(points)) return;
     const candidate: RoomCandidate = {
       id: `manual_room_${Date.now()}`,
       name: getText().defaultRoomName(roomCandidates.candidates.length + 1),
       kind: "unknown",
       confidence: 100,
-      status: "candidate",
+      status: getManualPointTransform() ? "confirmed" : "candidate",
       shape: "polygon",
       rect: rectFromPoints(points),
       points,
@@ -546,8 +587,12 @@ export function createRoomCandidateMapTools({
         reason: "manual"
       }
     };
-    const cleanedCandidate = cleanupOrthogonalRoomCandidate(candidate).candidate;
-    roomCandidateEdit.withHistory(() => roomCandidates.add(cleanedCandidate));
+    const finishedCandidate = getManualPointTransform()
+      ? candidate
+      : cleanupOrthogonalRoomCandidate(candidate).candidate;
+    const keepCandidate = onManualRoomFinished?.(finishedCandidate) !== false;
+    if (keepCandidate) roomCandidateEdit.withHistory(() => roomCandidates.add(finishedCandidate));
+    if (keepCandidate && getManualPointTransform()) roomCandidates.select("");
     manualRoomDraft = defaultManualRoomDraft();
     manualRoomDraftHover = null;
   }
@@ -572,7 +617,9 @@ export function createRoomCandidateMapTools({
   }
 
   function finishSnapEdit(): void {
-    if (snapEdit.candidateId) roomCandidateEdit.cleanup(snapEdit.candidateId, false);
+    if (snapEdit.candidateId && !getManualPointTransform()) {
+      roomCandidateEdit.cleanup(snapEdit.candidateId, false);
+    }
     resetSnapEdit();
   }
 
@@ -683,6 +730,10 @@ export function createRoomCandidateMapTools({
 
 function defaultSnapEdit(): SnapEdit {
   return { active: false, candidateId: "", edgeKey: "", original: null };
+}
+
+function roundedManualCoordinate(value: number, preservePrecision: boolean): number {
+  return preservePrecision ? Math.round(value * 100) / 100 : Math.round(value);
 }
 
 function defaultManualRoomDraft(): ManualRoomDraft {

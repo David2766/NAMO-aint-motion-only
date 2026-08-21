@@ -1,6 +1,6 @@
 <script lang="ts">
   import App from "./App.svelte";
-  import { mockApi } from "./api/mock-api";
+  import { mockApi, resetMockDeviceStorage } from "./api/mock-api";
   import SetupMockPanel from "./components/SetupMockPanel.svelte";
   import { mockFloorplanStorageFetch, resetMockFloorplanStorage } from "./floorplan/mock-floorplan-storage";
   import { createI18n } from "./i18n/useI18n.svelte";
@@ -16,6 +16,7 @@
   }
 
   function resetDemoStorage(): void {
+    resetMockDeviceStorage();
     resetMockFloorplanStorage();
     localStorage.removeItem(DEMO_SETUP_COMPLETE_KEY);
     window.location.reload();

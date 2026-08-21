@@ -48,4 +48,22 @@ describe("stored floorplan edit session dirty scopes", () => {
     expect(session.isDirty("document")).toBe(false);
     expect(session.roomNamePatches).toEqual({ room_1: "Living" });
   });
+
+  it("keeps room edits separate from coordinate-frame changes", () => {
+    const session = createSession();
+
+    session.markChanged("", ["document", "roomContext"]);
+
+    expect(session.isDirty("document")).toBe(true);
+    expect(session.isDirty("coordinateFrame")).toBe(false);
+  });
+
+  it("tracks scale edits as coordinate-frame changes", () => {
+    const session = createSession();
+
+    session.markChanged("", ["document", "coordinateFrame", "roomContext"]);
+
+    expect(session.isDirty("document")).toBe(true);
+    expect(session.isDirty("coordinateFrame")).toBe(true);
+  });
 });

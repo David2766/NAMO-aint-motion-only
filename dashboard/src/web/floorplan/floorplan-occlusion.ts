@@ -27,6 +27,40 @@ export interface FloorplanOcclusionSegment {
   axis: "horizontal" | "vertical" | "diagonal";
 }
 
+export interface FloorplanCartesianPoint {
+  x: number;
+  y: number;
+}
+
+export function floorplanOcclusionSegmentKey(segment: FloorplanOcclusionSegment): string {
+  return segment.occlusionKey ?? segment.id;
+}
+
+export function isFloorplanOcclusionSegmentIgnored(
+  segment: FloorplanOcclusionSegment,
+  ignoredEdges: ReadonlySet<string> | readonly string[]
+): boolean {
+  if (segment.locked) return false;
+  const ignored = ignoredEdges instanceof Set ? ignoredEdges : new Set(ignoredEdges);
+  return ignored.has(segment.id) || ignored.has(floorplanOcclusionSegmentKey(segment));
+}
+
+export function radarVisiblePolygonPoints(
+  origin: FloorplanCartesianPoint,
+  rayEndpoints: FloorplanCartesianPoint[],
+  segments: FloorplanOcclusionSegment[],
+  ignoredEdges: readonly string[] = []
+): FloorplanCartesianPoint[] {
+  const ignored = new Set(ignoredEdges);
+  const blockingWalls = segments.filter(
+    (segment) => !isFloorplanOcclusionSegmentIgnored(segment, ignored)
+  );
+  return [
+    origin,
+    ...rayEndpoints.map((rayEnd) => closestRadarRayWallHit(origin, rayEnd, blockingWalls) ?? rayEnd)
+  ];
+}
+
 export function buildBoundaryOcclusionSegments(sources: FloorplanBoundarySource[]): FloorplanOcclusionSegment[] {
   return sources.flatMap((source) => {
     const points = source.points;
@@ -204,4 +238,63 @@ function rangesTouchOrOverlap(a: [number, number], b: [number, number], toleranc
 
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function closestRadarRayWallHit(
+  origin: FloorplanCartesianPoint,
+  rayEnd: FloorplanCartesianPoint,
+  walls: FloorplanOcclusionSegment[]
+): FloorplanCartesianPoint | null {
+  let nearest: (FloorplanCartesianPoint & { distance: number }) | null = null;
+  for (const wall of walls) {
+    const hit = segmentIntersectionPoint(
+      origin,
+      rayEnd,
+      { x: wall.x1, y: wall.y1 },
+      { x: wall.x2, y: wall.y2 }
+    );
+    if (!hit) continue;
+    const distance = Math.hypot(hit.x - origin.x, hit.y - origin.y);
+    if (distance < 0.5 || (nearest && distance >= nearest.distance)) continue;
+    nearest = { ...hit, distance };
+  }
+  return nearest ? { x: nearest.x, y: nearest.y } : null;
+}
+
+function segmentIntersectionPoint(
+  a: FloorplanCartesianPoint,
+  b: FloorplanCartesianPoint,
+  c: FloorplanCartesianPoint,
+  d: FloorplanCartesianPoint
+): FloorplanCartesianPoint | null {
+  const denominator = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
+  if (Math.abs(denominator) < 0.001) return null;
+  const determinantA = a.x * b.y - a.y * b.x;
+  const determinantB = c.x * d.y - c.y * d.x;
+  const point = {
+    x: normalizeCoordinate(
+      (determinantA * (c.x - d.x) - (a.x - b.x) * determinantB) / denominator
+    ),
+    y: normalizeCoordinate(
+      (determinantA * (c.y - d.y) - (a.y - b.y) * determinantB) / denominator
+    )
+  };
+  return pointOnSegment(a, point, b) && pointOnSegment(c, point, d) ? point : null;
+}
+
+function normalizeCoordinate(value: number): number {
+  return Math.abs(value) < 0.000001 ? 0 : value;
+}
+
+function pointOnSegment(
+  start: FloorplanCartesianPoint,
+  point: FloorplanCartesianPoint,
+  end: FloorplanCartesianPoint
+): boolean {
+  return (
+    Math.min(start.x, end.x) <= point.x + 0.001 &&
+    point.x <= Math.max(start.x, end.x) + 0.001 &&
+    Math.min(start.y, end.y) <= point.y + 0.001 &&
+    point.y <= Math.max(start.y, end.y) + 0.001
+  );
 }

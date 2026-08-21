@@ -1,0 +1,15 @@
+{
+  "name": "NAMO",
+  "version": "0.6.0",
+  "channel": "release",
+  "firmware": [
+    "namo-v0.6.0-factory.bin",
+    "namo-v0.6.0-ota.namo-ota",
+    "namo-v0.6.0-legacy-ota.bin"
+  ],
+  "thirdPartyNotices": [
+    "THIRD_PARTY_NOTICES.md",
+    "THIRD_PARTY_LICENSES.txt"
+  ],
+  "checksums": "checksums.txt"
+}

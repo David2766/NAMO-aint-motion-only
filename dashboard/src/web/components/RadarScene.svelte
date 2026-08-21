@@ -40,6 +40,8 @@
     onZoneEdgeClick?: (event: MouseEvent) => void;
     onZonePointDoubleClick?: (event: MouseEvent) => void;
     onCalibrationInfoClick?: (zoneId: string) => void;
+    onDetectionOwnerRequired?: () => void;
+    isZoneEditable?: (zone: WebZone) => boolean;
   }
 
   let {
@@ -59,7 +61,9 @@
     onZonePointerDown,
     onZoneEdgeClick,
     onZonePointDoubleClick,
-    onCalibrationInfoClick
+    onCalibrationInfoClick,
+    onDetectionOwnerRequired,
+    isZoneEditable = () => true
   }: Props = $props();
 
   const viewport = $derived(radarSceneViewport());
@@ -99,8 +103,9 @@
   function zoneClasses(zone: WebZone, calibration = false): string {
     return [
       "web-zone",
-      zone.type,
+      zone.placeholder ? "" : zone.type,
       calibration ? "calibration" : "",
+      zoneNeedsOwner(zone) ? "owner-required" : "",
       zone.placeholder ? "placeholder" : "",
       zone.id === selectedZoneId ? "selected" : ""
     ]
@@ -117,12 +122,42 @@
     return localizedZoneDisplayName(zone, text);
   }
 
+  function zoneCanEdit(zone: WebZone, calibration = false): boolean {
+    return editable && (calibration || isZoneEditable(zone));
+  }
+
+  function zoneNeedsOwner(zone: WebZone): boolean {
+    return editable && zone.type === "detection" && !zone.placeholder && !isZoneEditable(zone);
+  }
+
+  function handleZoneClick(event: MouseEvent, zone: WebZone): void {
+    if (!zoneNeedsOwner(zone)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onDetectionOwnerRequired?.();
+  }
+
+  function handleZoneKeyDown(event: KeyboardEvent, zone: WebZone): void {
+    if (!zoneNeedsOwner(zone)) {
+      stopKey(event);
+      return;
+    }
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onDetectionOwnerRequired?.();
+  }
+
   function targetScreenPoint(target: WebTarget) {
     return screenPoint(targetRadarX(target), targetRadarY(target));
   }
 
   function targetDistanceM(target: WebTarget): string {
     return (Math.hypot(targetRadarX(target), targetRadarY(target)) / 1000).toFixed(2);
+  }
+
+  function targetLabel(target: WebTarget): string {
+    return target.fused ? `${target.name} · ${messages.common.fused}` : target.name;
   }
 
   function targetRadarX(target: WebTarget): number {
@@ -203,7 +238,7 @@
               <tspan x={labelPoint.x + 8} dy="14">{displayZoneName(zone)}</tspan>
             {/if}
           </text>
-          {#if editable && zone.id === selectedZoneId}
+          {#if zoneCanEdit(zone, true) && zone.id === selectedZoneId}
             {#each points as point, index}
               <circle
                 class:selected={index === selectedPointIndex}
@@ -240,7 +275,7 @@
               y1={exitLine.start.y}
               x2={exitLine.end.x}
               y2={exitLine.end.y}
-              data-zone-drag={editable ? "move" : undefined}
+              data-zone-drag={zoneCanEdit(zone) ? "move" : undefined}
               data-zone-id={zone.id}
               role="button"
               tabindex="0"
@@ -254,7 +289,7 @@
               y1={exitLine.start.y}
               x2={exitLine.end.x}
               y2={exitLine.end.y}
-              data-zone-drag={editable ? "move" : undefined}
+              data-zone-drag={zoneCanEdit(zone) ? "move" : undefined}
               data-zone-id={zone.id}
               role="button"
               tabindex="0"
@@ -265,16 +300,17 @@
           {:else}
             <polygon
               points={zonePoints(zone)}
-              data-zone-drag={editable ? "move" : undefined}
+              data-zone-drag={zoneCanEdit(zone) ? "move" : undefined}
               data-zone-id={zone.id}
               role="button"
               tabindex="0"
-              aria-label={text.zoneMoveAria}
+              aria-label={zoneNeedsOwner(zone) ? text.ownerRequiredTitle : text.zoneMoveAria}
               onpointerdown={(event) => onZonePointerDown?.(event)}
-              onkeydown={stopKey}
+              onclick={(event) => handleZoneClick(event, zone)}
+              onkeydown={(event) => handleZoneKeyDown(event, zone)}
             ></polygon>
           {/if}
-          {#if editable && zone.id === selectedZoneId && !exitLine}
+          {#if zoneCanEdit(zone) && zone.id === selectedZoneId && !exitLine}
             {#each points as point, index}
               {@const next = points[(index + 1) % points.length]}
               <line
@@ -299,7 +335,7 @@
               <tspan x={(exitLine?.start.x ?? labelPoint.x) + 8} dy="14">{displayZoneName(zone)}</tspan>
             {/if}
           </text>
-          {#if editable && zone.id === selectedZoneId && exitLine}
+          {#if zoneCanEdit(zone) && zone.id === selectedZoneId && exitLine}
             <circle
               class:selected={selectedPointIndex === 0}
               class="zone-handle exit-line-handle"
@@ -330,7 +366,7 @@
               onpointerdown={(event) => onZonePointerDown?.(event)}
               onkeydown={stopKey}
             />
-          {:else if editable && zone.id === selectedZoneId}
+          {:else if zoneCanEdit(zone) && zone.id === selectedZoneId}
             {#each points as point, index}
               <circle
                 class:selected={index === selectedPointIndex}
@@ -373,15 +409,18 @@
     {#each renderableTargets() as target (target.id)}
       {@const point = targetScreenPoint(target)}
       <g
-        class={`target${isFilteredTarget(target) ? " filtered" : ""}${target.reduced ? " reduced" : ""}${target.displayMode ? ` ${target.displayMode}` : ""}`}
-        style={`--target-color:${target.color}`}
+        class={`target${target.fused ? " fused" : ""}${isFilteredTarget(target) ? " filtered" : ""}${target.reduced ? " reduced" : ""}${target.displayMode ? ` ${target.displayMode}` : ""}`}
+        style={`--target-color:${target.color};transform:translate(${point.x}px, ${point.y}px)`}
       >
-        <circle cx={point.x} cy={point.y} r="9"></circle>
-        <text x={point.x} y={point.y - 30}>
-          <tspan x={point.x} dy="0">{target.name}</tspan>
-          <tspan x={point.x} dy="14">{targetDistanceM(target)} m</tspan>
+        {#if target.fused}
+          <circle class="target-fusion-ring" cx="0" cy="0" r="14"></circle>
+        {/if}
+        <circle cx="0" cy="0" r="9"></circle>
+        <text x="0" y="-30">
+          <tspan x="0" dy="0">{targetLabel(target)}</tspan>
+          <tspan x="0" dy="14">{targetDistanceM(target)} m</tspan>
           {#if debugMode && isFilteredTarget(target)}
-            <tspan x={point.x} dy="14">FILTER {target.filterReason || ""}</tspan>
+            <tspan x="0" dy="14">FILTER {target.filterReason || ""}</tspan>
           {/if}
         </text>
       </g>

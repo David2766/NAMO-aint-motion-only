@@ -15,7 +15,8 @@
     onRemove,
     onStartSnapEdit,
     onStartSplitDraft,
-    onStartMergeDraft
+    onStartMergeDraft,
+    showDispositionActions = true
   } = $props();
 </script>
 
@@ -39,4 +40,5 @@
   onStartSnapEdit={onStartSnapEdit}
   onStartSplitDraft={onStartSplitDraft}
   onStartMergeDraft={onStartMergeDraft}
+  {showDispositionActions}
 />

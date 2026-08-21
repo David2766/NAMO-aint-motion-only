@@ -11,15 +11,14 @@
   } = $props();
 
   const isCalibration = $derived(source === "calibration");
-  const isExitPoint = $derived(source === "exit");
-  const editorKind = $derived(isCalibration ? "calibration" : isExitPoint ? "exit" : "zones");
+  const editorKind = $derived(isCalibration ? "calibration" : "zones");
   const selectedZone = $derived(selection.zone ?? null);
   const selectedZoneId = $derived(selection.zoneId ?? "");
   const selectedPointIndex = $derived(selection.pointIndex ?? -1);
-  const zoneTypes = ["detection", "filter", "disabled", "exit"];
+  const zoneTypes = ["detection", "filter", "reduced", "disabled", "exit"];
   const calibrationTypes = ["filter", "reduced", "disabled"];
   const canDeleteSelectedPoint = $derived(
-    Boolean(!isExitPoint && selectedZone && selectedPointIndex >= 0 && selectedZone.shape === "polygon" && selectedZone.points.length > 3)
+    Boolean(selectedZone && selectedPointIndex >= 0 && selectedZone.shape === "polygon" && selectedZone.points.length > 3)
   );
 
   function zoneShapeText(zone) {
@@ -28,12 +27,13 @@
   }
 
   function typeButtonClass(type) {
-    return `zone-type-button ${type}${selectedZone?.type === type ? " selected" : ""}`;
+    return `zone-type-button ${type}${!selectedZone?.placeholder && selectedZone?.type === type ? " selected" : ""}`;
   }
 
   function zoneTypeLabel(type) {
     if (type === "detection") return text.storedDetection;
     if (type === "filter") return text.storedFilter;
+    if (type === "reduced") return text.storedReduced;
     if (type === "disabled") return text.storedDisabled;
     return text.storedExit;
   }
@@ -47,9 +47,9 @@
 
 <div class="floorplan-tool-card floorplan-zone-tool-card">
   <strong>{text.storedZoneEditorTitle(editorKind)}</strong>
-  <span>{isExitPoint ? text.storedExitPointEditorDescription : text.storedZoneEditorDescription}</span>
+  <span>{text.storedZoneEditorDescription}</span>
   {#if !isCalibration}
-    <button type="button" onclick={() => actions.addZone?.()}>{isExitPoint ? text.storedAddExitPoint : text.storedAddZone}</button>
+    <button type="button" onclick={() => actions.addZone?.()}>{text.storedAddZone}</button>
   {/if}
   <div class="floorplan-tool-list floorplan-zone-tool-list">
     {#if !zones.length}
@@ -63,7 +63,7 @@
           onclick={() => actions.selectZone?.(zone.id, -1)}
         >
           <span>{localizedZoneDisplayName(zone, messages.zones)}</span>
-          <small>{zoneShapeText(zone)} &middot; {zone.type}</small>
+          <small>{zoneShapeText(zone)} &middot; {zone.placeholder ? text.zoneTypePlaceholder : zoneTypeLabel(zone.type)}</small>
         </button>
       {/each}
     {/if}
@@ -79,25 +79,26 @@
           oninput={(event) => actions.renameZone?.(event.currentTarget.value)}
         />
       </label>
-      {#if !isExitPoint}
-        <div class="zone-type-buttons">
-          {#each zoneTypes as type}
-            <button class={typeButtonClass(type)} type="button" onclick={() => actions.setZoneType?.(type)}>
-              {zoneTypeLabel(type)}
-            </button>
-          {/each}
-        </div>
-        <button type="button" disabled={selectedZone.shape === "rect"} onclick={() => actions.convertToRect?.()}>
-          {text.storedConvertRect}
-        </button>
-        <button
-          type="button"
-          disabled={!canDeleteSelectedPoint}
-          onclick={() => actions.deletePoint?.()}
-        >
-          {text.storedDeletePoint}
-        </button>
+      {#if selectedZone.placeholder}
+        <span class="zone-type-placeholder">{text.zoneTypePlaceholder}</span>
       {/if}
+      <div class="zone-type-buttons">
+        {#each zoneTypes as type}
+          <button class={typeButtonClass(type)} type="button" onclick={() => actions.setZoneType?.(type)}>
+            {zoneTypeLabel(type)}
+          </button>
+        {/each}
+      </div>
+      <button type="button" disabled={selectedZone.shape === "rect" || selectedZone.type === "exit"} onclick={() => actions.convertToRect?.()}>
+        {text.storedConvertRect}
+      </button>
+      <button
+        type="button"
+        disabled={!canDeleteSelectedPoint || selectedZone.type === "exit"}
+        onclick={() => actions.deletePoint?.()}
+      >
+        {text.storedDeletePoint}
+      </button>
     {:else}
       <div class="zone-type-buttons">
         {#each calibrationTypes as type}

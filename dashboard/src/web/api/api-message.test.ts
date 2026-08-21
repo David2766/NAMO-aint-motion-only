@@ -42,8 +42,8 @@ describe("api message helpers", () => {
     expect(apiErrorMessage(en, { errorInfo: { code: "api_key_unsupported" } })).toContain("API key");
     expect(apiErrorMessage(ko, { errorInfo: { code: "nothing_selected" } })).toContain("선택");
     expect(apiErrorMessage(en, { errorInfo: { code: "nothing_selected" } })).toContain("Select");
-    expect(apiErrorMessage(ko, { errorInfo: { code: "settings_reset_failed" } })).toContain("초기화");
-    expect(apiErrorMessage(en, { errorInfo: { code: "settings_reset_failed" } })).toContain("reset");
+    expect(apiErrorMessage(ko, { errorInfo: { code: "connections_reset_failed" } })).toContain("초기화");
+    expect(apiErrorMessage(en, { errorInfo: { code: "connections_reset_failed" } })).toContain("reset");
     expect(apiErrorMessage(ko, { errorInfo: { code: "stats_reset_failed" } })).toContain("통계");
     expect(apiErrorMessage(en, { errorInfo: { code: "stats_reset_failed" } })).toContain("statistics");
   });

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { MAX_CALIBRATION_ZONES } from "../../core/constants";
   import { calibrationType, localizedZoneDisplayName } from "../../core/zones";
   import type { Messages } from "../i18n/types";
   import type { WebZone, WebZoneType } from "../types";
@@ -8,9 +7,7 @@
 
   type Props = {
     messages: Messages;
-    loaded: boolean;
-    hasState: boolean;
-    pirMotion: boolean;
+    canStart: boolean;
     running: boolean;
     zones: WebZone[];
     selectedZoneId: string;
@@ -25,9 +22,7 @@
 
   let {
     messages,
-    loaded,
-    hasState,
-    pirMotion,
+    canStart,
     running,
     zones,
     selectedZoneId,
@@ -58,7 +53,7 @@
       <button
         class="calibration-button"
         type="button"
-        disabled={!running && (!loaded || !hasState || pirMotion || zones.length >= MAX_CALIBRATION_ZONES)}
+        disabled={!running && !canStart}
         onclick={() => (running ? onStop() : onStart())}
       >
         {running ? text.calibrationStop : text.calibrationStart}

@@ -55,6 +55,9 @@
               <strong>{result.title}</strong>
               <p>{result.reason}</p>
               <p>{text.createdZones(result.createdCount)}</p>
+              {#if result.adjustedStaticRadarGates}
+                <p>{text.adjustedStaticRadarGates(result.adjustedStaticRadarGates)}</p>
+              {/if}
               {#if metrics && metrics.samples > 0}
                 <pre>{metricsLines.join("\n")}</pre>
               {/if}

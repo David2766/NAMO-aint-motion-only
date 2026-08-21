@@ -104,6 +104,7 @@ TRACKER_REASON = {
     14: "lost_without_exit",
     15: "coasting_after_room_exit",
     16: "lost_after_room_exit",
+    17: "tentative_reduced_zone",
     255: "unknown",
 }
 
@@ -115,6 +116,8 @@ class Target:
     y_mm: int
     speed_cm_s: int
     distance_mm: int
+    reduced_zone: bool
+    filter_blocked: bool
 
 
 @dataclass(frozen=True)
@@ -285,27 +288,32 @@ def parse_bool_int(value: object) -> bool:
 def parse_raw_target(value: list[object]) -> RawTarget:
     if len(value) != 8:
         raise ValueError(f"raw target tuple must have 8 items, got {len(value)}")
+    filter_mode = int(value[5])
     return RawTarget(
         valid=parse_bool_int(value[0]),
         x_mm=int(value[1]),
         y_mm=int(value[2]),
         speed_cm_s=int(value[3]),
         distance_mm=int(value[4]),
-        filter_mode=int(value[5]),
+        reduced_zone=filter_mode == 3 or 21 <= filter_mode <= 24,
+        filter_blocked=parse_bool_int(value[6]),
+        filter_mode=filter_mode,
         filtered=parse_bool_int(value[6]),
         range_valid=parse_bool_int(value[7]),
     )
 
 
 def parse_target(value: list[object]) -> Target:
-    if len(value) != 5:
-        raise ValueError(f"target tuple must have 5 items, got {len(value)}")
+    if len(value) not in (5, 6, 7):
+        raise ValueError(f"target tuple must have 5, 6, or 7 items, got {len(value)}")
     return Target(
         valid=parse_bool_int(value[0]),
         x_mm=int(value[1]),
         y_mm=int(value[2]),
         speed_cm_s=int(value[3]),
         distance_mm=int(value[4]),
+        reduced_zone=len(value) >= 6 and parse_bool_int(value[5]),
+        filter_blocked=len(value) == 7 and parse_bool_int(value[6]),
     )
 
 

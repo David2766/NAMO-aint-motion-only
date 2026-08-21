@@ -75,6 +75,236 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function installFirmwareXhr(calls: string[], responseText: string, status = 200): void {
+  class FirmwareXhr {
+    upload: { onprogress: ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = {
+      onprogress: null
+    };
+    status = 0;
+    statusText = "";
+    responseText = "";
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    onabort: (() => void) | null = null;
+    private url = "";
+
+    open(_method: string, url: string): void {
+      this.url = url;
+      calls.push(url);
+    }
+    getResponseHeader(name: string): string | null {
+      return name.toLowerCase() === "content-type" ? "application/json" : null;
+    }
+    send(): void {
+      this.upload.onprogress?.({ lengthComputable: true, loaded: 400, total: 400 });
+      this.status = status;
+      this.responseText = responseText;
+      this.onload?.();
+    }
+  }
+  vi.stubGlobal("XMLHttpRequest", FirmwareXhr);
+}
+
+describe("deviceApi firmware trust routing", () => {
+  it("preflights signed packages and uploads only through the signed endpoint", async () => {
+    const fetchCalls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      fetchCalls.push(url);
+      if (url.endsWith("/api/firmware/trust")) {
+        return new Response(JSON.stringify({ ok: true, data: { mode: "signed", ready: true } }), { status: 200 });
+      }
+      if (url.endsWith("/api/firmware/update/start")) {
+        return new Response(JSON.stringify({ ok: true, data: { session: 123 } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }));
+    const xhrCalls: string[] = [];
+    installFirmwareXhr(xhrCalls, JSON.stringify({ ok: true }));
+    const { deviceApi } = await loadDeviceApi();
+    await deviceApi.uploadFirmware?.(
+      new File([new Uint8Array(400)], "firmware.namo-ota"),
+      () => undefined
+    );
+    expect(fetchCalls).toEqual(["/api/firmware/trust", "/api/firmware/update/start"]);
+    expect(xhrCalls).toEqual(["/api/firmware/update?session=123"]);
+  });
+
+  it("uses legacy web OTA only when the signed capability endpoint is absent", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
+    const xhrCalls: string[] = [];
+    installFirmwareXhr(xhrCalls, "Update Successful!");
+    const { deviceApi } = await loadDeviceApi();
+    await deviceApi.uploadFirmware?.(new File([new Uint8Array(32)], "firmware.bin"), () => undefined);
+    expect(xhrCalls).toEqual(["/update"]);
+  });
+
+  it("does not send a signed package to the legacy endpoint", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
+    const xhrCalls: string[] = [];
+    installFirmwareXhr(xhrCalls, "Update Successful!");
+    const { deviceApi } = await loadDeviceApi();
+    await expect(deviceApi.uploadFirmware?.(
+      new File([new Uint8Array(400)], "firmware.namo-ota"),
+      () => undefined
+    )).rejects.toThrow();
+    expect(xhrCalls).toEqual([]);
+  });
+
+  it("fails closed on malformed or unreachable trust responses", async () => {
+    const xhrCalls: string[] = [];
+    installFirmwareXhr(xhrCalls, "Update Successful!");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not-json", { status: 200 })));
+    let loaded = await loadDeviceApi();
+    await expect(loaded.deviceApi.uploadFirmware?.(
+      new File([new Uint8Array(400)], "firmware.namo-ota"),
+      () => undefined
+    )).rejects.toThrow();
+    expect(xhrCalls).toEqual([]);
+
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("network down"); }));
+    loaded = await loadDeviceApi();
+    await expect(loaded.deviceApi.uploadFirmware?.(
+      new File([new Uint8Array(400)], "firmware.namo-ota"),
+      () => undefined
+    )).rejects.toThrow("network down");
+    expect(xhrCalls).toEqual([]);
+  });
+
+  it.each([400, 401, 403, 500, 503])(
+    "never downgrades to raw OTA after trust endpoint HTTP %i",
+    async (status) => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("broken", { status })));
+    const xhrCalls: string[] = [];
+    installFirmwareXhr(xhrCalls, "Update Successful!");
+    const { deviceApi } = await loadDeviceApi();
+    await expect(deviceApi.uploadFirmware?.(
+      new File([new Uint8Array(400)], "firmware.namo-ota"),
+      () => undefined
+    )).rejects.toThrow();
+    expect(xhrCalls).toEqual([]);
+  });
+
+  it("never downgrades when a present trust endpoint reports an invalid mode", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      JSON.stringify({ ok: true, data: { mode: "legacy", ready: true } }),
+      { status: 200 }
+    )));
+    const xhrCalls: string[] = [];
+    installFirmwareXhr(xhrCalls, "Update Successful!");
+    const { deviceApi } = await loadDeviceApi();
+    await expect(deviceApi.uploadFirmware?.(
+      new File([new Uint8Array(400)], "firmware.namo-ota"),
+      () => undefined
+    )).rejects.toThrow();
+    expect(xhrCalls).toEqual([]);
+  });
+
+  it("does not cancel a session after an explicit server-side upload failure", async () => {
+    const fetchCalls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      fetchCalls.push(url);
+      if (url.endsWith("/api/firmware/trust")) {
+        return new Response(JSON.stringify({ ok: true, data: { mode: "signed", ready: true } }), { status: 200 });
+      }
+      if (url.endsWith("/api/firmware/update/start")) {
+        return new Response(JSON.stringify({ ok: true, data: { session: 987 } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }));
+    const xhrCalls: string[] = [];
+    installFirmwareXhr(xhrCalls, JSON.stringify({
+      ok: false,
+      errorInfo: { code: "offset_mismatch", severity: "error" }
+    }), 400);
+    const { deviceApi } = await loadDeviceApi();
+    await expect(deviceApi.uploadFirmware?.(
+      new File([new Uint8Array(400)], "firmware.namo-ota"),
+      () => undefined
+    )).rejects.toMatchObject({ status: 400, code: "offset_mismatch" });
+    await Promise.resolve();
+    expect(xhrCalls).toEqual(["/api/firmware/update?session=987"]);
+    expect(fetchCalls).not.toContain("/api/firmware/update/cancel?session=987");
+  });
+
+  it("does not cancel a completed upload when the reboot closes the response", async () => {
+    const fetchCalls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      fetchCalls.push(url);
+      if (url.endsWith("/api/firmware/trust")) {
+        return new Response(JSON.stringify({ ok: true, data: { mode: "signed", ready: true } }), { status: 200 });
+      }
+      if (url.endsWith("/api/firmware/update/start")) {
+        return new Response(JSON.stringify({ ok: true, data: { session: 321 } }), { status: 200 });
+      }
+      return okResponse();
+    }));
+    class RebootingFirmwareXhr {
+      upload = { onprogress: null as ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null };
+      status = 0;
+      statusText = "";
+      responseText = "";
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      open(): void {}
+      getResponseHeader(): string | null { return null; }
+      send(): void {
+        this.upload.onprogress?.({ lengthComputable: true, loaded: 400, total: 400 });
+        this.onabort?.();
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", RebootingFirmwareXhr);
+    const { deviceApi } = await loadDeviceApi();
+    await expect(deviceApi.uploadFirmware?.(
+      new File([new Uint8Array(400)], "firmware.namo-ota"),
+      () => undefined
+    )).rejects.toMatchObject({ status: 0, code: "firmware_upload_aborted" });
+    await Promise.resolve();
+    expect(fetchCalls).not.toContain("/api/firmware/update/cancel?session=321");
+  });
+
+  it("does not guess session state or cancel after an early network failure", async () => {
+    const fetchCalls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      fetchCalls.push(url);
+      if (url.endsWith("/api/firmware/trust")) {
+        return new Response(JSON.stringify({ ok: true, data: { mode: "signed", ready: true } }), { status: 200 });
+      }
+      if (url.endsWith("/api/firmware/update/start")) {
+        return new Response(JSON.stringify({ ok: true, data: { session: 654 } }), { status: 200 });
+      }
+      return okResponse();
+    }));
+    class InterruptedFirmwareXhr {
+      upload = { onprogress: null as ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null };
+      status = 0;
+      statusText = "";
+      responseText = "";
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      open(): void {}
+      getResponseHeader(): string | null { return null; }
+      send(): void {
+        this.upload.onprogress?.({ lengthComputable: true, loaded: 40, total: 400 });
+        this.onerror?.();
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", InterruptedFirmwareXhr);
+    const { deviceApi } = await loadDeviceApi();
+    await expect(deviceApi.uploadFirmware?.(
+      new File([new Uint8Array(400)], "firmware.namo-ota"),
+      () => undefined
+    )).rejects.toMatchObject({ status: 0, code: "firmware_network_error" });
+    await Promise.resolve();
+    expect(fetchCalls).not.toContain("/api/firmware/update/cancel?session=654");
+  });
+});
+
 describe("deviceApi chunked storage uploads", () => {
   it("saves config through the chunk upload endpoints without floorplan target fields", async () => {
     const calls: FormCall[] = [];
@@ -127,16 +357,44 @@ describe("deviceApi chunked storage uploads", () => {
     ]);
   });
 
-  it("uses bounded control endpoints for the static radar tuning session and gate", async () => {
+  it("uses bounded control endpoints for the static radar tuning session, gate, and factory reset", async () => {
     const calls: FormCall[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       calls.push(readFormCall(input, init));
+      if (String(input) === "/api/control/static-radar-tuning/gate") {
+        return new Response(JSON.stringify({ ok: true, operationId: 7, state: "pending" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+      if (String(input) === "/api/control/static-radar-tuning") {
+        return new Response(JSON.stringify({
+          ok: true,
+          available: true,
+          active: true,
+          resolutionMm: 750,
+          gates: [],
+          operation: {
+            id: 7,
+            state: "applied",
+            result: "applied",
+            gate: 3,
+            sensitivity: 72,
+            moveThreshold: 28,
+            stillThreshold: 28
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
       return okResponse();
     }));
 
     const { deviceApi } = await loadDeviceApi();
     await deviceApi.setStaticRadarTuningSession?.(true);
     await deviceApi.setStaticRadarGateSensitivity?.(3, 72);
+    await deviceApi.resetStaticRadarFactoryDefaults?.();
 
     expect(calls).toEqual([
       {
@@ -146,8 +404,49 @@ describe("deviceApi chunked storage uploads", () => {
       {
         url: "/api/control/static-radar-tuning/gate",
         values: { data: JSON.stringify({ gate: 3, sensitivity: 72 }) }
+      },
+      {
+        url: "/api/control/static-radar-tuning",
+        values: {}
+      },
+      {
+        url: "/api/control/static-radar-tuning/factory-reset",
+        values: { data: JSON.stringify({}) }
       }
     ]);
+  });
+
+  it("rejects a static radar gate write when device readback does not match", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/control/static-radar-tuning/gate") {
+        return new Response(JSON.stringify({ ok: true, operationId: 9, state: "pending" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+      return new Response(JSON.stringify({
+        ok: true,
+        available: true,
+        active: true,
+        resolutionMm: 750,
+        gates: [],
+        operation: {
+          id: 9,
+          state: "failed",
+          result: "readback_mismatch",
+          gate: 2,
+          sensitivity: 65,
+          moveThreshold: 35,
+          stillThreshold: 40
+        }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }));
+
+    const { deviceApi } = await loadDeviceApi();
+    await expect(deviceApi.setStaticRadarGateSensitivity?.(2, 65)).rejects.toThrow("readback_mismatch");
   });
 
   it("reads static radar tuning telemetry from the bounded status endpoint", async () => {
@@ -168,6 +467,64 @@ describe("deviceApi chunked storage uploads", () => {
 
     expect(result?.available).toBe(true);
     expect(calls).toEqual([{ url: "/api/control/static-radar-tuning", cache: "no-store" }]);
+  });
+
+  it("reissues the API key through the dedicated endpoint", async () => {
+    const calls: FormCall[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(readFormCall(input, init));
+      return new Response(JSON.stringify({
+        ok: true,
+        apiKey: "replacement-key",
+        visibleSeconds: 30
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }));
+
+    const { deviceApi } = await loadDeviceApi();
+    const result = await deviceApi.rotateApiKey?.();
+
+    expect(result).toMatchObject({
+      apiKey: "replacement-key",
+      visibleSeconds: 30
+    });
+    expect(calls).toEqual([{
+      url: "/api/system/api-key/rotate",
+      values: { data: JSON.stringify({}) }
+    }]);
+  });
+
+  it("sends all five reset scopes without an API key reset field", async () => {
+    const calls: FormCall[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(readFormCall(input, init));
+      return okResponse();
+    }));
+
+    const { deviceApi } = await loadDeviceApi();
+    await deviceApi.resetSystem?.({
+      space: true,
+      detection: true,
+      connections: true,
+      stats: true,
+      wifi: true
+    });
+
+    expect(calls).toEqual([{
+      url: "/api/system/reset",
+      values: {
+        data: JSON.stringify({
+          space: true,
+          detection: true,
+          connections: true,
+          stats: true,
+          wifi: true
+        })
+      }
+    }]);
+    expect(calls[0].values.data).not.toContain("apiKey");
   });
 
   it("saves stats through the device base URL and forwards upload progress", async () => {

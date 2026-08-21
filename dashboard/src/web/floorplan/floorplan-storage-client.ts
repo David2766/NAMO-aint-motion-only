@@ -42,9 +42,19 @@ export interface FloorplanStorageStatus {
   usedBytes: number;
   configBytes: number;
   imageBytes: number;
+  configHash?: number;
+  imageHash?: number;
   uploadTarget: number;
   uploadSize: number;
   uploadWritten: number;
+}
+
+export function hasCompleteFloorplanStorage(status: FloorplanStorageStatus): boolean {
+  return status.ok === true && status.hasConfig === true && status.hasImage === true;
+}
+
+export function floorplanStorageRevision(status: FloorplanStorageStatus): string {
+  return [status.configHash ?? 0, status.imageHash ?? 0, status.configBytes, status.imageBytes].join(":");
 }
 
 export type FloorplanStorageErrorInfo = ApiInfo;
@@ -202,5 +212,8 @@ async function requestError(response: Response): Promise<FloorplanStorageRequest
 function resolveApiUrl(baseUrl: string, path: string): string {
   const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
   if (!normalizedBaseUrl) return path;
-  return `${normalizedBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  const resolvedBaseUrl = /^https?:\/\//i.test(normalizedBaseUrl) || normalizedBaseUrl.startsWith("/")
+    ? normalizedBaseUrl
+    : `http://${normalizedBaseUrl}`;
+  return `${resolvedBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 }

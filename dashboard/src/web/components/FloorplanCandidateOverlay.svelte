@@ -1,5 +1,7 @@
 ﻿<script>
+  import { onMount } from "svelte";
   import { roomCandidatePoints, roomCandidatePointString } from "../floorplan/room-candidate-points";
+  import { manualFloorplanEdgeLabels } from "../floorplan/manual-floorplan";
 
   let {
     transformStyle = "",
@@ -10,6 +12,7 @@
     selectionLocked = false,
     imageWidth = 1,
     imageHeight = 1,
+    viewBounds = null,
     ariaLabels,
     allowCandidateEditing = true,
     manualDraftActive = false,
@@ -28,6 +31,10 @@
     ocrItems = [],
     showOcrItems = false,
     showRoomSizeBounds = false,
+    metricMmPerPx = 0,
+    showMetricGrid = true,
+    metricOutlinePoints = [],
+    manualOutlineEditable = false,
     onSelect,
     onManualDraftPoint,
     onManualDraftPointDelete,
@@ -44,7 +51,10 @@
     onCandidateVertexDelete,
     onCandidateVertexMoveStart,
     onCandidateVertexMove,
-    onCandidateVertexMoveEnd
+    onCandidateVertexMoveEnd,
+    onManualOutlineVertexAdd,
+    onManualOutlineVertexDelete,
+    onManualOutlineVertexMove
   } = $props();
 
   const VERTEX_DRAG_CLICK_TOLERANCE_PX = 4;
@@ -52,9 +62,101 @@
   const VERTEX_INSERT_DOUBLE_CLICK_SUPPRESS_MS = 700;
 
   let draggedVertex = null;
+  let draggedOutlineVertex = null;
   let draggedSplitPoint = null;
   let suppressVertexDoubleClickUntil = 0;
   let suppressInsertedVertexDoubleClick = null;
+  let candidateLayer = $state(null);
+  let metricUnitScale = $state(1);
+  let metricReady = $state(false);
+
+  function viewX() {
+    return viewBounds?.x ?? 0;
+  }
+
+  function viewY() {
+    return viewBounds?.y ?? 0;
+  }
+
+  function viewWidth() {
+    return viewBounds?.width ?? imageWidth;
+  }
+
+  function viewHeight() {
+    return viewBounds?.height ?? imageHeight;
+  }
+
+  function updateMetricUnitScale() {
+    if (!candidateLayer || metricMmPerPx <= 0) {
+      metricUnitScale = 1;
+      metricReady = false;
+      return;
+    }
+    const bounds = candidateLayer.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    metricUnitScale = Math.max(viewWidth() / bounds.width, viewHeight() / bounds.height);
+    metricReady = true;
+  }
+
+  function metricSize(screenPixels) {
+    return metricMmPerPx > 0 ? screenPixels * metricUnitScale : screenPixels;
+  }
+
+  function metricTextStyle(screenPixels) {
+    return metricMmPerPx > 0 ? `font-size: ${metricSize(screenPixels)}px;` : "";
+  }
+
+  function metricGridStepPx() {
+    return metricMmPerPx > 0 ? 100 / metricMmPerPx : 0;
+  }
+
+  function metricSnapStepPx() {
+    return metricMmPerPx > 0 ? 500 / metricMmPerPx : 0;
+  }
+
+  function metricMajorStepPx() {
+    return metricMmPerPx > 0 ? 1000 / metricMmPerPx : 0;
+  }
+
+  function showMetricMinorGrid() {
+    return metricGridStepPx() / Math.max(0.001, metricUnitScale) >= 3;
+  }
+
+  function metricLabelPosition(label) {
+    const radians = label.angleDeg * Math.PI / 180;
+    let normalX = -Math.sin(radians);
+    let normalY = Math.cos(radians);
+    if (normalY > 0 || (Math.abs(normalY) < 0.001 && normalX > 0)) {
+      normalX *= -1;
+      normalY *= -1;
+    }
+    const offset = metricSize(14);
+    return {
+      x: label.x + normalX * offset,
+      y: label.y + normalY * offset
+    };
+  }
+
+  onMount(() => {
+    updateMetricUnitScale();
+    const observer = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(updateMetricUnitScale);
+    observer?.observe(candidateLayer);
+    window.addEventListener("resize", updateMetricUnitScale);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", updateMetricUnitScale);
+    };
+  });
+
+  $effect(() => {
+    const refreshKey = `${imageWidth}:${imageHeight}:${viewX()}:${viewY()}:${viewWidth()}:${viewHeight()}:${metricMmPerPx}:${transformStyle}`;
+    queueMicrotask(() => {
+      void refreshKey;
+      updateMetricUnitScale();
+    });
+  });
 
   function candidateBounds(candidate) {
     const points = roomCandidatePoints(candidate);
@@ -82,12 +184,26 @@
     return points.map(([x, y]) => `${x},${y}`).join(" ");
   }
 
+  function metricLabels(points, closePolygon = false) {
+    return metricMmPerPx > 0
+      ? manualFloorplanEdgeLabels(points, closePolygon, metricMmPerPx)
+      : [];
+  }
+
   function labelX(candidate) {
-    return candidate.rect.x + 8;
+    return metricMmPerPx > 0
+      ? candidate.rect.x + candidate.rect.width / 2
+      : candidate.rect.x + 8;
   }
 
   function labelY(candidate) {
-    return candidate.rect.y + 18;
+    return metricMmPerPx > 0
+      ? candidate.rect.y + candidate.rect.height / 2
+      : candidate.rect.y + 18;
+  }
+
+  function candidateLabelAnchor() {
+    return metricMmPerPx > 0 ? "middle" : "start";
   }
 
   function handleCandidateKeydown(event, id) {
@@ -115,8 +231,8 @@
     const bounds = svg?.getBoundingClientRect();
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
     return {
-      x: ((event.clientX - bounds.left) / bounds.width) * imageWidth,
-      y: ((event.clientY - bounds.top) / bounds.height) * imageHeight
+      x: viewX() + ((event.clientX - bounds.left) / bounds.width) * viewWidth(),
+      y: viewY() + ((event.clientY - bounds.top) / bounds.height) * viewHeight()
     };
   }
 
@@ -199,6 +315,45 @@
     };
   }
 
+  function handleOutlineEdgeClick(event, edgeIndex) {
+    event.stopPropagation();
+    const point = svgPointFromEvent(event);
+    if (!point) return;
+    onManualOutlineVertexAdd?.(edgeIndex, point);
+  }
+
+  function handleOutlineEdgeKeydown(event, edge) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onManualOutlineVertexAdd?.(edge.index, {
+      x: (edge.x1 + edge.x2) / 2,
+      y: (edge.y1 + edge.y2) / 2
+    });
+  }
+
+  function handleOutlineVertexPointerDown(event, index) {
+    event.stopPropagation();
+    draggedOutlineVertex = {
+      index,
+      pointerId: event.pointerId,
+      target: event.currentTarget
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function handleOutlineVertexDoubleClick(event, index) {
+    event.preventDefault();
+    event.stopPropagation();
+    onManualOutlineVertexDelete?.(index);
+  }
+
+  function handleOutlineVertexKeydown(event, index) {
+    if (event.key !== "Delete" && event.key !== "Backspace") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onManualOutlineVertexDelete?.(index);
+  }
+
   function handleCandidateEdgeKeydown(event, id, edge) {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
@@ -273,6 +428,12 @@
       onSplitDraftPointMove?.(draggedSplitPoint.index, point);
       return;
     }
+    if (draggedOutlineVertex) {
+      const point = svgPointFromEvent(event);
+      if (!point) return;
+      onManualOutlineVertexMove?.(draggedOutlineVertex.index, point);
+      return;
+    }
     if (!draggedVertex) return;
     const point = svgPointFromEvent(event);
     if (!point) return;
@@ -288,6 +449,11 @@
       draggedSplitPoint = null;
       return;
     }
+    if (draggedOutlineVertex) {
+      draggedOutlineVertex.target?.releasePointerCapture?.(draggedOutlineVertex.pointerId);
+      draggedOutlineVertex = null;
+      return;
+    }
     if (!draggedVertex) return;
     const id = draggedVertex.id;
     const moved = draggedVertex.moved;
@@ -301,8 +467,9 @@
 </script>
 
 <svg
+  bind:this={candidateLayer}
   class={`floorplan-candidate-layer ${focusSelectedCandidate ? "focus-selected-candidate" : ""}`}
-  viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+  viewBox={`${viewX()} ${viewY()} ${viewWidth()} ${viewHeight()}`}
   preserveAspectRatio="none"
   style={transformStyle}
   role="presentation"
@@ -311,6 +478,69 @@
   onpointercancel={handleVertexPointerUp}
   aria-label={ariaLabels.candidateLayer}
 >
+  {#if showMetricGrid && metricMmPerPx > 0 && metricReady}
+    <defs>
+      <pattern
+        id="manual-floorplan-minor-grid"
+        width={metricGridStepPx()}
+        height={metricGridStepPx()}
+        patternUnits="userSpaceOnUse"
+      >
+        <line
+          x1="0" y1="0" x2={metricGridStepPx()} y2="0"
+          class="floorplan-manual-grid-minor"
+          style={`stroke-width: ${metricSize(0.5)}px;`}
+        />
+        <line
+          x1="0" y1="0" x2="0" y2={metricGridStepPx()}
+          class="floorplan-manual-grid-minor"
+          style={`stroke-width: ${metricSize(0.5)}px;`}
+        />
+      </pattern>
+      <pattern
+        id="manual-floorplan-snap-grid"
+        width={metricSnapStepPx()}
+        height={metricSnapStepPx()}
+        patternUnits="userSpaceOnUse"
+      >
+        <line
+          x1="0" y1="0" x2={metricSnapStepPx()} y2="0"
+          class="floorplan-manual-grid-snap"
+          style={`stroke-width: ${metricSize(0.8)}px;`}
+        />
+        <line
+          x1="0" y1="0" x2="0" y2={metricSnapStepPx()}
+          class="floorplan-manual-grid-snap"
+          style={`stroke-width: ${metricSize(0.8)}px;`}
+        />
+      </pattern>
+      <pattern
+        id="manual-floorplan-major-grid"
+        width={metricMajorStepPx()}
+        height={metricMajorStepPx()}
+        patternUnits="userSpaceOnUse"
+      >
+        <line
+          x1="0" y1="0" x2={metricMajorStepPx()} y2="0"
+          class="floorplan-manual-grid-major"
+          style={`stroke-width: ${metricSize(1.2)}px;`}
+        />
+        <line
+          x1="0" y1="0" x2="0" y2={metricMajorStepPx()}
+          class="floorplan-manual-grid-major"
+          style={`stroke-width: ${metricSize(1.2)}px;`}
+        />
+      </pattern>
+    </defs>
+    <g class="floorplan-manual-grid" aria-hidden="true">
+      {#if showMetricMinorGrid()}
+        <rect x="0" y="0" width={imageWidth} height={imageHeight} fill="url(#manual-floorplan-minor-grid)" />
+      {/if}
+      <rect x="0" y="0" width={imageWidth} height={imageHeight} fill="url(#manual-floorplan-snap-grid)" />
+      <rect x="0" y="0" width={imageWidth} height={imageHeight} fill="url(#manual-floorplan-major-grid)" />
+    </g>
+  {/if}
+
   {#if manualDraftActive || splitDraftActive}
     <rect
       class={splitDraftActive ? "floorplan-split-draft-hit" : "floorplan-manual-draft-hit"}
@@ -361,9 +591,71 @@
       onkeydown={(event) => handleCandidateKeydown(event, candidate.id)}
     >
       <polygon class="floorplan-candidate-shape" points={roomCandidatePointString(candidate)} />
-      <text class="floorplan-candidate-label" x={labelX(candidate)} y={labelY(candidate)}>{candidate.name}</text>
+      <text
+        class="floorplan-candidate-label"
+        x={labelX(candidate)}
+        y={labelY(candidate)}
+        text-anchor={candidateLabelAnchor()}
+        dominant-baseline={metricMmPerPx > 0 ? "central" : "auto"}
+        style={metricTextStyle(15)}
+      >{candidate.name}</text>
     </g>
   {/each}
+
+  {#if metricOutlinePoints.length >= 3}
+    {#each candidates.filter((candidate) => candidate.status !== "rejected") as candidate}
+      <polygon class="floorplan-manual-room-wall" points={roomCandidatePointString(candidate)} />
+    {/each}
+    <polygon class="floorplan-manual-outline" points={pointList(metricOutlinePoints)} />
+    {#each metricLabels(metricOutlinePoints, true) as label}
+      {@const position = metricLabelPosition(label)}
+      <text
+        class="floorplan-metric-edge-label"
+        x={position.x}
+        y={position.y}
+        text-anchor="middle"
+        dominant-baseline="central"
+        style={metricTextStyle(13)}
+      >{label.text}</text>
+    {/each}
+  {/if}
+
+  {#if manualOutlineEditable && metricOutlinePoints.length >= 3}
+    {#each candidateEditEdges({ shape: "polygon", points: metricOutlinePoints }) as edge}
+      <line
+        class="floorplan-candidate-edit-edge floorplan-outline-edit-edge"
+        x1={edge.x1}
+        y1={edge.y1}
+        x2={edge.x2}
+        y2={edge.y2}
+        role="button"
+        tabindex="0"
+        onclick={(event) => handleOutlineEdgeClick(event, edge.index)}
+        onkeydown={(event) => handleOutlineEdgeKeydown(event, edge)}
+      />
+    {/each}
+    {#each metricOutlinePoints as point, index}
+      <g class="floorplan-candidate-vertex manual floorplan-outline-edit-vertex">
+        <circle
+          class="floorplan-vertex-hit"
+          cx={point[0]}
+          cy={point[1]}
+          r={metricSize(11)}
+          role="button"
+          tabindex="0"
+          onpointerdown={(event) => handleOutlineVertexPointerDown(event, index)}
+          ondblclick={(event) => handleOutlineVertexDoubleClick(event, index)}
+          onkeydown={(event) => handleOutlineVertexKeydown(event, index)}
+        />
+        <circle class="floorplan-vertex-marker" cx={point[0]} cy={point[1]} r={metricSize(7)} />
+        <text
+          x={point[0] + metricSize(9)}
+          y={point[1] - metricSize(9)}
+          style={metricTextStyle(12)}
+        >{index + 1}</text>
+      </g>
+    {/each}
+  {/if}
 
   {#if allowCandidateEditing && !splitDraftActive && !mergeDraftActive}
   {#each candidates.filter((candidate) => candidate.status !== "rejected" && candidate.id === selectedCandidateId) as candidate}
@@ -384,18 +676,29 @@
     {/if}
     {#each roomCandidatePoints(candidate) as point, index}
       <g class="floorplan-candidate-vertex manual">
-          <circle
-            cx={point[0]}
-            cy={point[1]}
-            r="7"
-          data-active={selectedCandidateVertexIndex === index ? "true" : "false"}
+        <circle
+          class="floorplan-vertex-hit"
+          cx={point[0]}
+          cy={point[1]}
+          r={metricSize(11)}
           role="button"
           tabindex="0"
           onpointerdown={(event) => handleCandidateVertexPointerDown(event, candidate, index)}
           ondblclick={(event) => handleCandidateVertexDoubleClick(event, candidate.id, index)}
           onkeydown={(event) => handleCandidateVertexKeydown(event, candidate.id, index)}
         />
-        <text x={point[0] + 8} y={point[1] - 8}>{index + 1}</text>
+        <circle
+          class="floorplan-vertex-marker"
+          cx={point[0]}
+          cy={point[1]}
+          r={metricSize(7)}
+          data-active={selectedCandidateVertexIndex === index ? "true" : "false"}
+        />
+        <text
+          x={point[0] + metricSize(9)}
+          y={point[1] - metricSize(9)}
+          style={metricTextStyle(12)}
+        >{index + 1}</text>
       </g>
     {/each}
   {/each}
@@ -433,29 +736,49 @@
   {/if}
 
   {#if manualDraftPoints.length}
+    {@const manualPreviewPoints = manualDraftActive && manualDraftHoverPoint
+      ? [...manualDraftPoints, [manualDraftHoverPoint.x, manualDraftHoverPoint.y]]
+      : manualDraftPoints}
     {#if manualDraftPoints.length >= 3}
       <polygon class="floorplan-manual-draft-fill" points={pointList(manualDraftPoints)} />
     {/if}
-    <polyline class="floorplan-manual-draft-line" points={pointList(manualDraftPoints)} />
+    <polyline class="floorplan-manual-draft-line" points={pointList(manualPreviewPoints)} />
+    {#each metricLabels(manualPreviewPoints) as label}
+      {@const position = metricLabelPosition(label)}
+      <text
+        class="floorplan-metric-edge-label"
+        x={position.x}
+        y={position.y}
+        text-anchor="middle"
+        dominant-baseline="central"
+        style={metricTextStyle(13)}
+      >{label.text}</text>
+    {/each}
     {#each manualDraftPoints as point, index}
       <g class="floorplan-manual-draft-point">
         <circle
+          class="floorplan-vertex-hit"
           cx={point[0]}
           cy={point[1]}
-          r="5"
+          r={metricSize(11)}
           role="button"
           tabindex="0"
           ondblclick={(event) => handleManualDraftPointDoubleClick(event, index)}
           onkeydown={(event) => handleManualDraftPointKeydown(event, index)}
         />
-        <text x={point[0] + 8} y={point[1] - 8}>{index + 1}</text>
+        <circle class="floorplan-vertex-marker" cx={point[0]} cy={point[1]} r={metricSize(6)} />
+        <text
+          x={point[0] + metricSize(8)}
+          y={point[1] - metricSize(8)}
+          style={metricTextStyle(12)}
+        >{index + 1}</text>
       </g>
     {/each}
   {/if}
 
   {#if manualDraftActive && manualDraftHoverPoint}
     <g class="floorplan-manual-draft-hover">
-      <circle cx={manualDraftHoverPoint.x} cy={manualDraftHoverPoint.y} r="6" />
+      <circle cx={manualDraftHoverPoint.x} cy={manualDraftHoverPoint.y} r={metricSize(7)} />
     </g>
   {/if}
 

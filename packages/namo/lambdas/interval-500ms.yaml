@@ -1,173 +1,6 @@
 |-
   const uint32_t now = millis();
-  
-  // === 섹션 1: 존/보정 설정 파싱 및 point-in-polygon 헬퍼 ===
-  // radar_api에 저장된 software/calibration zone JSON을 읽고, 타입 판정과 점 포함 여부를 계산한다.
-  // 설정이 없거나 깨진 경우 각 헬퍼가 false/0을 반환하도록 설계되어 있으며, 조기 반환으로 전체 감지를 중단하지 않는다.
-  // 직접 만든 문자열 파서는 임베디드 힙 사용을 낮추기 위한 경량 경로이므로 동작 보존이 중요하다.
-  auto clamp_value = [](float value, float min_value, float max_value) -> float {
-    if (value < min_value) return min_value;
-    if (value > max_value) return max_value;
-    return value;
-  };
-  
-  auto zone_config_for = [&](int zone_index) -> std::string {
-    const std::string cached = id(radar_api).software_zone_config(zone_index);
-    if (!cached.empty()) return cached;
-    return "";
-  };
-  
-  auto calibration_config_for = [&](int zone_index) -> std::string {
-    const std::string cached = id(radar_api).calibration_zone_config(zone_index);
-    if (!cached.empty()) return cached;
-    return "";
-  };
-  
-  auto zone_config_valid = [&](const std::string &value, int zone_index) -> bool {
-    std::string needle = std::string("\"id\":\"zone_") + std::to_string(zone_index) + "\"";
-    return !value.empty() && value != "__EMPTY__" && value.find(needle) != std::string::npos && value.find("\"points\"") != std::string::npos;
-  };
-  
-  auto calibration_config_valid = [&](const std::string &value, int zone_index) -> bool {
-    std::string needle = std::string("\"id\":\"calibration_") + std::to_string(zone_index) + "\"";
-    return !value.empty() && value != "__EMPTY__" && value.find(needle) != std::string::npos && value.find("\"points\"") != std::string::npos;
-  };
-  
-  auto zone_type_is = [&](int zone_index, const char *type) -> bool {
-    const std::string zone_config = zone_config_for(zone_index);
-    if (!zone_config_valid(zone_config, zone_index)) return false;
-    std::string needle = std::string("\"type\":\"") + type + "\"";
-    return zone_config.find(needle) != std::string::npos;
-  };
-  
-  auto point_in_zone_config = [&](const std::string &zone_config, float tx, float ty) -> bool {
-    const size_t end = zone_config.size();
-    size_t points_pos = zone_config.find("\"points\"");
-    if (points_pos == std::string::npos || points_pos >= end) return false;
-  
-    float xs[8];
-    float ys[8];
-    int point_count = 0;
-    size_t pos = zone_config.find('[', points_pos);
-    if (pos == std::string::npos || pos >= end) return false;
-  
-    auto read_number = [&](size_t &cursor, float &value) -> bool {
-      while (cursor < end && !(zone_config[cursor] == '-' || (zone_config[cursor] >= '0' && zone_config[cursor] <= '9'))) cursor++;
-      if (cursor >= end) return false;
-      const size_t number_start = cursor;
-      if (zone_config[cursor] == '-') cursor++;
-      while (cursor < end && zone_config[cursor] >= '0' && zone_config[cursor] <= '9') cursor++;
-      value = atof(zone_config.substr(number_start, cursor - number_start).c_str());
-      return true;
-    };
-  
-    while (pos < end && point_count < 8) {
-      float x = 0;
-      float y = 0;
-      if (!read_number(pos, x)) break;
-      if (!read_number(pos, y)) break;
-      xs[point_count] = clamp_value(x, -4860.0f, 4860.0f);
-      ys[point_count] = clamp_value(y, 0.0f, 7560.0f);
-      point_count++;
-      size_t next = zone_config.find('[', pos);
-      size_t zone_close = zone_config.find("]]", pos);
-      if (next == std::string::npos || (zone_close != std::string::npos && zone_close < next) || next >= end) break;
-      pos = next;
-    }
-  
-    if (point_count < 3) return false;
-    bool inside = false;
-    for (int i = 0, j = point_count - 1; i < point_count; j = i++) {
-      const bool intersects = ((ys[i] > ty) != (ys[j] > ty)) &&
-        (tx < (xs[j] - xs[i]) * (ty - ys[i]) / ((ys[j] - ys[i]) == 0 ? 0.0001f : (ys[j] - ys[i])) + xs[i]);
-      if (intersects) inside = !inside;
-    }
-    return inside;
-  };
-  
-  auto point_in_software_zone = [&](int zone_index, float tx, float ty) -> bool {
-    const std::string zone_config = zone_config_for(zone_index);
-    if (!zone_config_valid(zone_config, zone_index)) return false;
-    return point_in_zone_config(zone_config, tx, ty);
-  };
-  
-  auto calibration_zone_type_is = [&](int zone_index, const char *type) -> bool {
-    const std::string zone_config = calibration_config_for(zone_index);
-    if (!calibration_config_valid(zone_config, zone_index)) return false;
-    std::string needle = std::string("\"type\":\"") + type + "\"";
-    return zone_config.find(needle) != std::string::npos;
-  };
-  
-  auto point_in_calibration_zone_type = [&](int zone_index, const char *type, float tx, float ty) -> bool {
-    const std::string zone_config = calibration_config_for(zone_index);
-    if (!calibration_config_valid(zone_config, zone_index)) return false;
-    if (!calibration_zone_type_is(zone_index, type)) return false;
-    return point_in_zone_config(zone_config, tx, ty);
-  };
-  
-  auto point_in_any_calibration_zone_type = [&](const char *type, float tx, float ty) -> bool {
-    for (int zone_index = 1; zone_index <= 4; zone_index++) {
-      if (point_in_calibration_zone_type(zone_index, type, tx, ty)) return true;
-    }
-    return false;
-  };
-  
-  auto calibration_zone_index_for_type = [&](const char *type, float tx, float ty) -> int {
-    for (int zone_index = 1; zone_index <= 4; zone_index++) {
-      if (point_in_calibration_zone_type(zone_index, type, tx, ty)) return zone_index;
-    }
-    return 0;
-  };
-  
-  auto software_zone_contains = [&](int zone_index, float tx, float ty) -> bool {
-    return point_in_software_zone(zone_index, tx, ty);
-  };
-  
-  auto software_zone_type_is = [&](int zone_index, const char *type) -> bool {
-    return zone_type_is(zone_index, type);
-  };
-  
-  auto target_reduced_since = [&](int target_index) -> uint32_t {
-    if (target_index == 1) return id(target_1_reduced_since_ms);
-    if (target_index == 2) return id(target_2_reduced_since_ms);
-    if (target_index == 3) return id(target_3_reduced_since_ms);
-    return 0;
-  };
-  
-  auto set_target_reduced_since = [&](int target_index, uint32_t value) {
-    if (target_index == 1) id(target_1_reduced_since_ms) = value;
-    if (target_index == 2) id(target_2_reduced_since_ms) = value;
-    if (target_index == 3) id(target_3_reduced_since_ms) = value;
-  };
-  
-  auto target_filter_mode = [&](int target_index, float tx, float ty) -> int {
-    const int calibration_filter_zone = calibration_zone_index_for_type("filter", tx, ty);
-    if (calibration_filter_zone > 0) {
-      set_target_reduced_since(target_index, 0);
-      return 10 + calibration_filter_zone;
-    }
-    for (int zone_index = 1; zone_index <= 6; zone_index++) {
-      if (software_zone_type_is(zone_index, "filter") && software_zone_contains(zone_index, tx, ty)) {
-        set_target_reduced_since(target_index, 0);
-        return 2;
-      }
-    }
-    const int calibration_reduced_zone = calibration_zone_index_for_type("reduced", tx, ty);
-    if (calibration_reduced_zone > 0) {
-      uint32_t since = target_reduced_since(target_index);
-      if (since == 0) {
-        since = now;
-        set_target_reduced_since(target_index, since);
-      }
-      // 보정 reduced 존에서는 즉시 필터링하지 않고 일정 시간 버틴 뒤 통과시킨다.
-      // PIR 움직임이 있으면 실제 움직임일 가능성이 높으므로 800ms, 없으면 2500ms를 요구한다.
-      const uint32_t required_ms = id(pir_motion).state ? 800 : 2500;
-      return (now - since) < required_ms ? 20 + calibration_reduced_zone : 0;
-    }
-    set_target_reduced_since(target_index, 0);
-    return 0;
-  };
-  
+
   auto previous_calibration_filter_active = [&](int target_index) -> bool {
     if (target_index == 1) return id(target_1_calibration_filter_active);
     if (target_index == 2) return id(target_2_calibration_filter_active);
@@ -245,16 +78,22 @@
     set_previous_software_zone_mask(target_index, current_mask);
   };
   
-  auto record_calibration_transition = [&](int target_index, int mode) {
-    const bool calibration_filter_active = mode >= 11 && mode <= 14;
-    const bool calibration_reduced_active = mode >= 21 && mode <= 24;
+  auto record_calibration_transition =
+      [&](int target_index,
+          const esphome::radar_api_server::TargetZonePolicy &policy) {
+    const bool calibration_filter_active =
+      policy.source == esphome::radar_api_server::ZonePolicySource::CALIBRATION &&
+      policy.action == esphome::radar_api_server::ZonePolicyAction::BLOCKED;
+    const bool calibration_reduced_active =
+      policy.source == esphome::radar_api_server::ZonePolicySource::CALIBRATION &&
+      policy.action == esphome::radar_api_server::ZonePolicyAction::REDUCED;
     if (calibration_filter_active && !previous_calibration_filter_active(target_index)) {
       id(today_calibration_filter_hits)++;
-      increment_calibration_filter_zone_hit(mode - 10);
+      increment_calibration_filter_zone_hit(policy.zone_index);
     }
     if (calibration_reduced_active && !previous_calibration_reduced_active(target_index)) {
       id(today_calibration_reduced_hits)++;
-      increment_calibration_reduced_zone_hit(mode - 20);
+      increment_calibration_reduced_zone_hit(policy.zone_index);
     }
     set_previous_calibration_filter_active(target_index, calibration_filter_active);
     set_previous_calibration_reduced_active(target_index, calibration_reduced_active);
@@ -264,53 +103,53 @@
     id(radar_api).record_heatmap_hit(tx, ty);
   };
   
-  const int target_1_filter_mode =
-    id(target_1_direction_raw).state != "NA" ?
-    target_filter_mode(1, id(target_1_x_raw).state, id(target_1_y_raw).state) : 0;
-  const int target_2_filter_mode =
-    id(target_2_direction_raw).state != "NA" ?
-    target_filter_mode(2, id(target_2_x_raw).state, id(target_2_y_raw).state) : 0;
-  const int target_3_filter_mode =
-    id(target_3_direction_raw).state != "NA" ?
-    target_filter_mode(3, id(target_3_x_raw).state, id(target_3_y_raw).state) : 0;
-  
-  record_calibration_transition(1, target_1_filter_mode);
-  record_calibration_transition(2, target_2_filter_mode);
-  record_calibration_transition(3, target_3_filter_mode);
+  const auto target_1_zone_policy =
+    id(target_1_direction_raw).state != "NA"
+      ? id(radar_api).target_zone_policy(id(target_1_x_raw).state, id(target_1_y_raw).state)
+      : esphome::radar_api_server::TargetZonePolicy{};
+  const auto target_2_zone_policy =
+    id(target_2_direction_raw).state != "NA"
+      ? id(radar_api).target_zone_policy(id(target_2_x_raw).state, id(target_2_y_raw).state)
+      : esphome::radar_api_server::TargetZonePolicy{};
+  const auto target_3_zone_policy =
+    id(target_3_direction_raw).state != "NA"
+      ? id(radar_api).target_zone_policy(id(target_3_x_raw).state, id(target_3_y_raw).state)
+      : esphome::radar_api_server::TargetZonePolicy{};
+  const int target_1_filter_mode = target_1_zone_policy.diagnostic_mode();
+  const int target_2_filter_mode = target_2_zone_policy.diagnostic_mode();
+  const int target_3_filter_mode = target_3_zone_policy.diagnostic_mode();
+
+  record_calibration_transition(1, target_1_zone_policy);
+  record_calibration_transition(2, target_2_zone_policy);
+  record_calibration_transition(3, target_3_zone_policy);
   
   id(target_1_filtered) =
     id(target_1_direction_raw).state != "NA" &&
-    target_1_filter_mode > 0;
+    target_1_zone_policy.filtered();
   id(target_2_filtered) =
     id(target_2_direction_raw).state != "NA" &&
-    target_2_filter_mode > 0;
+    target_2_zone_policy.filtered();
   id(target_3_filtered) =
     id(target_3_direction_raw).state != "NA" &&
-    target_3_filter_mode > 0;
-  auto is_filter_blocked_mode = [](int mode) -> bool {
-    return mode == 2 || (mode >= 11 && mode <= 14);
-  };
+    target_3_zone_policy.filtered();
   id(target_1_filter_blocked) =
     id(target_1_direction_raw).state != "NA" &&
-    is_filter_blocked_mode(target_1_filter_mode);
+    target_1_zone_policy.filter_blocked();
   id(target_2_filter_blocked) =
     id(target_2_direction_raw).state != "NA" &&
-    is_filter_blocked_mode(target_2_filter_mode);
+    target_2_zone_policy.filter_blocked();
   id(target_3_filter_blocked) =
     id(target_3_direction_raw).state != "NA" &&
-    is_filter_blocked_mode(target_3_filter_mode);
+    target_3_zone_policy.filter_blocked();
   if (id(target_1_direction_raw).state == "NA") {
-    id(target_1_reduced_since_ms) = 0;
     set_previous_calibration_filter_active(1, false);
     set_previous_calibration_reduced_active(1, false);
   }
   if (id(target_2_direction_raw).state == "NA") {
-    id(target_2_reduced_since_ms) = 0;
     set_previous_calibration_filter_active(2, false);
     set_previous_calibration_reduced_active(2, false);
   }
   if (id(target_3_direction_raw).state == "NA") {
-    id(target_3_reduced_since_ms) = 0;
     set_previous_calibration_filter_active(3, false);
     set_previous_calibration_reduced_active(3, false);
   }
@@ -321,9 +160,12 @@
   const bool target1_raw_seen = id(target_1_direction_raw).state != "NA";
   const bool target2_raw_seen = id(target_2_direction_raw).state != "NA";
   const bool target3_raw_seen = id(target_3_direction_raw).state != "NA";
-  const bool target1_seen = target1_raw_seen && !id(target_1_filtered);
-  const bool target2_seen = target2_raw_seen && !id(target_2_filtered);
-  const bool target3_seen = target3_raw_seen && !id(target_3_filtered);
+  const bool target1_reduced = target1_raw_seen && target_1_zone_policy.reduced();
+  const bool target2_reduced = target2_raw_seen && target_2_zone_policy.reduced();
+  const bool target3_reduced = target3_raw_seen && target_3_zone_policy.reduced();
+  const bool target1_seen = target1_raw_seen && !id(target_1_filter_blocked);
+  const bool target2_seen = target2_raw_seen && !id(target_2_filter_blocked);
+  const bool target3_seen = target3_raw_seen && !id(target_3_filter_blocked);
   const float range_min_valid_mm = 100.0f;
   const float range_near_max_mm = 6000.0f;
   const float range_far_max_mm = 8000.0f;
@@ -393,19 +235,28 @@
   id(target_3_range_valid) = range_gate(target3_seen,
                                        target_range_mm(id(target_3_x_raw).state, id(target_3_y_raw).state, id(target_3_distance_raw).state),
                                        id(target_3_remote_suspect_latched));
-  const bool target1_valid = target1_seen && id(target_1_range_valid);
-  const bool target2_valid = target2_seen && id(target_2_range_valid);
-  const bool target3_valid = target3_seen && id(target_3_range_valid);
-  const int state_target_count = (target1_valid ? 1 : 0) + (target2_valid ? 1 : 0) + (target3_valid ? 1 : 0);
+  const std::array<esphome::radar_api_server::PresenceTargetAdmissionInput, 3> target_admission_inputs{{
+    {target1_raw_seen, id(target_1_filter_blocked), id(target_1_range_valid)},
+    {target2_raw_seen, id(target_2_filter_blocked), id(target_2_range_valid)},
+    {target3_raw_seen, id(target_3_filter_blocked), id(target_3_range_valid)}
+  }};
+  const auto target_admission =
+    esphome::radar_api_server::evaluate_presence_target_admission(target_admission_inputs);
+  const bool target1_valid = target_admission.admitted[0];
+  const bool target2_valid = target_admission.admitted[1];
+  const bool target3_valid = target_admission.admitted[2];
+  id(target_admission_fully_blocked) = target_admission.fully_filter_blocked;
+  const bool target1_legacy_valid = target1_valid && !target1_reduced;
+  const bool target2_legacy_valid = target2_valid && !target2_reduced;
+  const bool target3_legacy_valid = target3_valid && !target3_reduced;
+  const int state_target_count =
+    (target1_legacy_valid ? 1 : 0) + (target2_legacy_valid ? 1 : 0) + (target3_legacy_valid ? 1 : 0);
   const int state_moving_target_count =
-    (target1_valid && fabsf(id(target_1_speed_raw).state) > id(dir_stationary_speed) ? 1 : 0) +
-    (target2_valid && fabsf(id(target_2_speed_raw).state) > id(dir_stationary_speed) ? 1 : 0) +
-    (target3_valid && fabsf(id(target_3_speed_raw).state) > id(dir_stationary_speed) ? 1 : 0);
+    (target1_legacy_valid && fabsf(id(target_1_speed_raw).state) > id(dir_stationary_speed) ? 1 : 0) +
+    (target2_legacy_valid && fabsf(id(target_2_speed_raw).state) > id(dir_stationary_speed) ? 1 : 0) +
+    (target3_legacy_valid && fabsf(id(target_3_speed_raw).state) > id(dir_stationary_speed) ? 1 : 0);
   const int state_still_target_count = state_target_count - state_moving_target_count;
-  const bool state_filter_blocked =
-    id(target_1_filter_blocked) ||
-    id(target_2_filter_blocked) ||
-    id(target_3_filter_blocked);
+  const bool state_filter_blocked = target_admission.fully_filter_blocked;
   id(radar_api).update_presence_replay_raw_targets(
     target1_raw_seen, id(target_1_x_raw).state, id(target_1_y_raw).state,
     id(target_1_speed_raw).state, id(target_1_distance_raw).state,
@@ -422,10 +273,10 @@
     target2_valid, id(target_2_x_raw).state, id(target_2_y_raw).state,
     target3_valid, id(target_3_x_raw).state, id(target_3_y_raw).state);
   esphome::radar_api_server::StaticRadarEvidence static_radar;
-  // LD2410 distance sensors suppress duplicate values, so freshness is not a
-  // transport heartbeat. A valid target-state frame establishes availability
-  // for this boot; distance values remain optional supporting evidence.
-  static_radar.available = id(ld2410_has_target).has_state();
+  // Entity values can remain cached after UART traffic stops. Only fresh valid
+  // periodic frames may contribute static-radar evidence.
+  static_radar.available = id(ld2410_has_target).has_state() &&
+                           id(radar_api).ld2410_stream_fresh(now);
   static_radar.presence = static_radar.available && id(ld2410_has_target).state;
   static_radar.moving = static_radar.available && id(ld2410_has_moving_target).state;
   static_radar.still = static_radar.available && id(ld2410_has_still_target).state;
@@ -444,20 +295,27 @@
   static_radar.still_energy =
     id(ld2410_still_energy).has_state() && !isnan(id(ld2410_still_energy).state)
       ? id(ld2410_still_energy).state : 0.0f;
+  const bool tracker_frame_fresh = id(radar_api).consume_ld2450_tracker_frame();
   id(radar_api).update_presence_tracker(
-    now, id(pir_motion).state, state_filter_blocked, id(state_presence_stable),
+    now, id(pir_motion).state, tracker_frame_fresh && state_filter_blocked, id(state_presence_stable),
     tracker_zone_evidence.room_context_configured,
     static_radar, id(illuminance_lux).state, id(dir_stationary_speed),
-    target1_valid, id(target_1_x_raw).state, id(target_1_y_raw).state,
-    id(target_1_speed_raw).state, id(target_1_distance_raw).state, tracker_zone_evidence.target_exit_masks[0],
+    tracker_frame_fresh && target_admission.association_candidates[0], id(target_1_filter_blocked),
+    id(target_1_x_raw).state, id(target_1_y_raw).state,
+    id(target_1_speed_raw).state, id(target_1_distance_raw).state, target1_reduced,
+    tracker_zone_evidence.target_exit_masks[0],
     tracker_zone_evidence.target_room_inside[0], tracker_zone_evidence.target_room_outside[0],
     tracker_zone_evidence.target_room_signed_distances[0],
-    target2_valid, id(target_2_x_raw).state, id(target_2_y_raw).state,
-    id(target_2_speed_raw).state, id(target_2_distance_raw).state, tracker_zone_evidence.target_exit_masks[1],
+    tracker_frame_fresh && target_admission.association_candidates[1], id(target_2_filter_blocked),
+    id(target_2_x_raw).state, id(target_2_y_raw).state,
+    id(target_2_speed_raw).state, id(target_2_distance_raw).state, target2_reduced,
+    tracker_zone_evidence.target_exit_masks[1],
     tracker_zone_evidence.target_room_inside[1], tracker_zone_evidence.target_room_outside[1],
     tracker_zone_evidence.target_room_signed_distances[1],
-    target3_valid, id(target_3_x_raw).state, id(target_3_y_raw).state,
-    id(target_3_speed_raw).state, id(target_3_distance_raw).state, tracker_zone_evidence.target_exit_masks[2],
+    tracker_frame_fresh && target_admission.association_candidates[2], id(target_3_filter_blocked),
+    id(target_3_x_raw).state, id(target_3_y_raw).state,
+    id(target_3_speed_raw).state, id(target_3_distance_raw).state, target3_reduced,
+    tracker_zone_evidence.target_exit_masks[2],
     tracker_zone_evidence.target_room_inside[2], tracker_zone_evidence.target_room_outside[2],
     tracker_zone_evidence.target_room_signed_distances[2]);
   const auto &tracker_output = id(radar_api).tracker_output();
@@ -466,31 +324,55 @@
   const bool tracker_primary_available = tracker_primary_enabled && !state_filter_blocked;
   const int tracker_stable_track_count =
     tracker_output.confirmed_track_count + tracker_output.coasting_track_count;
-  const int state_target_count_effective =
+  int state_target_count_effective =
     tracker_primary_enabled ? (tracker_primary_available ? tracker_stable_track_count : 0) : state_target_count;
-  const int state_moving_target_count_effective =
+  int state_moving_target_count_effective =
     tracker_primary_available ? tracker_output.moving_track_count : state_moving_target_count;
-  const int state_still_target_count_effective =
+  int state_still_target_count_effective =
     tracker_primary_available ? tracker_output.still_track_count : state_still_target_count;
-  const bool effective_target1_valid =
+  bool effective_target1_valid =
     tracker_primary_enabled ? (tracker_primary_available && tracker_output.tracks[0].valid) : target1_valid;
-  const bool effective_target2_valid =
+  bool effective_target2_valid =
     tracker_primary_enabled ? (tracker_primary_available && tracker_output.tracks[1].valid) : target2_valid;
-  const bool effective_target3_valid =
+  bool effective_target3_valid =
     tracker_primary_enabled ? (tracker_primary_available && tracker_output.tracks[2].valid) : target3_valid;
-  const float effective_target1_x = tracker_primary_enabled ? tracker_output.tracks[0].x_mm : id(target_1_x_raw).state;
-  const float effective_target1_y = tracker_primary_enabled ? tracker_output.tracks[0].y_mm : id(target_1_y_raw).state;
-  const float effective_target2_x = tracker_primary_enabled ? tracker_output.tracks[1].x_mm : id(target_2_x_raw).state;
-  const float effective_target2_y = tracker_primary_enabled ? tracker_output.tracks[1].y_mm : id(target_2_y_raw).state;
-  const float effective_target3_x = tracker_primary_enabled ? tracker_output.tracks[2].x_mm : id(target_3_x_raw).state;
-  const float effective_target3_y = tracker_primary_enabled ? tracker_output.tracks[2].y_mm : id(target_3_y_raw).state;
+  float effective_target1_x = tracker_primary_enabled ? tracker_output.tracks[0].x_mm : id(target_1_x_raw).state;
+  float effective_target1_y = tracker_primary_enabled ? tracker_output.tracks[0].y_mm : id(target_1_y_raw).state;
+  float effective_target2_x = tracker_primary_enabled ? tracker_output.tracks[1].x_mm : id(target_2_x_raw).state;
+  float effective_target2_y = tracker_primary_enabled ? tracker_output.tracks[1].y_mm : id(target_2_y_raw).state;
+  float effective_target3_x = tracker_primary_enabled ? tracker_output.tracks[2].x_mm : id(target_3_x_raw).state;
+  float effective_target3_y = tracker_primary_enabled ? tracker_output.tracks[2].y_mm : id(target_3_y_raw).state;
+  const auto &production_fusion = id(radar_api).spatial_automation_fusion_output(now);
+  if (production_fusion.authoritative) {
+    state_target_count_effective = production_fusion.target_count;
+    state_moving_target_count_effective = 0;
+    state_still_target_count_effective = 0;
+    for (const auto &target : production_fusion.targets) {
+      if (!target.valid) continue;
+      const float speed = std::hypot(target.vx_mm_s, target.vy_mm_s);
+      if (speed > id(dir_stationary_speed) * 10.0f) {
+        state_moving_target_count_effective++;
+      } else {
+        state_still_target_count_effective++;
+      }
+    }
+    effective_target1_valid = production_fusion.targets[0].valid;
+    effective_target2_valid = production_fusion.targets[1].valid;
+    effective_target3_valid = production_fusion.targets[2].valid;
+    effective_target1_x = production_fusion.targets[0].x_mm;
+    effective_target1_y = production_fusion.targets[0].y_mm;
+    effective_target2_x = production_fusion.targets[1].x_mm;
+    effective_target2_y = production_fusion.targets[1].y_mm;
+    effective_target3_x = production_fusion.targets[2].x_mm;
+    effective_target3_y = production_fusion.targets[2].y_mm;
+  }
   if (legacy_presence_fallback_enabled) {
     id(radar_api).update_legacy_presence(
       now, id(pir_motion).state, state_filter_blocked,
       state_target_count, state_moving_target_count, state_still_target_count, id(dir_stationary_speed),
-      target1_valid, id(target_1_x_raw).state, id(target_1_y_raw).state, id(target_1_speed_raw).state,
-      target2_valid, id(target_2_x_raw).state, id(target_2_y_raw).state, id(target_2_speed_raw).state,
-      target3_valid, id(target_3_x_raw).state, id(target_3_y_raw).state, id(target_3_speed_raw).state);
+      target1_legacy_valid, id(target_1_x_raw).state, id(target_1_y_raw).state, id(target_1_speed_raw).state,
+      target2_legacy_valid, id(target_2_x_raw).state, id(target_2_y_raw).state, id(target_2_speed_raw).state,
+      target3_legacy_valid, id(target_3_x_raw).state, id(target_3_y_raw).state, id(target_3_speed_raw).state);
   } else {
     id(radar_api).disable_legacy_presence();
   }
@@ -498,15 +380,21 @@
   const auto &presence_fusion = id(radar_api).presence_fusion_output();
   const bool state_still_hold_active = legacy_presence_fallback_enabled ? legacy_presence.still_hold_active : false;
   const bool state_presence_raw =
-    tracker_primary_enabled ? presence_fusion.presence : legacy_presence.presence;
+    (tracker_primary_enabled ? presence_fusion.presence : legacy_presence.presence) ||
+    (production_fusion.authoritative && production_fusion.target_count > 0);
   const bool state_motion_raw =
-    tracker_primary_enabled ? presence_fusion.motion : legacy_presence.motion;
+    (tracker_primary_enabled ? presence_fusion.motion : legacy_presence.motion) ||
+    (production_fusion.authoritative && state_moving_target_count_effective > 0);
   const char *state_presence_raw_reason =
-    tracker_primary_enabled ? presence_fusion.presence_reason : legacy_presence.presence_reason;
+    production_fusion.authoritative && production_fusion.target_count > 0
+      ? "spatial_fusion"
+      : (tracker_primary_enabled ? presence_fusion.presence_reason : legacy_presence.presence_reason);
   const char *state_tracker_off_reason =
     presence_fusion.presence_off_reason;
   const char *state_motion_raw_reason =
-    tracker_primary_enabled ? presence_fusion.motion_reason : legacy_presence.motion_reason;
+    production_fusion.authoritative && state_moving_target_count_effective > 0
+      ? "spatial_fusion_motion"
+      : (tracker_primary_enabled ? presence_fusion.motion_reason : legacy_presence.motion_reason);
   if (legacy_presence_fallback_enabled) {
     id(diag_still_confidence) = legacy_presence.still_confidence;
     id(diag_still_anchor_valid) = legacy_presence.still_anchor_valid;
@@ -622,6 +510,18 @@
   state_json_input.target_count = tracker_primary_enabled ? state_target_count_effective : id(cnt_stable_total);
   state_json_input.moving_target_count = state_moving_target_count_effective;
   state_json_input.still_target_count = state_still_target_count_effective;
+  state_json_input.fusion_build_enabled = production_fusion.build_enabled;
+  state_json_input.fusion_authoritative = production_fusion.authoritative;
+  state_json_input.fusion_state =
+    esphome::radar_api_server::spatial_production_fusion_state_to_string(production_fusion.state);
+  state_json_input.local_presence =
+    tracker_primary_enabled ? presence_fusion.presence : legacy_presence.presence;
+  state_json_input.local_motion =
+    tracker_primary_enabled ? presence_fusion.motion : legacy_presence.motion;
+  state_json_input.local_target_count =
+    tracker_primary_enabled
+      ? (tracker_primary_available ? tracker_stable_track_count : 0)
+      : state_target_count;
   state_json_input.temperature_c = id(temperature_corrected).state;
   state_json_input.humidity_percent = id(humidity_corrected).state;
   state_json_input.illuminance_lux = id(illuminance_lux).state;
@@ -659,9 +559,27 @@
   state_json_input.static_assist_exit_veto = presence_fusion.static_assist_exit_veto;
   state_json_input.static_assist_arm_elapsed_ms = presence_fusion.static_assist_arm_elapsed_ms;
   state_json_input.static_assist_held_target = presence_fusion.static_assist_held_target;
+  state_json_input.local_targets[0] = {
+    tracker_primary_enabled ? tracker_output.tracks[0].x_mm : id(target_1_x_raw).state,
+    tracker_primary_enabled ? tracker_output.tracks[0].y_mm : id(target_1_y_raw).state,
+    tracker_primary_enabled ? (tracker_primary_available && tracker_output.tracks[0].valid) : target1_valid};
+  state_json_input.local_targets[1] = {
+    tracker_primary_enabled ? tracker_output.tracks[1].x_mm : id(target_2_x_raw).state,
+    tracker_primary_enabled ? tracker_output.tracks[1].y_mm : id(target_2_y_raw).state,
+    tracker_primary_enabled ? (tracker_primary_available && tracker_output.tracks[1].valid) : target2_valid};
+  state_json_input.local_targets[2] = {
+    tracker_primary_enabled ? tracker_output.tracks[2].x_mm : id(target_3_x_raw).state,
+    tracker_primary_enabled ? tracker_output.tracks[2].y_mm : id(target_3_y_raw).state,
+    tracker_primary_enabled ? (tracker_primary_available && tracker_output.tracks[2].valid) : target3_valid};
   state_json_input.targets[0] = {"target_1", "T1", "#ff6b7a", effective_target1_x, effective_target1_y, effective_target1_valid};
   state_json_input.targets[1] = {"target_2", "T2", "#ffd166", effective_target2_x, effective_target2_y, effective_target2_valid};
   state_json_input.targets[2] = {"target_3", "T3", "#06d6a0", effective_target3_x, effective_target3_y, effective_target3_valid};
+  if (production_fusion.authoritative) {
+    for (size_t index = 0; index < 3; index++) {
+      state_json_input.targets[index].source_count = production_fusion.targets[index].source_count;
+      state_json_input.targets[index].fused = production_fusion.targets[index].source_count >= 2;
+    }
+  }
   id(radar_api).update_device_state_json(state_json_input);
   id(radar_api).update_diagnostic_snapshot(
     id(state_presence_stable), id(state_motion_stable), id(pir_motion).state,
@@ -780,7 +698,9 @@
   // === 섹션 6: target 1/2/3 방향 상태 머신 ===
   // 타깃 수를 안정화하고 각 타깃의 접근/멀어짐/정지 방향 상태를 히스테리시스로 확정한다.
   // 저속은 정지로 간주하고, 타깃이 사라진 뒤에는 timeout 이후 방향 상태를 정지로 되돌린다.
-  const bool has_target = id(ld2450_has_target).state;
+  const bool has_target = production_fusion.authoritative
+    ? state_target_count_effective > 0
+    : id(ld2450_has_target).state;
   bool target_valid = false;
   
   // Clear counts immediately when the radar has no target.
@@ -789,9 +709,13 @@
     id(cnt_last_nonzero_ms) = 0;
   } else {
     int raw_total = 0;
-    if (target1_valid) raw_total++;
-    if (target2_valid) raw_total++;
-    if (target3_valid) raw_total++;
+    if (production_fusion.authoritative) {
+      raw_total = state_target_count_effective;
+    } else {
+      if (target1_valid) raw_total++;
+      if (target2_valid) raw_total++;
+      if (target3_valid) raw_total++;
+    }
     target_valid = raw_total > 0;
   
     // Stable target count: clamp to 0..3 and delay only zero transition.
@@ -961,33 +885,33 @@
     humidity_offset_call.perform();
   }
 
-  bool requested_static_radar_tuning_active = false;
-  if (id(radar_api).take_static_radar_tuning_session_request(now, &requested_static_radar_tuning_active)) {
-    if (requested_static_radar_tuning_active && static_radar.available) {
-      id(ld2410_engineering_mode).turn_on();
-      id(ld2410_query_params).press();
-    } else {
-      id(ld2410_engineering_mode).turn_off();
-    }
-  }
-
+  const std::array<esphome::number::Number *, 9> move_threshold_numbers = {
+      id(ld2410_g0_move_threshold), id(ld2410_g1_move_threshold), id(ld2410_g2_move_threshold),
+      id(ld2410_g3_move_threshold), id(ld2410_g4_move_threshold), id(ld2410_g5_move_threshold),
+      id(ld2410_g6_move_threshold), id(ld2410_g7_move_threshold), id(ld2410_g8_move_threshold)};
+  const std::array<esphome::number::Number *, 9> still_threshold_numbers = {
+      id(ld2410_g0_still_threshold), id(ld2410_g1_still_threshold), id(ld2410_g2_still_threshold),
+      id(ld2410_g3_still_threshold), id(ld2410_g4_still_threshold), id(ld2410_g5_still_threshold),
+      id(ld2410_g6_still_threshold), id(ld2410_g7_still_threshold), id(ld2410_g8_still_threshold)};
   uint8_t requested_static_radar_gate = 0;
   uint8_t requested_static_radar_sensitivity = 0;
   if (id(radar_api).take_static_radar_gate_request(
           &requested_static_radar_gate, &requested_static_radar_sensitivity)) {
-    std::array<esphome::number::Number *, 9> move_threshold_numbers = {
-        id(ld2410_g0_move_threshold), id(ld2410_g1_move_threshold), id(ld2410_g2_move_threshold),
-        id(ld2410_g3_move_threshold), id(ld2410_g4_move_threshold), id(ld2410_g5_move_threshold),
-        id(ld2410_g6_move_threshold), id(ld2410_g7_move_threshold), id(ld2410_g8_move_threshold)};
-    std::array<esphome::number::Number *, 9> still_threshold_numbers = {
-        id(ld2410_g0_still_threshold), id(ld2410_g1_still_threshold), id(ld2410_g2_still_threshold),
-        id(ld2410_g3_still_threshold), id(ld2410_g4_still_threshold), id(ld2410_g5_still_threshold),
-        id(ld2410_g6_still_threshold), id(ld2410_g7_still_threshold), id(ld2410_g8_still_threshold)};
-    const float threshold = 100.0f - requested_static_radar_sensitivity;
-    move_threshold_numbers[requested_static_radar_gate]->publish_state(threshold);
-    auto threshold_call = still_threshold_numbers[requested_static_radar_gate]->make_call();
-    threshold_call.set_value(threshold);
-    threshold_call.perform();
+    move_threshold_numbers[requested_static_radar_gate]->publish_state(NAN);
+    still_threshold_numbers[requested_static_radar_gate]->publish_state(NAN);
+    id(radar_api).request_static_radar_gate_write(
+        requested_static_radar_gate, requested_static_radar_sensitivity, now);
+  }
+
+  uint8_t static_radar_verify_gate = 0;
+  if (id(radar_api).static_radar_gate_verification_pending(&static_radar_verify_gate)) {
+    auto *move_threshold = move_threshold_numbers[static_radar_verify_gate];
+    auto *still_threshold = still_threshold_numbers[static_radar_verify_gate];
+    const float move_value =
+        move_threshold->has_state() && !isnan(move_threshold->state) ? move_threshold->state : NAN;
+    const float still_value =
+        still_threshold->has_state() && !isnan(still_threshold->state) ? still_threshold->state : NAN;
+    id(radar_api).verify_static_radar_gate_readback(now, move_value, still_value);
   }
 
   std::array<float, 9> static_move_energy{};
@@ -996,7 +920,9 @@
   std::array<float, 9> static_still_threshold{};
   static_move_threshold.fill(100.0f);
   static_still_threshold.fill(100.0f);
-  if (id(ld2410_engineering_mode).state) {
+  const bool static_radar_engineering_mode =
+      id(radar_api).ld2410_engineering_mode_active(now);
+  if (static_radar_engineering_mode) {
     const auto sensor_value = [](auto *entity) -> float {
       return entity != nullptr && entity->has_state() && !isnan(entity->state) ? entity->state : 0.0f;
     };
@@ -1029,7 +955,7 @@
         threshold_value(id(ld2410_g8_still_threshold))};
   }
   id(radar_api).update_static_radar_tuning_status(
-      static_radar.available, id(ld2410_engineering_mode).state, 750,
+      static_radar.available, static_radar_engineering_mode, 750,
       static_move_energy, static_still_energy, static_move_threshold, static_still_threshold);
 
   id(radar_api).update_control_status(

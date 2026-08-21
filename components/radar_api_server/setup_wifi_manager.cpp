@@ -597,7 +597,7 @@ void RadarApiServer::reboot_after(uint32_t delay_ms) {
   this->set_timeout("system_reset_reboot", delay_ms, []() { App.safe_reboot(); });
 }
 
-void RadarApiServer::handoff_wifi_to_esphome_after(uint32_t delay_ms) {
+void RadarApiServer::complete_setup_handoff_after(uint32_t delay_ms) {
   if (this->ha_setup_handoff_started_) {
     ESP_LOGI("radar_api_server", "ha_setup: handoff already started");
     return;
@@ -622,10 +622,14 @@ void RadarApiServer::handoff_wifi_to_esphome_after(uint32_t delay_ms) {
     }
     const std::string ssid(reinterpret_cast<const char *>(config.sta.ssid), ssid_len);
     const std::string password(reinterpret_cast<const char *>(config.sta.password), password_len);
-    // Handoff intentionally restarts ESPHome Wi-Fi ownership after provisioning.
-    ESP_LOGI("radar_api_server", "ha_setup: handoff WiFi to ESPHome ssid='%s' password_len=%u", ssid.c_str(),
-             static_cast<unsigned>(password_len));
+    // The setup connection is owned directly by ESP-IDF so the AP remains
+    // available while credentials are verified. Persist the same credentials,
+    // then reboot so ESPHome owns the runtime STA from the beginning.
+    ESP_LOGI("radar_api_server",
+             "ha_setup: persist verified WiFi and reboot into ESPHome ownership ssid='%s' password_len=%u",
+             ssid.c_str(), static_cast<unsigned>(password_len));
     wifi::global_wifi_component->save_wifi_sta(ssid.c_str(), password.c_str());
+    App.safe_reboot();
 #endif
   });
 }

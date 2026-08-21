@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RoomCandidate } from "../../core/floorplan/floorplan-types";
 import type { WebDeviceConfig } from "../../core/types";
+import type { FloorplanOcclusionSegment } from "../floorplan/floorplan-occlusion";
 import { createFloorplanRadarPlacementSession } from "./useFloorplanRadarPlacementSession.svelte";
 
 function roomFixture(overrides: Partial<RoomCandidate> = {}): RoomCandidate {
@@ -21,6 +22,7 @@ function roomFixture(overrides: Partial<RoomCandidate> = {}): RoomCandidate {
 function createSession(options: {
   config?: WebDeviceConfig | null;
   rooms?: RoomCandidate[];
+  physicalWalls?: FloorplanOcclusionSegment[];
   onUpdate?: (updater: (current: WebDeviceConfig) => WebDeviceConfig) => void;
 } = {}) {
   let config = options.config ?? null;
@@ -40,6 +42,7 @@ function createSession(options: {
     getOuterBounds: () => ({ x: 10, y: 20, width: 200, height: 120 }),
     getImageSize: () => ({ width: 300, height: 200 }),
     getConfirmedRoomCandidates: () => options.rooms ?? [roomFixture()],
+    getPhysicalWallSegments: () => options.physicalWalls ?? [],
     onUpdateDeviceConfig: onUpdate
   });
   return {
@@ -103,6 +106,8 @@ describe("floorplan radar placement session", () => {
       enabled: true,
       hasImage: true,
       scaleMmPerPx: 20,
+      scaleMmPerPxX: 20,
+      scaleMmPerPxY: 20,
       radar: {
         originX: 12.35,
         originY: 67.89,
@@ -140,5 +145,41 @@ describe("floorplan radar placement session", () => {
     const { session } = createSession();
 
     expect(session.visibleRoomWallSegmentsForPlacement({ originX: 999, originY: 999, rotation: 0 }, "room")).toEqual([]);
+  });
+
+  it("uses physical walls instead of logical room boundaries when available", () => {
+    const physicalWall: FloorplanOcclusionSegment = {
+      id: "physical-1",
+      occlusionKey: "wall:50,0-50,100",
+      axis: "vertical",
+      x1: 50,
+      y1: 0,
+      x2: 50,
+      y2: 100
+    };
+    const { session } = createSession({ physicalWalls: [physicalWall] });
+
+    expect(session.boundarySegments()).toEqual([physicalWall]);
+    expect(session.visibleRoomWallSegmentsForPlacement({ originX: 999, originY: 999, rotation: 0 }, "room"))
+      .toEqual([physicalWall]);
+  });
+
+  it("resets all occlusion exceptions through the same config path", () => {
+    const harness = createSession({
+      config: {
+        version: 1,
+        zones: [],
+        floorplan: {
+          enabled: true,
+          hasImage: true,
+          radarOcclusionIgnoredEdges: ["wall:a"]
+        }
+      }
+    });
+    harness.session.initialize();
+
+    harness.session.resetOcclusionEdges();
+
+    expect(harness.config?.floorplan?.radarOcclusionIgnoredEdges).toEqual([]);
   });
 });

@@ -2,7 +2,6 @@ import type {
   FloorplanStorageDocument,
   FloorplanStorageObject,
   FloorplanStorageOcclusion,
-  FloorplanStorageRadar,
   FloorplanStorageRoom,
   FloorplanStorageScale
 } from "../../core/floorplan/floorplan-storage";
@@ -15,7 +14,6 @@ import {
 import {
   saveFloorplanObjectsPatch,
   saveFloorplanOcclusionPatch,
-  saveFloorplanRadarPatch,
   saveFloorplanRoomNamePatch,
   saveFloorplanStorageDocument,
   type FloorplanStorageClientOptions
@@ -58,11 +56,12 @@ interface StoredFloorplanSaveSessionOptions {
   getClientOptions: () => FloorplanStorageClientOptions;
   updateDeviceConfig?: UpdateDeviceConfig;
   saveDeviceConfig?: () => Promise<void>;
+  beforeSharedSave?: () => Promise<void>;
+  publishSharedFloorplan?: (document: FloorplanStorageDocument) => Promise<void>;
   errorMessage: (error: unknown) => string;
   touchTolerancePx: number;
   runStorageTask?: <T>(task: () => Promise<T>) => Promise<T>;
   saveDocument?: (document: FloorplanStorageDocument, options: FloorplanStorageClientOptions) => Promise<void>;
-  saveRadar?: (radar: FloorplanStorageRadar, options: FloorplanStorageClientOptions) => Promise<void>;
   saveRoomName?: (roomId: string, name: string, options: FloorplanStorageClientOptions) => Promise<void>;
   saveOcclusion?: (occlusion: FloorplanStorageOcclusion, options: FloorplanStorageClientOptions) => Promise<void>;
   saveObjects?: (objects: FloorplanStorageObject[], options: FloorplanStorageClientOptions) => Promise<void>;
@@ -81,11 +80,12 @@ export function createStoredFloorplanSaveSession({
   getClientOptions,
   updateDeviceConfig,
   saveDeviceConfig,
+  beforeSharedSave,
+  publishSharedFloorplan,
   errorMessage,
   touchTolerancePx,
   runStorageTask = (task) => deviceStorageQueue.run("floorplan", task),
   saveDocument = saveFloorplanStorageDocument,
-  saveRadar = saveFloorplanRadarPatch,
   saveRoomName = saveFloorplanRoomNamePatch,
   saveOcclusion = saveFloorplanOcclusionPatch,
   saveObjects = saveFloorplanObjectsPatch
@@ -131,20 +131,23 @@ export function createStoredFloorplanSaveSession({
     edit.saveTone = "saving";
     edit.saveStatus = getText().storedSaveInProgress;
     try {
+      const scopes = saveScopes(edit);
+      const sharedSave = hasSharedFloorplanChanges(scopes);
+      if (sharedSave) await beforeSharedSave?.();
       const clientOptions = getClientOptions();
-      await saveStoredFloorplanWithConfig({
+      const savedDocument = await saveStoredFloorplanWithConfig({
         document,
-        saveScopes: saveScopes(edit),
+        saveScopes: scopes,
         roomNamePatches: edit.roomNamePatches,
         saveDocument: (nextDocument) => runStorageTask(() => saveDocument(nextDocument, clientOptions)),
-        saveRadar: (radar) => runStorageTask(() => saveRadar(radar, clientOptions)),
         saveRoomName: (roomId, name) => runStorageTask(() => saveRoomName(roomId, name, clientOptions)),
         saveOcclusion: (occlusion) => runStorageTask(() => saveOcclusion(occlusion, clientOptions)),
         saveObjects: (objects) => runStorageTask(() => saveObjects(objects, clientOptions)),
         updateDeviceConfig: updateDeviceConfig ?? noopUpdateDeviceConfig,
         saveDeviceConfig: saveDeviceConfig ?? noopSaveDeviceConfig
       });
-      setDocument(document);
+      if (sharedSave) await publishSharedFloorplan?.(savedDocument);
+      setDocument(savedDocument);
       edit.clearDirty();
       edit.saveTone = "ok";
       edit.saveStatus = getText().storedSaveDone;
@@ -164,15 +167,21 @@ export function createStoredFloorplanSaveSession({
   };
 }
 
+export function hasSharedFloorplanChanges(scopes: StoredFloorplanSaveScopes): boolean {
+  return Boolean(scopes.document || scopes.roomName || scopes.occlusion || scopes.objects || scopes.automationAreas);
+}
+
 function saveScopes(edit: StoredFloorplanSaveEditSession): StoredFloorplanSaveScopes {
   return {
     document: edit.isDirty("document"),
+    coordinateFrame: edit.isDirty("coordinateFrame"),
     config: edit.isDirty("config"),
     roomContext: edit.isDirty("roomContext"),
     radar: edit.isDirty("radar"),
     roomName: edit.isDirty("roomName"),
     occlusion: edit.isDirty("occlusion"),
-    objects: edit.isDirty("objects")
+    objects: edit.isDirty("objects"),
+    automationAreas: edit.isDirty("automationAreas")
   };
 }
 

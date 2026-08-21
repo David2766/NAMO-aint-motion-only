@@ -7,7 +7,8 @@
   import { FLOORPLAN_FURNITURE_ASSETS } from "../floorplan/furniture-assets";
   import {
     sanitizeStoredFloorplanDocument,
-    storedRoomToCandidate
+    storedRoomToCandidate,
+    withLocalFloorplanRadarPlacement
   } from "../floorplan/stored-floorplan-document";
   import { createRoomCandidateState } from "../state/useRoomCandidates.svelte";
   import { createStoredFloorplanScaleEditor } from "../state/useStoredFloorplanScaleEditor.svelte";
@@ -25,6 +26,18 @@
   import { createFloorplanWizardNavigation } from "../state/useFloorplanWizardNavigation.svelte";
   import { createFloorplanOcrSession } from "../state/useFloorplanOcrSession.svelte";
   import { createFloorplanImageSession } from "../state/useFloorplanImageSession.svelte";
+  import { createManualFloorplanSession } from "../state/useManualFloorplanSession.svelte";
+  import {
+    addManualDoorExitZones,
+    synchronizeManualDoorExitZones
+  } from "../floorplan/manual-floorplan-exit-zones";
+  import {
+    buildManualPhysicalWallSegments,
+    ensureStoredPhysicalWalls,
+    occlusionSegmentsFromWalls,
+    physicalWallOcclusionSegments
+  } from "../floorplan/floorplan-physical-walls";
+  import { nextIgnoredOcclusionEdges } from "../floorplan/floorplan-occlusion";
   import { createFloorplanWallAnalysisSession } from "../state/useFloorplanWallAnalysisSession.svelte";
   import { createRoomCandidateEditSession } from "../state/useRoomCandidateEditSession.svelte";
   import { createRoomCandidateMapTools } from "../state/useRoomCandidateMapTools.svelte";
@@ -32,6 +45,12 @@
   import { createFloorplanRadarPlacementSession } from "../state/useFloorplanRadarPlacementSession.svelte";
   import { createStoredFloorplanSaveSession } from "../state/useStoredFloorplanSaveSession.svelte";
   import { createStoredFloorplanWorkspaceSession } from "../state/useStoredFloorplanWorkspaceSession.svelte";
+  import { createStoredFloorplanDoorEditor } from "../state/useStoredFloorplanDoorEditor.svelte";
+  import { platformFloorplanTargets, platformPeerRadarMarkers } from "../platform-radar-display";
+  import {
+    canonicalLocalRadarPlacement,
+    floorplanMutationDecision
+  } from "../floorplan/floorplan-replacement";
 
   const MAX_CANDIDATE_HISTORY = 40;
   const OUTER_BOUNDS_TOUCH_TOLERANCE_PX = 8;
@@ -40,14 +59,22 @@
     messages,
     deviceConfig = null,
     deviceState = null,
+    localNodeId,
+    siteConfiguration = null,
     floorplanStorageBaseUrl = "",
     floorplanStorageFetcher,
     onUpdateDeviceConfig,
     onSelectDeviceZone,
     onSaveDeviceConfig,
     onSaveFloorplan,
+    onBeforeSharedFloorplanSave,
+    onPublishSharedFloorplan,
     onFloorplanDeleted,
-    onUnsavedChange
+    onFloorplanOwnerRequired,
+    onFloorplanDeleteBlocked,
+    onUnsavedChange,
+    canUseDetectionType = true,
+    onDetectionOwnerRequired
   } = $props();
 
   const panelText = $derived(messages.floorplan.panel);
@@ -67,12 +94,16 @@
   let floorplanSaveStatus = $state("");
   let floorplanSaveTone = $state("idle");
   let showWallMaskOverlay = $state(false);
+  let replacingFloorplan = $state(false);
 
   // === Section: Stored floorplan state ===
   let storedFloorplanMode = $state("view");
   let storedFloorplanDocument = $state(null);
   let storedFloorplanEditTool = $state("rooms");
   let showStoredRadarOverlay = $state(true);
+  let storedOcclusionEditActive = $state(false);
+  let storedSavedDoors = $state([]);
+  let storedSavedDoorDocument = $state(null);
   const floorplanStorageStatus = useDeviceStorageStatus("floorplan", () => messages.common.saveStatus);
 
   const floorplanImage = createFloorplanImageSession({
@@ -89,6 +120,7 @@
     getImageSize: () => floorplanImage.debugInfo
   });
   const wizardNavigation = createFloorplanWizardNavigation();
+  const manualFloorplan = createManualFloorplanSession();
   const roomCandidates = createRoomCandidateState();
   let roomCandidateMapTools;
   const roomCandidateEdit = createRoomCandidateEditSession({
@@ -103,7 +135,12 @@
     setManualRoomDraftHover: (hover) => {
       roomCandidateMapTools?.setManualRoomDraftHover(hover);
     },
-    snapPoint: (point) => roomCandidateMapTools?.snapManualPoint(point) ?? point,
+    snapPoint: (point, points, index) => manualFloorplan.active
+      ? manualFloorplan.snapEditPoint(points, index, point)
+      : roomCandidateMapTools?.snapManualPoint(point) ?? point,
+    snapInsertedPoint: (point, points, index) => manualFloorplan.active
+      ? manualFloorplan.snapEditPoint(points, index, point)
+      : point,
     markStoredRoomsChanged,
     markStoredRoomNameChanged: (id, name) => {
       if (storedRoomsEditActive()) storedEdit.markRoomNameChanged(id, name);
@@ -122,10 +159,37 @@
     roomCandidateEdit,
     getImageSize: () => floorplanImage.debugInfo,
     getWallSegments: () => floorplanWallCandidateSegments(),
-    getText: () => panelText
+    getText: () => panelText,
+    getManualPointTransform: () => manualFloorplan.active ? manualFloorplan.transformDraftPoint : null,
+    getManualPointValidator: () => manualFloorplan.active ? manualFloorplan.draftPointAllowed : null,
+    getManualDraftValidator: () => manualFloorplan.active ? manualFloorplan.draftValid : null,
+    getManualDraftText: () => {
+      if (!manualFloorplan.active) return null;
+      return manualFloorplan.phase === "outline"
+        ? {
+            title: panelText.manualOutlineTitle,
+            needPoints: panelText.manualOutlineNeedPoints,
+            ready: panelText.manualOutlineReady,
+            invalid: panelText.manualOutlineInvalid
+          }
+        : {
+            title: panelText.toolTitleManualRoom,
+            needPoints: panelText.manualNeedPoints,
+            ready: panelText.manualReady,
+            invalid: panelText.manualRoomInvalid
+          };
+    },
+    onManualRoomFinished: (candidate) => {
+      if (!manualFloorplan.active || !manualFloorplan.captureOutline(candidate)) return true;
+      syncManualFloorplanScale();
+      return false;
+    }
   });
   const roomScale = createFloorplanRoomScaleSession({
     getRoomCandidates: visibleRoomCandidates,
+    getOuterBounds: () => manualFloorplan.active
+      ? manualFloorplanBoundsForScale()
+      : null,
     getText: () => panelText,
     outerBoundsTouchTolerancePx: OUTER_BOUNDS_TOUCH_TOLERANCE_PX
   });
@@ -135,6 +199,7 @@
     getOuterBounds: roomScale.outerBounds,
     getImageSize: () => floorplanImage.debugInfo,
     getConfirmedRoomCandidates: confirmedRoomCandidates,
+    getPhysicalWallSegments: () => occlusionSegmentsFromWalls(draftPhysicalWallSegments()),
     onUpdateDeviceConfig: (updater) => onUpdateDeviceConfig?.(updater)
   });
   const floorplanOcr = createFloorplanOcrSession({
@@ -174,6 +239,7 @@
   });
   let storedEdit;
   let storedFurniture;
+  let storedDoors;
   const storedSave = createStoredFloorplanSaveSession({
     getDocument: () => storedFloorplanDocument,
     setDocument: (document) => {
@@ -181,7 +247,7 @@
     },
     getVisibleRoomCandidates: visibleRoomCandidates,
     getObjects: () => storedFurniture?.objects() ?? [],
-    getWallSegments: floorplanWallCandidateSegments,
+    getWallSegments: () => wallSegments,
     getEditSession: () => storedEdit,
     getText: () => panelText,
     isScaleInputValid: () => storedFloorplanScaleInputValid(),
@@ -189,6 +255,8 @@
     getClientOptions: () => ({ baseUrl: floorplanStorageBaseUrl, fetcher: floorplanStorageFetcher }),
     updateDeviceConfig: (updater) => onUpdateDeviceConfig?.(updater),
     saveDeviceConfig: () => onSaveDeviceConfig?.() ?? Promise.resolve(),
+    beforeSharedSave: () => onBeforeSharedFloorplanSave?.() ?? Promise.resolve(),
+    publishSharedFloorplan: (document) => onPublishSharedFloorplan?.(document) ?? Promise.resolve(),
     errorMessage: (error) => apiErrorMessage(messages, error),
     touchTolerancePx: OUTER_BOUNDS_TOUCH_TOLERANCE_PX
   });
@@ -197,8 +265,7 @@
     getVisibleRoomCandidates: visibleRoomCandidates,
     getSelectedRoomId: () => roomCandidates.selectedCandidateId,
     getRadarPlacement: () => storedRadarPlacement.placement(),
-    getRoomWallSegments: (placement, segmentPrefix) =>
-      floorplanRadar.visibleRoomWallSegmentsForPlacement(placement, segmentPrefix)
+    getRoomWallSegments: () => physicalWallOcclusionSegments(storedFloorplanDocument)
   });
   const storedFloorplanScale = createStoredFloorplanScaleEditor({
     getDocument: () => storedFloorplanDocument,
@@ -207,7 +274,7 @@
     },
     buildRooms: (scale) => storedSave.currentRooms(scale),
     markDirty: () => {
-      storedEdit.markChanged("", ["document", "roomContext"]);
+      storedEdit.markChanged("", ["document", "coordinateFrame", "roomContext"]);
     },
     setSaveStatus: (message, tone) => {
       storedEdit.setSaveStatus(message, tone);
@@ -232,6 +299,13 @@
       showStoredRadarOverlay = visible;
     }
   });
+  storedDoors = createStoredFloorplanDoorEditor({
+    getDocument: () => storedFloorplanDocument,
+    setDocument: (document) => {
+      storedFloorplanDocument = document;
+    },
+    getEditSession: () => storedEdit
+  });
   const storedRadarZones = createStoredRadarZoneEditor({
     getConfig: () => deviceConfig,
     updateConfig: (...args) => onUpdateDeviceConfig?.(...args),
@@ -246,7 +320,9 @@
     editSession: storedEdit,
     onSelectDeviceZone: (...args) => onSelectDeviceZone?.(...args),
     getMessages: () => messages,
-    getText: () => panelText
+    getText: () => panelText,
+    canUseDetectionType: () => canUseDetectionType,
+    onDetectionOwnerRequired: () => onDetectionOwnerRequired?.()
   });
   storedFurniture = createStoredFurnitureEditor({
     getDocument: () => storedFloorplanDocument,
@@ -274,13 +350,122 @@
   });
   // === Section: Image preparation and validation ===
   async function handleFileChange(event) {
+    manualFloorplan.reset();
     await floorplanImage.handleFileChange(event);
+  }
+
+  async function startManualFloorplan() {
+    if (floorplanImage.busy) return;
+    floorplanImage.clear();
+    resetNewFloorplanStateAfterImageClear();
+    manualFloorplan.start();
+    try {
+      const blob = await manualFloorplan.render([], false);
+      floorplanImage.setGeneratedCandidate({
+        blob,
+        name: panelText.manualFloorplanName,
+        width: manualFloorplan.width,
+        height: manualFloorplan.height
+      });
+      wallAnalysis.markReady();
+      wizardNavigation.replace("rooms", "forward", roomCandidateMapTools.startManualRoomDraft);
+    } catch (error) {
+      manualFloorplan.reset();
+      floorplanSaveTone = "error";
+      floorplanSaveStatus = fallbackErrorMessage(error);
+    }
+  }
+
+  function zoomFloorplan(direction) {
+    if (manualFloorplan.scaleAdjustable) {
+      manualFloorplan.zoomScale(direction);
+      return;
+    }
+    floorplanViewport.zoom(direction);
+  }
+
+  function resetFloorplanZoom() {
+    if (manualFloorplan.scaleAdjustable) {
+      manualFloorplan.setScalePercent(100);
+      return;
+    }
+    floorplanViewport.reset();
+  }
+
+  let manualScaleWheelReadyAt = 0;
+
+  function handleFloorplanWheel(event) {
+    if (manualFloorplan.scaleAdjustable) {
+      event.preventDefault();
+      const now = performance.now();
+      if (now < manualScaleWheelReadyAt) return;
+      manualScaleWheelReadyAt = now + 160;
+      manualFloorplan.zoomScale(event.deltaY < 0 ? 1 : -1);
+      return;
+    }
+    floorplanViewport.handleWheel(event);
+  }
+
+  function startManualOutlineDraft() {
+    if (!manualFloorplan.active || manualFloorplan.phase !== "outline") return;
+    roomCandidateMapTools.startManualRoomDraft();
+  }
+
+  function beginManualOutlineEdit() {
+    if (roomCandidateMapTools.isActive() || manualFloorplan.doorPlacementActive) return;
+    roomCandidates.select("");
+    manualFloorplan.beginOutlineEdit();
+  }
+
+  function startManualDoorPlacement() {
+    if (!manualFloorplan.active || roomCandidateMapTools.isActive() || manualFloorplan.outlineEditing) return;
+    roomCandidates.select("");
+    manualFloorplan.startDoorPlacement();
+  }
+
+  function placeManualDoor(point) {
+    manualFloorplan.placeDoor(point, visibleRoomCandidates());
+  }
+
+  function finishManualOutlineEdit() {
+    if (!manualFloorplan.finishOutlineEdit(visibleRoomCandidates())) return;
+    syncManualFloorplanScale();
+  }
+
+  function cancelManualOutlineEdit() {
+    manualFloorplan.cancelOutlineEdit();
+    syncManualFloorplanScale();
+  }
+
+  function finishFloorplanMapTool() {
+    if (manualFloorplan.outlineEditing) {
+      finishManualOutlineEdit();
+      return;
+    }
+    if (manualFloorplan.doorPlacementActive) {
+      manualFloorplan.finishDoorPlacement();
+      return;
+    }
+    roomCandidateMapTools.finishActiveMapTool();
+  }
+
+  function cancelFloorplanMapTool() {
+    if (manualFloorplan.outlineEditing) {
+      cancelManualOutlineEdit();
+      return;
+    }
+    if (manualFloorplan.doorPlacementActive) {
+      manualFloorplan.cancelDoorPlacement();
+      return;
+    }
+    roomCandidateMapTools.cancelActiveMapTool();
   }
 
   // === Section: Wizard reset and room detection ===
   function clearImage() {
     floorplanImage.clear();
     resetNewFloorplanStateAfterImageClear();
+    manualFloorplan.reset();
   }
 
   function resetNewFloorplanStateAfterImageClear() {
@@ -334,6 +519,9 @@
   }
 
   function goToRadarStep() {
+    if (manualFloorplan.active && manualFloorplan.outlinePoints.length < 3) return;
+    if (manualFloorplan.active && visibleRoomCandidates().length < 1) return;
+    if (manualFloorplan.active && !manualFloorplan.roomsValid(visibleRoomCandidates())) return;
     if (!roomScale.canCalculate()) return;
     roomScale.calculate({ keepError: true });
     floorplanRadar.initialize();
@@ -352,10 +540,16 @@
   }
 
   function workflowTitle() {
+    if (manualFloorplan.active && wizardNavigation.step === "rooms") {
+      return manualFloorplan.phase === "outline" ? panelText.manualOutlineTitle : panelText.manualRoomsTitle;
+    }
     return wizardNavigation.title(panelText);
   }
 
   function workflowDescription() {
+    if (manualFloorplan.active && wizardNavigation.step === "rooms") {
+      return manualFloorplan.phase === "outline" ? panelText.manualOutlineHint : panelText.manualRoomsHint;
+    }
     return wizardNavigation.description(panelText);
   }
 
@@ -368,8 +562,28 @@
     return roomCandidates.candidates.filter((candidate) => candidate.status === "confirmed");
   }
 
+  function manualFloorplanBoundsForScale() {
+    if (!manualFloorplan.active) return null;
+    const bounds = manualFloorplan.scaleInput()?.bounds;
+    return bounds ? { ...bounds } : null;
+  }
+
+  function syncManualFloorplanScale() {
+    const scale = manualFloorplan.scaleInput();
+    if (!scale) return;
+    roomScale.updateTotalSize("width", String(scale.widthMm));
+    roomScale.updateTotalSize("height", String(scale.heightMm));
+  }
+
   function floorplanWallCandidateSegments() {
     return snapSegments.length ? snapSegments : wallSegments;
+  }
+
+  function draftPhysicalWallSegments() {
+    if (manualFloorplan.active) {
+      return buildManualPhysicalWallSegments(manualFloorplan.outlinePoints, visibleRoomCandidates());
+    }
+    return floorplanWallCandidateSegments();
   }
 
   function floorplanStorageSaveBusy(localBusy) {
@@ -385,7 +599,7 @@
   }
 
   // === Section: Floorplan save path ===
-  function floorplanStorageDocument() {
+  function floorplanStorageDocument(imageBlob = floorplanImage.imageBlob) {
     const scale = roomScale.scaleEstimate();
     const width = floorplanImage.debugInfo?.width;
     const height = floorplanImage.debugInfo?.height;
@@ -393,12 +607,14 @@
     const placement = floorplanRadar.placementOrDefault();
 
     return buildFloorplanStorageDocument({
+      source: manualFloorplan.active ? "manual" : "image",
+      outline: manualFloorplan.active ? manualFloorplan.outlinePoints : undefined,
       image: {
         width,
         height,
-        bytes: floorplanImage.imageBlob?.size,
+        bytes: imageBlob?.size,
         name: floorplanImage.imageName,
-        mime: floorplanImage.imageBlob?.type || "image/webp"
+        mime: imageBlob?.type || "image/webp"
       },
       scale,
       radar: {
@@ -408,7 +624,8 @@
         scale: floorplanRadar.scalePercent / 100
       },
       rooms: visibleRoomCandidates(),
-      wallSegments: floorplanWallCandidateSegments(),
+      wallSegments: draftPhysicalWallSegments(),
+      doors: manualFloorplan.active ? manualFloorplan.doors : undefined,
       roomMeasurements: roomScale.measurements,
       roomSizeEstimates: roomScale.storageEstimates(scale),
       ignoredOcclusionEdges: floorplanRadar.ignoredOcclusionEdges,
@@ -418,12 +635,6 @@
 
   async function saveFloorplanToDevice() {
     if (floorplanStorageSaveBusy(floorplanSaveBusy)) return;
-    const document = floorplanStorageDocument();
-    if (!document || !floorplanImage.imageBlob) {
-      floorplanSaveTone = "error";
-      floorplanSaveStatus = panelText.saveCannotBuild;
-      return;
-    }
     if (!onSaveFloorplan) {
       floorplanSaveTone = "error";
       floorplanSaveStatus = panelText.saveApiUnavailable;
@@ -433,8 +644,31 @@
     floorplanSaveTone = "saving";
     floorplanSaveStatus = panelText.saveInProgress;
     try {
-      await onSaveFloorplan(document, floorplanImage.imageBlob);
+      const imageBlob = manualFloorplan.active
+        ? await manualFloorplan.render(visibleRoomCandidates())
+        : floorplanImage.imageBlob;
+      const document = floorplanStorageDocument(imageBlob);
+      if (!document || !imageBlob) throw new Error(panelText.saveCannotBuild);
+      if (manualFloorplan.active && !deviceConfig) throw new Error(panelText.manualDoorExitSaveUnavailable);
+      const doorExitPreview = manualFloorplan.active
+        ? addManualDoorExitZones(deviceConfig, document, manualFloorplan.doors, messages.zones)
+        : null;
+      if (doorExitPreview?.reason === "zone_limit") {
+        throw new Error(panelText.manualDoorExitZoneLimit);
+      }
+      if (manualFloorplan.active && manualFloorplan.doors.length && (!onUpdateDeviceConfig || !onSaveDeviceConfig)) {
+        throw new Error(panelText.manualDoorExitSaveUnavailable);
+      }
+      await onSaveFloorplan(document, imageBlob);
+      if (doorExitPreview?.added) {
+        onUpdateDeviceConfig((current) =>
+          addManualDoorExitZones(current, document, manualFloorplan.doors, messages.zones).config
+        );
+        await onSaveDeviceConfig();
+      }
       await loadStoredFloorplan();
+      manualFloorplan.reset();
+      replacingFloorplan = false;
       storedFloorplanMode = "edit";
       storedFloorplanEditTool = "rooms";
       floorplanSaveTone = "ok";
@@ -517,7 +751,36 @@
     storedEdit.markChanged("", ["document", "roomContext"]);
   }
 
+  function toggleStoredOcclusionEdit() {
+    storedOcclusionEditActive = !storedOcclusionEditActive;
+  }
+
+  function updateStoredOcclusionEdges(nextEdges) {
+    if (!storedFloorplanDocument) return;
+    storedEdit.pushHistory();
+    storedFloorplanDocument = {
+      ...storedFloorplanDocument,
+      occlusion: { ignoredEdges: nextEdges }
+    };
+    storedEdit.markChanged("", ["occlusion"]);
+  }
+
+  function toggleStoredOcclusionEdge(segment) {
+    if (!storedFloorplanDocument) return;
+    updateStoredOcclusionEdges(nextIgnoredOcclusionEdges(
+      storedFloorplanDocument.occlusion?.ignoredEdges ?? [],
+      segment,
+      physicalWallOcclusionSegments(storedFloorplanDocument)
+    ));
+  }
+
+  function resetStoredOcclusionEdges() {
+    if (!storedFloorplanDocument?.occlusion?.ignoredEdges?.length) return;
+    updateStoredOcclusionEdges([]);
+  }
+
   function cleanupSelectedCandidate(saveHistory = true) {
+    if (manualFloorplan.active) return false;
     return roomCandidateEdit.cleanupSelected(saveHistory);
   }
 
@@ -553,7 +816,7 @@
   }
 
   function endCandidateVertexMove(id) {
-    roomCandidateEdit.endVertexMove(id);
+    roomCandidateEdit.endVertexMove(id, !manualFloorplan.active);
   }
 
   function renameRoomCandidate(id, name) {
@@ -570,7 +833,7 @@
 
   function shouldKeepFloorplanSelection(target) {
     return Boolean(target?.closest?.(
-      ".floorplan-middle-column, .floorplan-candidates, .floorplan-candidate-card, .floorplan-candidate-select, .floorplan-candidate-editor, .floorplan-edit-tool-card, .floorplan-split-card, .floorplan-manual-card, .floorplan-candidate-group, .floorplan-candidate-edit-edge, .floorplan-candidate-vertex, .floorplan-snap-edge, .floorplan-snap-wall, .floorplan-split-draft-hit, .floorplan-split-draft-point, .floorplan-manual-draft-hit, .floorplan-manual-draft-point"
+      ".floorplan-middle-column, .floorplan-candidates, .floorplan-candidate-card, .floorplan-candidate-select, .floorplan-candidate-editor, .floorplan-edit-tool-card, .floorplan-split-card, .floorplan-manual-card, .floorplan-candidate-group, .floorplan-candidate-edit-edge, .floorplan-candidate-vertex, .floorplan-snap-edge, .floorplan-snap-wall, .floorplan-split-draft-hit, .floorplan-split-draft-point, .floorplan-manual-draft-hit, .floorplan-manual-draft-point, .floorplan-door-card, .floorplan-manual-door"
     ));
   }
 
@@ -600,19 +863,30 @@
   function loadStoredFloorplanDocumentState(document) {
     if (!document) {
       storedFloorplanDocument = null;
+      storedSavedDoors = [];
+      storedSavedDoorDocument = null;
+      storedOcclusionEditActive = false;
       storedFloorplanScale.reset();
       roomCandidates.clear();
       wallSegments = [];
       snapSegments = [];
+      storedDoors?.reset();
       return;
     }
-    const sanitizedDocument = sanitizeStoredFloorplanDocument(document);
+    const sanitized = ensureStoredPhysicalWalls(sanitizeStoredFloorplanDocument(document));
+    const sanitizedDocument = withLocalFloorplanRadarPlacement(
+      sanitized,
+      canonicalLocalRadarPlacement(siteConfiguration, sanitized, localNodeId) ??
+        deviceConfig?.floorplan?.radar
+    );
     storedFloorplanDocument = sanitizedDocument;
+    storedOcclusionEditActive = false;
     storedFloorplanScale.loadFromScale(sanitizedDocument.scale);
     const candidates = sanitizedDocument.rooms.map(storedRoomToCandidate);
     roomCandidates.setCandidates(candidates);
     wallSegments = sanitizedDocument.wallSegments ?? [];
-    snapSegments = sanitizedDocument.wallSegments ?? [];
+    snapSegments = (sanitizedDocument.wallSegments ?? []).filter((segment) => segment.axis !== "diagonal");
+    storedDoors?.reset();
     floorplanImage.setDebugInfo({
       width: sanitizedDocument.image.width,
       height: sanitizedDocument.image.height,
@@ -624,6 +898,8 @@
 
   function applyLoadedStoredFloorplan(document, image, _imageUrl) {
     loadStoredFloorplanDocumentState(document);
+    storedSavedDoors = cloneFloorplanDoors(storedFloorplanDocument?.doors ?? []);
+    storedSavedDoorDocument = cloneFloorplanDocument(storedFloorplanDocument);
     storedEdit.resetAfterLoad();
     floorplanImage.setDebugInfo({
       ...(floorplanImage.debugInfo ?? { width: document.image.width, height: document.image.height }),
@@ -631,8 +907,68 @@
     });
   }
 
+  async function saveStoredFloorplanEdits() {
+    const currentDoors = storedFloorplanDocument?.doors ?? [];
+    const doorsChanged = JSON.stringify(storedSavedDoors) !== JSON.stringify(currentDoors);
+    if (doorsChanged) {
+      if (!deviceConfig || !onUpdateDeviceConfig || !onSaveDeviceConfig || !storedFloorplanDocument || !storedSavedDoorDocument) {
+        storedEdit.setSaveStatus(panelText.manualDoorExitSaveUnavailable, "error");
+        return;
+      }
+      const synchronized = synchronizeManualDoorExitZones(
+        deviceConfig,
+        storedSavedDoorDocument,
+        storedFloorplanDocument,
+        storedSavedDoors,
+        currentDoors,
+        messages.zones
+      );
+      if (synchronized.reason === "zone_limit") {
+        storedEdit.setSaveStatus(panelText.manualDoorExitZoneLimit, "error");
+        return;
+      }
+      if (synchronized.config !== deviceConfig) {
+        onUpdateDeviceConfig(() => synchronized.config);
+        storedEdit.markChanged("", ["document", "config"]);
+      }
+    }
+    await storedSave.save();
+    if (storedEdit.saveTone === "ok") {
+      storedSavedDoors = cloneFloorplanDoors(storedFloorplanDocument?.doors ?? []);
+      storedSavedDoorDocument = cloneFloorplanDocument(storedFloorplanDocument);
+    }
+  }
+
   function requestStoredFloorplanDelete() {
+    const decision = floorplanMutationDecision(siteConfiguration, localNodeId, "delete");
+    if (decision === "owner_required") {
+      onFloorplanOwnerRequired?.();
+      return;
+    }
+    if (decision === "connected_delete_blocked") {
+      onFloorplanDeleteBlocked?.();
+      return;
+    }
     storedFloorplanStorage.requestDelete();
+  }
+
+  function requestFloorplanReplacement() {
+    if (
+      floorplanMutationDecision(siteConfiguration, localNodeId, "replace") ===
+      "owner_required"
+    ) {
+      onFloorplanOwnerRequired?.();
+      return;
+    }
+    resetNewFloorplanStateAfterImageClear();
+    manualFloorplan.reset();
+    replacingFloorplan = true;
+  }
+
+  function cancelFloorplanReplacement() {
+    if (floorplanSaveBusy) return;
+    clearImage();
+    replacingFloorplan = false;
   }
 
   function cancelStoredFloorplanDelete() {
@@ -645,6 +981,9 @@
 
   async function clearStoredFloorplanAfterDelete() {
     storedFloorplanDocument = null;
+    storedSavedDoors = [];
+    storedSavedDoorDocument = null;
+    storedDoors.reset();
     storedFloorplanMode = "view";
     storedFloorplanEditTool = "rooms";
     storedFloorplanScale.reset();
@@ -673,6 +1012,7 @@
   function hasUnsavedFloorplanChanges() {
     if (storedFloorplanStorage.detected) return storedEdit.dirty;
     return Boolean(
+      manualFloorplan.active ||
       floorplanImage.imageBlob ||
       roomCandidates.candidates.length ||
       roomScale.hasInput() ||
@@ -701,7 +1041,10 @@
         debugInfo: floorplanImage.debugInfo,
         showFinalRadarOverlay,
         showOcrOverlay: floorplanOcr.showOverlay,
-        showWallMaskOverlay
+        showWallMaskOverlay,
+        manualMode: manualFloorplan.active,
+        manualPhase: manualFloorplan.phase,
+        replacement: replacingFloorplan
       },
       sidebar: {
         title: workflowTitle(),
@@ -758,6 +1101,15 @@
         roomMergeDraft: mapTools.roomMergeDraft,
         snapEdit: mapTools.snapEdit,
         roomSizeBoundsVisible: false,
+        metricMmPerPx: manualFloorplan.mmPerPx,
+        metricOutlinePoints: manualFloorplan.outlinePoints,
+        manualOutlineEditing: manualFloorplan.outlineEditing,
+        manualRoomsValid: manualFloorplan.roomsValid(visibleRoomCandidates()),
+        doors: manualFloorplan.doors,
+        doorPlacementActive: manualFloorplan.doorPlacementActive,
+        doorPlacementKind: manualFloorplan.doorPlacementKind,
+        doorPlacementError: manualFloorplan.doorPlacementError,
+        selectedDoorId: manualFloorplan.selectedDoorId,
         wallMaskCells: wallAnalysis.debug?.wallMaskCells ?? [],
         snapEdges: mapTools.getSnapEdges(),
         snapWallSegments: mapTools.getSnapWallSegments(),
@@ -773,14 +1125,33 @@
         zones: deviceConfig?.zones ?? [],
         calibrationZones: deviceConfig?.calibrationZones ?? [],
         targets: presenceDisplayTargets(deviceState),
-        wallSegments: floorplanRadar.boundarySegments(),
-        occlusionSegments: floorplanRadar.occlusionSegments(),
-        ignoredOcclusionSegmentIds: floorplanRadar.ignoredOcclusionEdges,
-        mapToolActive: mapTools.isActive(),
-        mapToolTitle: mapTools.activeMapToolTitle(),
-        mapToolMessage: mapTools.activeMapToolMessage(),
-        mapToolCanFinish: mapTools.activeMapToolCanFinish(),
-        floorplanScale: floorplanViewport.view.scale
+          wallSegments: floorplanRadar.boundarySegments(),
+          occlusionSegments: floorplanRadar.occlusionSegments(),
+          ignoredOcclusionSegmentIds: floorplanRadar.ignoredOcclusionEdges,
+        mapToolActive: manualFloorplan.outlineEditing || manualFloorplan.doorPlacementActive || mapTools.isActive(),
+        mapToolTitle: manualFloorplan.outlineEditing
+          ? panelText.manualOutlineEditTitle
+          : manualFloorplan.doorPlacementActive
+            ? panelText.manualDoorPlacementTitle
+          : mapTools.activeMapToolTitle(),
+        mapToolMessage: manualFloorplan.outlineEditing
+          ? (manualFloorplan.outlineEditValid(visibleRoomCandidates())
+            ? panelText.manualOutlineEditReady
+            : panelText.manualOutlineEditInvalid)
+          : manualFloorplan.doorPlacementActive
+            ? panelText.manualDoorPlacementHint
+          : mapTools.activeMapToolMessage(),
+        mapToolCanFinish: manualFloorplan.outlineEditing
+          ? manualFloorplan.outlineEditValid(visibleRoomCandidates())
+          : manualFloorplan.doorPlacementActive
+            ? true
+          : mapTools.activeMapToolCanFinish(),
+        floorplanScale: manualFloorplan.scaleAdjustable
+          ? manualFloorplan.scalePercent / 100
+          : floorplanViewport.view.scale,
+        canZoomOut: manualFloorplan.scaleAdjustable
+          ? manualFloorplan.canZoomOut
+          : floorplanViewport.view.scale > 1
       },
       ocr: {
         open: floorplanOcr.open,
@@ -799,7 +1170,12 @@
         handleFloorplanPanelClick,
         handleFloorplanPanelKeydown,
         fileChange: handleFileChange,
+        startManualFloorplan,
+        startManualOutline: startManualOutlineDraft,
+        editManualOutline: beginManualOutlineEdit,
+        startDoorPlacement: startManualDoorPlacement,
         clearImage,
+        cancelReplacement: cancelFloorplanReplacement,
         totalWidthInput: (value) => roomScale.updateTotalSize("width", value),
         totalHeightInput: (value) => roomScale.updateTotalSize("height", value),
         togglePreciseRoomSizeEditing: roomScale.togglePreciseEditing,
@@ -815,6 +1191,7 @@
         radarScaleInput: floorplanRadar.updateScalePercent,
         radarScaleNudge: floorplanRadar.nudgeScalePercent,
         toggleRadarOcclusionEdit: floorplanRadar.toggleOcclusionEdit,
+        resetRadarOcclusionEdges: floorplanRadar.resetOcclusionEdges,
         selectRoom: mapTools.selectRoomCandidate,
         renameRoom: renameRoomCandidate,
         updateRoomMeasurement: roomScale.updateMeasurement,
@@ -822,6 +1199,22 @@
         rejectRoom: (id) => setCandidateStatusWithHistory(id, "rejected"),
         removeRoom: removeCandidateWithHistory,
         startManualRoomDraft: mapTools.startManualRoomDraft,
+        setDoorPlacementKind: manualFloorplan.setDoorPlacementKind,
+        placeDoor: placeManualDoor,
+        previewDoor: (point) => manualFloorplan.previewDoor(point, visibleRoomCandidates()),
+        selectDoor: manualFloorplan.selectDoor,
+        resizeDoor: (id, handle, point) => manualFloorplan.resizeDoor(
+          id,
+          handle,
+          point,
+          visibleRoomCandidates()
+        ),
+        moveDoor: (id, point) => manualFloorplan.moveDoor(
+          id,
+          point,
+          visibleRoomCandidates()
+        ),
+        removeDoor: manualFloorplan.removeDoor,
         startSplitDraft: mapTools.startRoomSplitDraft,
         finishSplitDraft: mapTools.finishRoomSplitDraft,
         cancelSplitDraft: mapTools.cancelRoomSplitDraft,
@@ -836,12 +1229,15 @@
         undoCandidateEdit,
         redoCandidateEdit,
         toggleFinalRadarOverlay: () => (showFinalRadarOverlay = !showFinalRadarOverlay),
-        finishMapTool: mapTools.finishActiveMapTool,
-        cancelMapTool: mapTools.cancelActiveMapTool,
+        finishMapTool: finishFloorplanMapTool,
+        cancelMapTool: cancelFloorplanMapTool,
         addManualRoomPoint: mapTools.addManualRoomPoint,
         deleteManualRoomPoint: mapTools.deleteManualRoomPoint,
         previewManualRoomPoint: mapTools.previewManualRoomPoint,
         clearManualRoomPointPreview: mapTools.clearManualRoomPointPreview,
+        addManualOutlineVertex: manualFloorplan.addOutlinePoint,
+        deleteManualOutlineVertex: manualFloorplan.deleteOutlinePoint,
+        moveManualOutlineVertex: manualFloorplan.moveOutlinePoint,
         addSplitPoint: mapTools.addRoomSplitPoint,
         previewSplitPoint: mapTools.previewRoomSplitPoint,
         clearSplitPreview: mapTools.clearRoomSplitPreview,
@@ -857,9 +1253,9 @@
         updateRadarPlacement: floorplanRadar.updatePlacement,
         commitRadarPlacement: floorplanRadar.commitPlacement,
         toggleRadarOcclusionEdge: floorplanRadar.toggleOcclusionEdge,
-        zoomFloorplan: floorplanViewport.zoom,
-        resetFloorplanZoom: floorplanViewport.reset,
-        handleFloorplanWheel: floorplanViewport.handleWheel,
+        zoomFloorplan,
+        resetFloorplanZoom,
+        handleFloorplanWheel,
         handleFloorplanPointerDown: floorplanViewport.handlePointerDown,
         handleFloorplanPointerMove: floorplanViewport.handlePointerMove,
         stopFloorplanPan: floorplanViewport.stopPan,
@@ -888,6 +1284,10 @@
         mode: storedFloorplanMode,
         editTool: storedFloorplanEditTool,
         document: storedFloorplanDocument,
+        manualSource: storedFloorplanDocument?.source === "manual",
+        structuredManualSource: storedFloorplanDocument?.source === "manual" &&
+          Array.isArray(storedFloorplanDocument?.doors) &&
+          Boolean(storedFloorplanDocument?.wallSegments?.length),
         summary: {
           dirty: storedEdit.dirty,
           saveBusy: floorplanStorageSaveBusy(storedEdit.saveBusy),
@@ -908,13 +1308,20 @@
           roomMergeDraft: mapTools.roomMergeDraft,
           snapEdit: mapTools.snapEdit
         },
+        doors: {
+          doors: storedDoors.doors(),
+          placementActive: storedDoors.placementActive,
+          placementKind: storedDoors.placementKind,
+          placementError: storedDoors.placementError,
+          selectedDoorId: storedDoors.selectedDoorId
+        },
         scale: {
           size: storedFloorplanScale.size,
           estimate: storedFloorplanScaleEstimate(),
           valid: storedFloorplanScaleInputValid()
         },
         zone: {
-          source: storedFloorplanEditTool === "exit" ? "exit" : storedZoneSource,
+          source: storedZoneSource,
           zones: storedZoneToolZones,
           selection: {
             zone: selectedStoredZone,
@@ -922,7 +1329,7 @@
             pointIndex: storedEdit.selectedRadarZonePointIndex
           },
           actions: {
-            addZone: storedFloorplanEditTool === "exit" ? storedRadarZones.addExitPoint : storedRadarZones.addZone,
+            addZone: storedRadarZones.addZone,
             selectZone: storedRadarZones.selectZone,
             renameZone: storedRadarZones.renameSelectedZone,
             setZoneType: storedRadarZones.setSelectedZoneType,
@@ -939,7 +1346,12 @@
           hasSelectedObject: !!storedFurniture.selectedObject(),
           targetRoomName: visibleRoomCandidates().find((candidate) => candidate.id === roomCandidates.selectedCandidateId)?.name ?? ""
         },
+        radar: {
+          occlusionEditActive: storedOcclusionEditActive,
+          ignoredOcclusionEdges: storedFloorplanDocument?.occlusion?.ignoredEdges ?? []
+        },
         workspace: {
+          viewBounds: storedWorkspace.viewBounds(),
           imageFrameStyle: storedWorkspace.imageFrameStyle(),
           canUndo: canUndoFloorplanEdit(),
           canRedo: canRedoFloorplanEdit(),
@@ -951,21 +1363,34 @@
           radarScalePercent: storedWorkspace.radarScalePercent(),
           zones: storedRadarZones.overlayZones(),
           calibrationZones: deviceConfig?.calibrationZones ?? [],
-          targets: presenceDisplayTargets(deviceState),
+          targets: platformFloorplanTargets(
+            deviceState,
+            presenceDisplayTargets(deviceState),
+            siteConfiguration,
+            storedFloorplanDocument,
+            localNodeId
+          ),
+          peerRadars: platformPeerRadarMarkers(siteConfiguration, storedFloorplanDocument, localNodeId),
           wallSegments: storedWorkspace.roomBoundarySegments(),
           occlusionSegments: storedWorkspace.radarOcclusionSegments(),
           ignoredOcclusionSegmentIds: storedWorkspace.ignoredOcclusionSegmentIds(),
+          physicalWallSegments: physicalWallOcclusionSegments(storedFloorplanDocument),
           editableZoneSource: storedRadarZones.editSource(),
+          zoneEditable: (zone) => zone.type !== "detection" || zone.placeholder || canUseDetectionType,
           selectedZoneId: storedEdit.selectedRadarZoneId,
           selectedZonePointIndex: storedEdit.selectedRadarZonePointIndex,
           furnitureBounds: storedWorkspace.furnitureBounds(),
           furnitureRooms: storedWorkspace.furnitureRooms()
         },
         mapTool: {
-          active: mapTools.isActive(),
-          title: mapTools.activeMapToolTitle(),
-          message: mapTools.activeMapToolMessage(),
-          canFinish: mapTools.activeMapToolCanFinish()
+          active: mapTools.isActive() || storedDoors.placementActive,
+          title: storedDoors.placementActive
+            ? panelText.manualDoorPlacementTitle
+            : mapTools.activeMapToolTitle(),
+          message: storedDoors.placementActive
+            ? panelText.manualDoorPlacementHint
+            : mapTools.activeMapToolMessage(),
+          canFinish: storedDoors.placementActive || mapTools.activeMapToolCanFinish()
         }
       },
       actions: {
@@ -974,16 +1399,26 @@
           storedFloorplanMode = "edit";
           storedFloorplanEditTool = "rooms";
         },
-        createNew: requestStoredFloorplanDelete,
-        save: storedSave.save,
+        replace: requestFloorplanReplacement,
+        delete: requestStoredFloorplanDelete,
+        save: saveStoredFloorplanEdits,
         selectRoomsTool: () => (storedFloorplanEditTool = "rooms"),
         selectScaleTool: () => (storedFloorplanEditTool = "scale"),
         selectRadarTool: () => (storedFloorplanEditTool = "radar"),
         selectZonesTool: () => storedRadarZones.beginTool("zones"),
-        selectExitPointTool: storedRadarZones.beginExitPointTool,
         selectCalibrationTool: () => storedRadarZones.beginTool("calibration"),
         selectFurnitureTool: () => (storedFloorplanEditTool = "furniture"),
         startManualRoomDraft: mapTools.startManualRoomDraft,
+        startDoorPlacement: storedDoors.startPlacement,
+        setDoorPlacementKind: storedDoors.setPlacementKind,
+        previewDoor: storedDoors.previewDoor,
+        placeDoor: storedDoors.placeDoor,
+        selectDoor: storedDoors.selectDoor,
+        removeDoor: storedDoors.removeDoor,
+        resizeDoor: storedDoors.resizeDoor,
+        resizeDoorCommit: (id) => storedDoors.finishDoorInteraction(id, "resize"),
+        moveDoor: storedDoors.moveDoor,
+        moveDoorCommit: (id) => storedDoors.finishDoorInteraction(id, "move"),
         startSplitDraft: mapTools.startRoomSplitDraft,
         startMergeDraft: mapTools.startRoomMergeDraft,
         startSnapEdit: mapTools.startSnapEdit,
@@ -1011,8 +1446,12 @@
         rotateFurnitureCounterClockwise: () => storedFurniture.rotateObject(storedEdit.selectedFurnitureObjectId, -90),
         rotateFurnitureClockwise: () => storedFurniture.rotateObject(storedEdit.selectedFurnitureObjectId, 90),
         toggleRadar: () => (showStoredRadarOverlay = !showStoredRadarOverlay),
-        finishMapTool: mapTools.finishActiveMapTool,
-        cancelMapTool: mapTools.cancelActiveMapTool,
+        finishMapTool: () => storedDoors.placementActive
+          ? storedDoors.finishPlacement()
+          : mapTools.finishActiveMapTool(),
+        cancelMapTool: () => storedDoors.placementActive
+          ? storedDoors.cancelPlacement()
+          : mapTools.cancelActiveMapTool(),
         addManualRoomPoint: mapTools.addManualRoomPoint,
         deleteManualRoomPoint: mapTools.deleteManualRoomPoint,
         previewManualRoomPoint: mapTools.previewManualRoomPoint,
@@ -1031,6 +1470,9 @@
         endCandidateVertexMove,
         changeRadarPlacement: (nextPlacement) => storedRadarPlacement.update(nextPlacement),
         commitRadarPlacement: (nextPlacement) => storedRadarPlacement.update(nextPlacement, true),
+        toggleStoredOcclusionEdit,
+        toggleStoredOcclusionEdge,
+        resetStoredOcclusionEdges,
         selectZone: storedRadarZones.selectZone,
         moveZone: storedRadarZones.moveZone,
         moveZonePoint: storedRadarZones.moveZonePoint,
@@ -1039,6 +1481,14 @@
         commitFurniture: storedFurniture.commitObjectEdit
       }
     };
+  }
+
+  function cloneFloorplanDoors(doors) {
+    return doors.map((door) => ({ ...door, centerPx: [...door.centerPx] }));
+  }
+
+  function cloneFloorplanDocument(document) {
+    return document == null ? null : JSON.parse(JSON.stringify(document));
   }
 
   // === Section: Component lifecycle ===
@@ -1062,7 +1512,7 @@
   });
 </script>
 
-{#if storedFloorplanStorage.checkBusy || storedFloorplanStorage.detected}
+{#if !replacingFloorplan && (storedFloorplanStorage.checkBusy || storedFloorplanStorage.detected)}
   <StoredFloorplanEditor
     {messages}
     text={panelText}
