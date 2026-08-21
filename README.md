@@ -19,14 +19,17 @@ cloud service. / NAMO는 클라우드 서비스 없이 구역 사이의 움직�
 
 ## Project Gallery / 프로젝트 사진
 
-> **[Photo 1 / 사진 1]** Finished NAMO dual-radar device and enclosure / 완성된
-> NAMO 듀얼 레이더 기기와 케이스
+![Finished NAMO dual-radar device and enclosure](docs/img/hardware/6-1.jpg)
 
-> **[Photo 2 / 사진 2]** Multiple NAMO devices installed in one floorplan / 하나의
-> 평면도에 설치된 여러 NAMO 기기
+*Finished NAMO dual-radar device and enclosure / 완성된 NAMO 듀얼 레이더 기기와 케이스*
 
-> **[Photo 3 / 사진 3]** Live fused targets on the dashboard / 대시보드에 표시된
-> 실시간 융합 타깃
+![Multiple NAMO devices installed in one floorplan](docs/img/07.multiple_device_floorplan.png)
+
+*Multiple NAMO devices installed in one floorplan / 하나의 평면도에 설치된 여러 NAMO 기기*
+
+![Live fused targets on the dashboard](docs/img/08.live_fused_targets.webp)
+
+*Live fused targets on the dashboard / 대시보드에 표시된 실시간 융합 타깃*
 
 ## English
 

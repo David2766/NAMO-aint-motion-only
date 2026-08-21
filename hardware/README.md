@@ -5,21 +5,21 @@
 This directory contains the reference hardware information and manufacturing files for NAMO.
 
 > [!IMPORTANT]
-> The current dual-radar PCB manufacturing package and schematic are published under [`pcb/dual_sensor/`](pcb/dual_sensor/), and the matching `top_dual.3mf` and `bottom_dual.3mf` are published under [`enclosure/`](enclosure/). The `_dual` top and bottom use a revised locking interface and must be printed as a pair. The legacy single-sensor `bottom.3mf` is not compatible with `top_dual.3mf`. Most assembled-device photos below still show the earlier hardware generation.
+> The current dual-radar PCB manufacturing package and schematic are published under [`pcb/dual_sensor/`](pcb/dual_sensor/), and the matching `top_dual.3mf` and `bottom_dual.3mf` are published under [`enclosure/`](enclosure/). The `_dual` top and bottom use a revised locking interface and must be printed as a pair. The legacy single-sensor `bottom.3mf` is not compatible with `top_dual.3mf`.
 
 ## Build Gallery
 
-| 1. Legacy single-radar PCB | 1-1. Current dual-radar PCB |
+| 7. Seeed Studio XIAO ESP32S3 | 1-1. Current dual-radar PCB |
 | --- | --- |
-| ![NAMO legacy single-radar PCB](../docs/img/hardware/1.jpg) | ![NAMO current dual-radar PCB](../docs/img/hardware/1-1.jpg) |
+| ![Seeed Studio XIAO ESP32S3](../docs/img/hardware/7.jpg) | ![NAMO current dual-radar PCB](../docs/img/hardware/1-1.jpg) |
+| 5-1. Initial enclosure assembly before fitting the bottom | 6-1. Completed dual-radar enclosure |
+| ![NAMO dual-radar assembly before fitting the enclosure bottom](../docs/img/hardware/5-1.jpg) | ![Completed NAMO dual-radar enclosure](../docs/img/hardware/6-1.jpg) |
 | 2. BH1750FVI light sensor | 3. FPC-SHT40 temperature and humidity sensor |
 | ![NAMO BH1750FVI light sensor](../docs/img/hardware/2.jpg) | ![NAMO FPC-SHT40 sensor](../docs/img/hardware/3.jpg) |
-| 4. LD2450 radar | 4-1. LD2410C static-presence radar |
-| ![NAMO LD2450 radar](../docs/img/hardware/4.jpg) | ![NAMO LD2410C static-presence radar](../docs/img/hardware/4-1.jpg) |
-| 5. Rear view before closing the enclosure | 6. Final assembly |
-| ![NAMO assembled hardware before closing the rear enclosure](../docs/img/hardware/5.jpg) | ![NAMO final assembly](../docs/img/hardware/6.jpg) |
+| 4. LD2450 radar | 1. Legacy single-radar PCB |
+| ![NAMO LD2450 radar](../docs/img/hardware/4.jpg) | ![NAMO legacy single-radar PCB](../docs/img/hardware/1.jpg) |
 
-Photo 1 shows the earlier single-radar PCB, while photo 1-1 shows the current dual-radar PCB. Photos 2-6 document components and assembly from the earlier build, and photo 4-1 shows the optional LD2410C used by the current design. The current dual-radar enclosure files are available below; updated final-assembly photos have not yet been added.
+Photos 1-1, 5-1, and 6-1 show the current dual-radar build. Photo 1 shows the earlier single-radar PCB and remains only as a legacy reference. Photos 2 through 4 show sensor components that are also used by the current build.
 
 ## Supported Hardware
 

@@ -5,21 +5,21 @@
 이 폴더에는 NAMO의 기준 하드웨어 정보와 제작 파일이 들어 있습니다.
 
 > [!IMPORTANT]
-> 현재 듀얼 레이더 PCB 제작 파일과 회로도는 [`pcb/dual_sensor/`](pcb/dual_sensor/)에, 이에 맞는 `top_dual.3mf`와 `bottom_dual.3mf`는 [`enclosure/`](enclosure/)에 공개되어 있습니다. `_dual` 상판과 하판은 변경된 잠금 구조를 사용하므로 반드시 한 쌍으로 출력해야 합니다. 구형 단일 센서용 `bottom.3mf`는 `top_dual.3mf`와 호환되지 않습니다. 아래 완성품 사진 대부분은 아직 구형 하드웨어 세대의 모습입니다.
+> 현재 듀얼 레이더 PCB 제작 파일과 회로도는 [`pcb/dual_sensor/`](pcb/dual_sensor/)에, 이에 맞는 `top_dual.3mf`와 `bottom_dual.3mf`는 [`enclosure/`](enclosure/)에 공개되어 있습니다. `_dual` 상판과 하판은 변경된 잠금 구조를 사용하므로 반드시 한 쌍으로 출력해야 합니다. 구형 단일 센서용 `bottom.3mf`는 `top_dual.3mf`와 호환되지 않습니다.
 
 ## 제작 사진
 
-| 1. 구형 단일 레이더 PCB | 1-1. 현재 듀얼 레이더 PCB |
+| 7. Seeed Studio XIAO ESP32S3 | 1-1. 현재 듀얼 레이더 PCB |
 | --- | --- |
-| ![NAMO 구형 단일 레이더 PCB](../docs/img/hardware/1.jpg) | ![NAMO 현재 듀얼 레이더 PCB](../docs/img/hardware/1-1.jpg) |
+| ![Seeed Studio XIAO ESP32S3](../docs/img/hardware/7.jpg) | ![NAMO 현재 듀얼 레이더 PCB](../docs/img/hardware/1-1.jpg) |
+| 5-1. 하판을 덮기 전 1차 조립 상태 | 6-1. 듀얼 레이더 케이스 완성품 |
+| ![NAMO 듀얼 레이더 기기의 하판을 덮기 전 조립 상태](../docs/img/hardware/5-1.jpg) | ![NAMO 듀얼 레이더 케이스 완성품](../docs/img/hardware/6-1.jpg) |
 | 2. BH1750FVI 조도 센서 | 3. FPC-SHT40 온습도 센서 |
 | ![NAMO BH1750FVI 조도 센서](../docs/img/hardware/2.jpg) | ![NAMO FPC-SHT40 온습도 센서](../docs/img/hardware/3.jpg) |
-| 4. LD2450 레이더 | 4-1. LD2410C 정적 재실 레이더 |
-| ![NAMO LD2450 레이더](../docs/img/hardware/4.jpg) | ![NAMO LD2410C 정적 재실 레이더](../docs/img/hardware/4-1.jpg) |
-| 5. 조립 완료 후 후면을 닫기 전 상태 | 6. 최종 조립 상태 |
-| ![NAMO 조립 완료 후 후면을 닫기 전 상태](../docs/img/hardware/5.jpg) | ![NAMO 최종 조립 상태](../docs/img/hardware/6.jpg) |
+| 4. LD2450 레이더 | 1. 구형 단일 레이더 PCB |
+| ![NAMO LD2450 레이더](../docs/img/hardware/4.jpg) | ![NAMO 구형 단일 레이더 PCB](../docs/img/hardware/1.jpg) |
 
-1번은 구형 단일 레이더 PCB, 1-1번은 현재 듀얼 레이더 PCB입니다. 2-6번은 구형 구성의 부품과 조립 상태를 보여주며, 4-1번은 현재 설계에서 선택적으로 사용하는 LD2410C입니다. 현재 듀얼 레이더용 케이스 파일은 아래에서 받을 수 있으며, 갱신된 최종 조립 사진은 아직 추가하지 않았습니다.
+1-1번, 5-1번과 6-1번은 현재 듀얼 레이더 구성입니다. 1번은 이전 단일 레이더 PCB이며 레거시 참고 자료로만 유지됩니다. 2번부터 4번까지는 현재 구성에서도 사용하는 센서 부품입니다.
 
 ## 지원 하드웨어
 
