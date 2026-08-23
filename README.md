@@ -1,5 +1,7 @@
 # NAMO
 
+![NAMO - Ain't Motion-Only.](docs/img/namo-brand-banner.webp)
+
 **NAMO Ain't Motion-Only.**
 
 *Still here, even when you're still.*
