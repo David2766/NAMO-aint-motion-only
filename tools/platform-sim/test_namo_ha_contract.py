@@ -947,7 +947,7 @@ class NamoHaPackageTests(unittest.TestCase):
             PACKAGE_ROOT / "strings.json",
             PACKAGE_ROOT / "translations" / "en.json",
             PACKAGE_ROOT / "translations" / "ko.json",
-            ROOT / "hacs.json",
+            ROOT / "packaging" / "home-assistant" / "hacs.json",
         ):
             with self.subTest(path=path):
                 json.loads(path.read_text(encoding="utf-8"))

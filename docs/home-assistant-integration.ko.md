@@ -2,14 +2,26 @@
 
 상태: 개발 미리보기입니다. 이 연동은 아직 릴리즈 검증을 완료하지 않았습니다.
 
-## 개발 환경에 설치
+## HACS로 설치
+
+Home Assistant Integration은 펌웨어 저장소와 분리해서 배포합니다. HACS 기본
+목록에 등록되기 전까지는
+`https://github.com/David2766/NAMO-Home-Assistant`를 사용자 정의
+**Integration** 저장소로 추가하고 NAMO를 설치한 뒤 Home Assistant를 다시
+시작합니다.
+
+**설정 > 기기 및 서비스 > 통합 구성요소 추가**에서 NAMO를 선택하고 자동 발견된
+Site를 확인합니다. 자동 발견 항목이 없다면 같은 Site에 연결된 NAMO 기기 하나의
+주소를 입력합니다.
+
+## 수동 설치
 
 1. `custom_components/namo`를 Home Assistant 설정 디렉터리의
    `custom_components/namo` 경로에 복사합니다.
 2. Home Assistant를 다시 시작합니다.
 3. **설정 > 기기 및 서비스 > 통합 구성요소 추가**에서 NAMO를 선택합니다.
-4. 자동 발견 항목이 나타나지 않으면 같은 NAMO 설치에 이미 연결된 기기 중 하나의
-   주소를 입력합니다.
+4. 자동 발견 항목이 나타나지 않으면 같은 Site에 연결된 NAMO 기기 하나의 주소를
+   입력합니다.
 
 설정 항목은 IP 주소가 아닌 안정적인 Site 식별자를 기준으로 생성됩니다. 따라서 기기
 주소가 바뀌어도 자동 발견으로 기존 항목을 갱신할 수 있으며, 같은 Site의 물리 Node가
@@ -81,3 +93,18 @@ python -m unittest `
 Space 진단, 지연된 Repairs 보고와 복구, unavailable 원인 보고, 동적 Space와 영역 추가,
 번역 및 패키지 메타데이터를 검사합니다. Home Assistant container, 자동 발견, DHCP 및 실제
 Leader 승계 검증은 아직 릴리즈 gate로 남아 있습니다.
+
+## 릴리스 저장소로 export
+
+개발 원본은 `custom_components/namo`에 유지합니다. Home Assistant Integration이
+펌웨어와 릴리스 태그 및 버전을 공유하지 않도록 별도 저장소로 export합니다.
+
+```powershell
+node scripts/export-home-assistant-integration.mjs `
+  C:\path\to\NAMO-Home-Assistant
+```
+
+대상 경로는 반드시 명시해야 합니다. Exporter는 전체 결과를 임시 경로에서 먼저
+검증하고, 대상에 다른 Integration이 있으면 거부합니다. Git 대상에 커밋하지 않은
+변경이 있으면 중단하며, 내용을 직접 확인한 경우에만 `--allow-dirty-target`을 사용할
+수 있습니다.

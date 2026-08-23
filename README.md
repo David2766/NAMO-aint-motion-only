@@ -51,7 +51,7 @@ cloud service. / NAMO는 클라우드 서비스 없이 구역 사이의 움직�
 - Optional LD2410C assistance for retaining an established presence session.
 - Secure local pairing and coordinate fusion across multiple NAMO devices.
 - Embedded web dashboard, backup and recovery, signed firmware updates, and a
-  Home Assistant custom integration.
+  [Home Assistant custom integration](https://github.com/David2766/NAMO-Home-Assistant).
 
 Try the browser-only [dashboard demo](https://david2766.github.io/NAMO-aint-motion-only/)
 or the [initial setup demo](https://david2766.github.io/NAMO-aint-motion-only/?setup=1).
@@ -155,7 +155,7 @@ before enabling remote access or integrating third-party devices.
 - 선택 사양인 LD2410C로 이미 시작된 재실 상태의 유지를 보조합니다.
 - 여러 NAMO 기기를 안전하게 로컬 연결하고 좌표를 융합합니다.
 - 기기 내장 대시보드, 백업과 복구, 서명된 펌웨어 업데이트 및 Home Assistant
-  사용자 정의 통합을 제공합니다.
+  [사용자 정의 통합](https://github.com/David2766/NAMO-Home-Assistant)을 제공합니다.
 
 브라우저에서 [대시보드 데모](https://david2766.github.io/NAMO-aint-motion-only/)와
 [초기 설정 데모](https://david2766.github.io/NAMO-aint-motion-only/?setup=1)를 체험할 수
@@ -251,6 +251,8 @@ NAMO v0.6.0는 공개 베타입니다.
 
 - Firmware and embedded dashboard / 펌웨어와 내장 대시보드:
   <https://github.com/David2766/NAMO-aint-motion-only>
+- Home Assistant integration / Home Assistant 사용자 정의 통합:
+  <https://github.com/David2766/NAMO-Home-Assistant>
 - Home Assistant custom card / Home Assistant 사용자 정의 카드:
   <https://github.com/David2766/radar-zone-card-for-LD2450>
 - SmartThings Edge Driver:

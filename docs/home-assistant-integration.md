@@ -2,14 +2,25 @@
 
 Status: development preview. The integration is not release-verified yet.
 
-## Install for development
+## Install with HACS
+
+The integration is published separately from the firmware repository. Until it
+is included in the HACS default list, add
+`https://github.com/David2766/NAMO-Home-Assistant` as a custom **Integration**
+repository, install NAMO, and restart Home Assistant.
+
+Open **Settings > Devices & services > Add integration**, select NAMO, and
+confirm the discovered Site. If discovery does not appear, enter the address of
+any NAMO device already connected to that Site.
+
+## Install manually
 
 1. Copy `custom_components/namo` into the Home Assistant configuration
    directory under `custom_components/namo`.
 2. Restart Home Assistant.
 3. Open **Settings > Devices & services > Add integration** and select NAMO.
-4. If discovery does not appear, enter the address of any NAMO device that is
-   already connected to the same NAMO installation.
+4. If discovery does not appear, enter the address of any NAMO device already
+   connected to that Site.
 
 The config entry is keyed by the stable Site identity, not an IP address.
 Discovery can therefore update a changed address without creating a second
@@ -90,3 +101,18 @@ delayed Repairs reporting and recovery, unavailable reason reporting, dynamic
 Space and area addition, translations, and package metadata. Home Assistant
 container, discovery, DHCP, and live Leader-handover verification remain
 release gates.
+
+## Export the release repository
+
+The development source remains in `custom_components/namo`. Export it to a
+separate repository so Home Assistant Integration releases do not share tags or
+versions with firmware releases.
+
+```powershell
+node scripts/export-home-assistant-integration.mjs `
+  C:\path\to\NAMO-Home-Assistant
+```
+
+The exporter requires an explicit target, validates the complete staged
+repository before writing it, rejects other integrations in the target, and
+refuses a dirty Git target unless `--allow-dirty-target` is explicitly supplied.

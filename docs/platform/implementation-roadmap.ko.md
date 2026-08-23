@@ -1060,8 +1060,10 @@ Site 상태 기기를 제거합니다.
 
 산출물:
 
-- 이 저장소의 `custom_components/namo`;
-- HACS 기본 목록 등록을 기다리지 않는 Custom Repository 설치;
+- 개발 원본인 `custom_components/namo`를 별도의 `NAMO-Home-Assistant`
+  저장소로 export하는 배포 구조;
+- HACS 기본 목록 등록을 기다리지 않고 전용 Integration 저장소를 사용하는 Custom
+  Repository 설치;
 - `siteId`당 config entry 하나;
 - 단독 Site의 로컬 공간을 포함해 안정적인 `spaceId`당 Home Assistant 기기 하나;
 - Zeroconf discovery 및 수동 fallback;

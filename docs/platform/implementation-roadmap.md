@@ -1292,8 +1292,10 @@ after recovery.
 
 Deliverables:
 
-- `custom_components/namo` in this repository;
-- HACS Custom Repository installation without waiting for default listing;
+- `custom_components/namo` as the development source, exported to the separate
+  `NAMO-Home-Assistant` repository;
+- HACS Custom Repository installation from the dedicated integration repository
+  without waiting for default listing;
 - one config entry per `siteId`;
 - one Home Assistant device per stable `spaceId`, including one local Space for
   a one-member standalone Site;
