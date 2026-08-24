@@ -9,17 +9,17 @@
 
 ## 제작 사진
 
-| 7. Seeed Studio XIAO ESP32S3 | 1-1. 현재 듀얼 레이더 PCB |
+| Seeed Studio XIAO ESP32S3 | 현재 듀얼 레이더 PCB |
 | --- | --- |
 | ![Seeed Studio XIAO ESP32S3](../docs/img/hardware/7.jpg) | ![NAMO 현재 듀얼 레이더 PCB](../docs/img/hardware/1-1.jpg) |
-| 5-1. 하판을 덮기 전 1차 조립 상태 | 6-1. 듀얼 레이더 케이스 완성품 |
+| 하판을 덮기 전 1차 조립 상태 | 듀얼 레이더 케이스 완성품 |
 | ![NAMO 듀얼 레이더 기기의 하판을 덮기 전 조립 상태](../docs/img/hardware/5-1.jpg) | ![NAMO 듀얼 레이더 케이스 완성품](../docs/img/hardware/6-1.jpg) |
-| 2. BH1750FVI 조도 센서 | 3. FPC-SHT40 온습도 센서 |
+| BH1750FVI 조도 센서 | FPC-SHT40 온습도 센서 |
 | ![NAMO BH1750FVI 조도 센서](../docs/img/hardware/2.jpg) | ![NAMO FPC-SHT40 온습도 센서](../docs/img/hardware/3.jpg) |
-| 4. LD2450 레이더 | 1. 구형 단일 레이더 PCB |
+| LD2450 레이더 | 구형 단일 레이더 PCB |
 | ![NAMO LD2450 레이더](../docs/img/hardware/4.jpg) | ![NAMO 구형 단일 레이더 PCB](../docs/img/hardware/1.jpg) |
 
-1-1번, 5-1번과 6-1번은 현재 듀얼 레이더 구성입니다. 1번은 이전 단일 레이더 PCB이며 레거시 참고 자료로만 유지됩니다. 2번부터 4번까지는 현재 구성에서도 사용하는 센서 부품입니다.
+듀얼 레이더 PCB와 케이스 사진은 현재 구성을 보여줍니다. 단일 레이더 PCB는 레거시 참고 자료로만 유지됩니다. 개별 센서 사진은 현재 구성에서도 사용하는 부품을 보여줍니다.
 
 ## 지원 하드웨어
 

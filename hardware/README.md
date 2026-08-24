@@ -9,17 +9,17 @@ This directory contains the reference hardware information and manufacturing fil
 
 ## Build Gallery
 
-| 7. Seeed Studio XIAO ESP32S3 | 1-1. Current dual-radar PCB |
+| Seeed Studio XIAO ESP32S3 | Current dual-radar PCB |
 | --- | --- |
 | ![Seeed Studio XIAO ESP32S3](../docs/img/hardware/7.jpg) | ![NAMO current dual-radar PCB](../docs/img/hardware/1-1.jpg) |
-| 5-1. Initial enclosure assembly before fitting the bottom | 6-1. Completed dual-radar enclosure |
+| Initial enclosure assembly before fitting the bottom | Completed dual-radar enclosure |
 | ![NAMO dual-radar assembly before fitting the enclosure bottom](../docs/img/hardware/5-1.jpg) | ![Completed NAMO dual-radar enclosure](../docs/img/hardware/6-1.jpg) |
-| 2. BH1750FVI light sensor | 3. FPC-SHT40 temperature and humidity sensor |
+| BH1750FVI light sensor | FPC-SHT40 temperature and humidity sensor |
 | ![NAMO BH1750FVI light sensor](../docs/img/hardware/2.jpg) | ![NAMO FPC-SHT40 sensor](../docs/img/hardware/3.jpg) |
-| 4. LD2450 radar | 1. Legacy single-radar PCB |
+| LD2450 radar | Legacy single-radar PCB |
 | ![NAMO LD2450 radar](../docs/img/hardware/4.jpg) | ![NAMO legacy single-radar PCB](../docs/img/hardware/1.jpg) |
 
-Photos 1-1, 5-1, and 6-1 show the current dual-radar build. Photo 1 shows the earlier single-radar PCB and remains only as a legacy reference. Photos 2 through 4 show sensor components that are also used by the current build.
+The dual-radar PCB and enclosure photos show the current build. The single-radar PCB is retained only as a legacy reference. The individual sensor photos show components that are also used by the current build.
 
 ## Supported Hardware
 
