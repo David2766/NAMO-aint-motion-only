@@ -269,3 +269,11 @@ own licenses; see [Third-Party Notices](THIRD_PARTY_NOTICES.md) and
 적용됩니다. 외부 구성요소에는 각 구성요소의 라이선스가 적용되며 자세한 내용은
 [외부 구성요소 고지](THIRD_PARTY_NOTICES.md)와
 [외부 라이선스 전문](THIRD_PARTY_LICENSES.txt)을 참고하세요.
+
+## Development Credit / 개발 크레딧
+
+This project was planned and tested by the author, with OpenAI Codex used for
+code generation and refactoring throughout development.
+
+이 프로젝트는 제작자가 직접 기획하고 테스트하면서, 코드 작성과 리팩토링 과정에
+OpenAI Codex를 활용해 개발했습니다.

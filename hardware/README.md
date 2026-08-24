@@ -14,6 +14,8 @@ This directory contains the reference hardware information and manufacturing fil
 | ![Seeed Studio XIAO ESP32S3](../docs/img/hardware/7.jpg) | ![NAMO current dual-radar PCB](../docs/img/hardware/1-1.jpg) |
 | Initial enclosure assembly before fitting the bottom | Completed dual-radar enclosure |
 | ![NAMO dual-radar assembly before fitting the enclosure bottom](../docs/img/hardware/5-1.jpg) | ![Completed NAMO dual-radar enclosure](../docs/img/hardware/6-1.jpg) |
+| Fully assembled PCB before fitting the enclosure | Optional LD2410C radar |
+| ![NAMO PCB with all components fitted before enclosure assembly](../docs/img/hardware/8.jpg) | ![NAMO optional LD2410C radar](../docs/img/hardware/4-1.jpg) |
 | BH1750FVI light sensor | FPC-SHT40 temperature and humidity sensor |
 | ![NAMO BH1750FVI light sensor](../docs/img/hardware/2.jpg) | ![NAMO FPC-SHT40 sensor](../docs/img/hardware/3.jpg) |
 | LD2450 radar | Legacy single-radar PCB |
@@ -28,6 +30,7 @@ The dual-radar PCB and enclosure photos show the current build. The single-radar
 | Seeed Studio XIAO ESP32S3, 8MB Flash / 8MB PSRAM | Yes | Required by the current partition and memory configuration |
 | LD2450-series mmWave radar | Yes | Presence acquisition and spatial tracking sensor |
 | LD2410C static-presence radar | Optional | Maintains an already established presence session when available |
+| M2 nylon or plastic hex nut and M2 x 4 mm screw | Yes | Secures the LD2450 without placing metal hardware near its 24 GHz antenna |
 | Panasonic EKMC1603111 PIR sensor | Optional | Uses GPIO1; an omitted input must remain electrically stable |
 | BH1750 light sensor | Optional | Shares the I2C bus |
 | SHT4x temperature and humidity sensor | Optional | Shares the I2C bus |
@@ -85,6 +88,14 @@ Choose the enclosure pair that matches the PCB generation.
 Open the 3MF files in your slicer and verify scale, orientation, supports, and material settings before printing. Printer calibration and material shrinkage can affect the final fit.
 
 Print `top_dual.3mf` and `bottom_dual.3mf` together for the current build. Their locking geometry differs from the legacy single-sensor enclosure, so `bottom.3mf` cannot lock correctly to `top_dual.3mf` and must not be reused.
+
+### Securing the LD2450
+
+Use an M2 nylon or plastic hex nut with an M2 x 4 mm screw. These non-metallic fasteners hold the LD2450 firmly while avoiding unnecessary metal near its 24 GHz antenna.
+
+1. Insert the M2 hex nut into the hexagonal recess at the upper-right of the enclosure.
+2. Place the LD2450 over the mounting point and loosely position it against the nut.
+3. Align the radar, then tighten the M2 x 4 mm screw into the nut until the board is secure. Do not overtighten it.
 
 ## DIY Build Notes
 
