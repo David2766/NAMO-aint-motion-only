@@ -86,8 +86,11 @@ and handed over automatically; users do not assign them manually.
 - The complete pairing, calibration, activation, single-role failure, paired-role
   failure, and rejoin workflow has passed physical testing on a five-device,
   single-Group installation.
-- Physical four-, six-, and seven-device matrices, multi-Group installations, and
-  rolling firmware upgrades remain release-validation work.
+- Sequential expansion through a seven-device single Group has passed physical
+  pairing, Floorplan replication, calibration, activation, final 7/7 canonical
+  convergence, active fusion/automation, and target resource checks.
+- Physical failure/rejoin matrices at other Group sizes, multi-Group
+  installations, and rolling firmware upgrades remain release-validation work.
 
 See [Multi-Device Setup](https://github.com/David2766/NAMO-aint-motion-only/wiki/Multi-Device-Setup)
 for pairing, floorplan selection, calibration, removal, and recovery instructions.
@@ -124,12 +127,12 @@ locking interface is not compatible with the legacy single-sensor
 ### Status
 
 <!-- release-firmware-version -->
-NAMO v0.6.0 is a public beta.
+NAMO v0.6.1 is a public beta.
 
-The five-device single-Group workflow described above is physically verified.
-The bounded host simulation covers two through seven processes, but it does not
-replace the remaining physical-device release matrix. Exact implementation and
-verification status is maintained in the
+The five-device failure/rejoin workflow and sequential expansion through seven
+physical devices are verified. The bounded host simulation covers two through
+seven processes, but it does not replace the remaining physical failure/rejoin
+release matrix. Exact implementation and verification status is maintained in the
 [implementation roadmap](docs/platform/implementation-roadmap.md).
 
 ### Security
@@ -189,8 +192,10 @@ before enabling remote access or integrating third-party devices.
   단독 감지는 유지됩니다.
 - 5대 단일 Group 환경에서 전체 페어링, 보정, 활성화, 단일 역할 장애, 역할 기기
   두 대의 동시 장애 및 복귀 흐름을 실기기로 검증했습니다.
-- 4·6·7대 실기기 조합, 다중 Group 및 서로 다른 펌웨어의 순차 업데이트 검증은
-  아직 남아 있습니다.
+- 단일 Group을 7대까지 순차 확장하여 페어링, 평면도 복제, 보정, 활성화, 최종 7/7
+  canonical 수렴, 융합·자동화 및 기기 자원 상태를 실기기로 확인했습니다.
+- 다른 Group 규모의 장애·복귀 matrix, 다중 Group 및 서로 다른 펌웨어의 순차
+  업데이트 검증은 아직 남아 있습니다.
 
 연결, 평면도 선택, 보정, 제거 및 복구 절차는
 [다중 기기 설정](https://github.com/David2766/NAMO-aint-motion-only/wiki/Multi-Device-Setup-ko)을
@@ -228,11 +233,11 @@ before enabling remote access or integrating third-party devices.
 ### 개발 상태
 
 <!-- release-firmware-version -->
-NAMO v0.6.0는 공개 베타입니다.
+NAMO v0.6.1는 공개 베타입니다.
 
-위에서 설명한 5대 단일 Group 흐름은 실기기로 검증했습니다. 2~7개 프로세스를
-사용하는 제한형 호스트 시뮬레이션도 통과했지만, 이는 남아 있는 실기기 릴리즈
-검증을 대체하지 않습니다. 정확한 구현 및 검증 상태는
+위에서 설명한 5대 장애·복귀 흐름과 7대까지의 순차 확장·정상 운용은 실기기로
+검증했습니다. 2~7개 프로세스를 사용하는 제한형 호스트 시뮬레이션도 통과했지만,
+이는 남아 있는 실기기 장애·복귀 릴리즈 검증을 대체하지 않습니다. 정확한 구현 및 검증 상태는
 [구현 로드맵](docs/platform/implementation-roadmap.ko.md)에서 관리합니다.
 
 ### 보안

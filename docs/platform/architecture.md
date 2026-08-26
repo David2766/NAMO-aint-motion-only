@@ -9,13 +9,16 @@ Status: **Draft under incremental verification.**
 - **Verified on hardware:** a five-Node, single-Group Site has completed the
   new-Node pairing, Floorplan replication, calibration, activation, single-role
   outage, paired-role outage, and healthy rejoin flows. Automation remained
-  available on the surviving strict majority.
-- **Remaining release gates:** physical four-, six-, and seven-Node matrices,
-  multi-Group operation, and rolling upgrades.
+  available on the surviving strict majority. Sequential expansion to seven
+  Nodes also completed pairing, replication, calibration, activation, final
+  7/7 canonical convergence, active fusion/automation, and resource checks.
+- **Remaining release gates:** physical failure/rejoin matrices at other Group
+  sizes, multi-Group operation, and rolling upgrades.
 - **Not complete:** manufacturer attestation, the external Satellite SDK, and
   SmartThings integration. Host tests cover same-revision recovery isolation,
   emergency triple-role fallback and relinquishment, pairing-poll resilience,
-  one bounded pairing lifetime, and bounded handover retry.
+  one bounded pairing lifetime, bounded handover retry, and incumbent-preserving
+  five-to-six-to-seven Group roster expansion.
 
 Korean version: [architecture.ko.md](architecture.ko.md)
 

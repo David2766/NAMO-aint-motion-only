@@ -85,6 +85,20 @@ Windows 사용자에게 묶이므로 PC나 계정을 바꾸면 인쇄해 둔 비
 .\scripts\build-firmware.ps1 -Release -Signer release
 ```
 
+patch 버전만 올리는 핫픽스 릴리즈는 명시적인 별칭을 사용합니다.
+
+```powershell
+.\scripts\build-firmware.ps1 -Hotfix -Signer release
+```
+
+`-Hotfix`는 patch 버전 증가로 고정됩니다. 일반 Release와 같은 서명 패키지를 만들고 security
+epoch를 올리며 `-Release` 또는 `-ReleaseType`과 함께 사용할 수 없습니다. 다음 명령으로
+내보냅니다.
+
+```powershell
+node .\scripts\export-firmware-dashboard.mjs --hotfix --allow-dirty-target
+```
+
 `-Release`는 버전과 security epoch를 올리고, `-Signer release`는 Release 키 사용을
 선택합니다. 둘은 별도 옵션이며 하나만 지정하면 빌드 전에 거부합니다. 현재 셸에서
 `NAMO_FIRMWARE_KEY_DIRECTORY`를 한 번 설정하거나 `-KeyDirectory`를 명시합니다. 캐시는 한
@@ -128,7 +142,8 @@ Developer 패키지는 현재 security epoch를 그대로 사용하며 올릴 �
 
 래퍼는 세 모드 모두 대시보드 빌드와 clean을 기본 실행합니다. 필요할 때만 `-NoDashboard` 또는
 `-NoClean`으로 생략합니다. 내부 컴파일 CLI를 직접 사용할 때의 대응 옵션은
-`--signer none`, `--signer developer`, `--release --signer release`입니다.
+`--signer none`, `--signer developer`, `--release --signer release`,
+`--hotfix --signer release`입니다.
 
 ## Release 또는 Developer 키 유출 복구
 

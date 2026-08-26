@@ -662,6 +662,147 @@ void committed_directory_never_forces_site_and_group_leader_overlap() {
           "an expired Directory Leader blocked runtime Group handoff");
 }
 
+SiteConfigurationSnapshot expanded_group_configuration(uint8_t member_count) {
+  SiteConfigurationSnapshot configuration{};
+  std::strcpy(configuration.site_id, "site-expansion");
+  std::strcpy(configuration.configuration_owner_node_id,
+              "namo-node-40-owner");
+  configuration.authority_epoch = 3;
+  configuration.generation = member_count;
+  configuration.roster_revision = member_count;
+  configuration.roster_committed = true;
+  const char *ids[] = {
+      "namo-node-10-fallback", "namo-node-20-site",
+      "namo-node-30-incumbent", "namo-node-40-owner",
+      "namo-node-50",          "namo-node-60",
+      "namo-node-70",
+  };
+  for (uint8_t index = 0; index < member_count; ++index) {
+    auto &member = configuration.members[index];
+    member.occupied = true;
+    std::strcpy(member.participant_id, ids[index]);
+    member.type = ParticipantType::NAMO_NODE;
+    member.membership = ParticipantMembership::ACTIVE;
+    member.leader_eligible = true;
+    member.spatial_profile.committed = true;
+    std::strcpy(member.spatial_profile.space_id, "space-main");
+    std::strcpy(member.spatial_profile.group_id, "group-main");
+  }
+  return configuration;
+}
+
+void roster_expansion_preserves_the_valid_directory_incumbent() {
+  PlatformIdentity identity{};
+  std::strcpy(identity.site_id, "site-expansion");
+  std::strcpy(identity.node_id, "namo-node-20-site");
+
+  SiteDirectorySnapshot directory{};
+  std::strcpy(directory.site_id, identity.site_id);
+  directory.generation = 1;
+  directory.topology_revision = 30;
+  directory.committed = true;
+  auto &directory_group = directory.groups[0];
+  directory_group.occupied = true;
+  std::strcpy(directory_group.group_id, "group-main");
+  std::strcpy(directory_group.floorplan_id, "floorplan-main");
+  std::strcpy(directory_group.leader_node_id,
+              "namo-node-30-incumbent");
+  directory_group.assignment_revision = 30;
+  directory_group.member_count = 5;
+
+  ParticipantEndpointCache endpoints{};
+  const char *remote_ids[] = {
+      "namo-node-10-fallback", "namo-node-30-incumbent",
+      "namo-node-40-owner",    "namo-node-50",
+      "namo-node-60",          "namo-node-70",
+  };
+  for (std::size_t index = 0; index < 6; ++index) {
+    require(endpoints.observe_authenticated(
+                remote_ids[index],
+                static_cast<uint32_t>(0x0A000001U + index), 49191, 1000),
+            "every expansion participant should have a live endpoint");
+  }
+
+  SiteGroupSummaryCache summaries{};
+  auto configuration = expanded_group_configuration(6);
+  const char *expected = resolve_expected_group_leader(
+      identity, configuration, &directory, endpoints, identity.node_id,
+      directory_group.group_id, 2000);
+  require(expected != nullptr &&
+              std::strcmp(expected, directory_group.leader_node_id) == 0,
+          "a 5-to-6 expansion must preserve the valid Directory incumbent");
+
+  SiteGroupSummaryReport report{};
+  report.participant_id = directory_group.leader_node_id;
+  report.group_id = directory_group.group_id;
+  report.assignment_revision = directory_group.assignment_revision;
+  report.term = 38;
+  report.lease_ms = GroupCoordinator::DEFAULT_LEASE_MS;
+  report.participants_expected = 6;
+  report.participants_online = 6;
+  require(summaries.accept_discovered(
+              configuration, &directory, expected,
+              directory_group.floorplan_id, report, 2000) ==
+              SiteGroupSummaryResult::OK,
+          "the incumbent summary must promote the Directory to six members");
+  require(summaries.find(directory_group.group_id) != nullptr &&
+              summaries.find(directory_group.group_id)->assignment_revision ==
+                  31,
+          "the six-member assignment must advance exactly once");
+
+  directory_group.assignment_revision = 31;
+  directory_group.member_count = 6;
+  configuration = expanded_group_configuration(7);
+  expected = resolve_expected_group_leader(
+      identity, configuration, &directory, endpoints, identity.node_id,
+      directory_group.group_id, 3000);
+  report.assignment_revision = directory_group.assignment_revision;
+  report.participants_expected = 7;
+  report.participants_online = 7;
+  require(expected != nullptr &&
+              std::strcmp(expected, directory_group.leader_node_id) == 0 &&
+              summaries.accept_discovered(
+                  configuration, &directory, expected,
+                  directory_group.floorplan_id, report, 3000) ==
+                  SiteGroupSummaryResult::OK,
+          "the same incumbent must carry the 6-to-7 expansion");
+  require(summaries.find(directory_group.group_id) != nullptr &&
+              summaries.find(directory_group.group_id)->assignment_revision ==
+                  32 &&
+              summaries.find(directory_group.group_id)->participants_expected ==
+                  7,
+          "the seven-member summary must become the next canonical assignment");
+
+  auto ineligible_configuration = configuration;
+  SiteConfigurationMember *ineligible_incumbent = nullptr;
+  for (auto &member : ineligible_configuration.members) {
+    if (member.occupied &&
+        std::strcmp(member.participant_id,
+                    directory_group.leader_node_id) == 0) {
+      ineligible_incumbent = &member;
+      break;
+    }
+  }
+  require(ineligible_incumbent != nullptr,
+          "the incumbent must exist in the expansion fixture");
+  ineligible_incumbent->leader_eligible = false;
+  require(std::strcmp(resolve_expected_group_leader(
+                          identity, ineligible_configuration, &directory,
+                          endpoints, identity.node_id,
+                          directory_group.group_id, 3000),
+                      "namo-node-10-fallback") == 0,
+          "an ineligible incumbent must not survive roster expansion");
+
+  directory_group.member_count = 7;
+  const auto contracted_configuration = expanded_group_configuration(6);
+  require(std::strcmp(resolve_expected_group_leader(
+                          identity, contracted_configuration, &directory,
+                          endpoints, identity.node_id,
+                          directory_group.group_id, 3000),
+                      "namo-node-10-fallback") == 0,
+          "a roster contraction must not use the expansion continuity rule");
+}
+
 void sequence_tracking_rejects_replay_but_accepts_a_new_boot() {
   SiteHeartbeatSequenceTracker tracker{};
   require(tracker.accept(11, "boot-a", 1),
@@ -908,6 +1049,45 @@ void v11_heartbeat_cannot_downgrade_a_known_v12_endpoint() {
           "a v11 compatibility packet must not downgrade v12 capability");
 }
 
+void current_wire_probe_is_independent_of_peer_count() {
+  require(!site_heartbeat_current_wire_probe(0),
+          "an unstarted send cycle must not probe the current wire contract");
+
+  for (std::size_t peer_count = 1; peer_count <= 6; ++peer_count) {
+    std::array<bool, 6> cycle_probe_seen{};
+    std::array<bool, 6> packet_probe_seen{};
+    uint32_t packet_sequence = 0;
+
+    for (uint32_t cycle = 1;
+         cycle <= SITE_HEARTBEAT_CURRENT_WIRE_PROBE_INTERVAL; ++cycle) {
+      const bool current_wire_probe =
+          site_heartbeat_current_wire_probe(cycle);
+      require(current_wire_probe ==
+                  (cycle == SITE_HEARTBEAT_CURRENT_WIRE_PROBE_INTERVAL),
+              "the current wire contract must be probed once per five send cycles");
+
+      for (std::size_t peer = 0; peer < peer_count; ++peer) {
+        ++packet_sequence;
+        cycle_probe_seen[peer] = cycle_probe_seen[peer] || current_wire_probe;
+        packet_probe_seen[peer] =
+            packet_probe_seen[peer] ||
+            packet_sequence % SITE_HEARTBEAT_CURRENT_WIRE_PROBE_INTERVAL == 0;
+      }
+    }
+
+    for (std::size_t peer = 0; peer < peer_count; ++peer)
+      require(cycle_probe_seen[peer],
+              "every peer must receive a current wire probe regardless of roster size");
+
+    if (peer_count == 5) {
+      require(!packet_probe_seen[0] && !packet_probe_seen[1] &&
+                  !packet_probe_seen[2] && !packet_probe_seen[3] &&
+                  packet_probe_seen[4],
+              "the regression fixture must reproduce five-peer packet phase lock");
+    }
+  }
+}
+
 }  // namespace
 
 void run_site_heartbeat_tests() {
@@ -931,6 +1111,7 @@ void run_site_heartbeat_tests() {
   canonical_active_peer_does_not_require_a_direct_pair_record();
   credential_transition_reopens_discovery_without_erasing_routes();
   committed_directory_never_forces_site_and_group_leader_overlap();
+  roster_expansion_preserves_the_valid_directory_incumbent();
   sequence_tracking_rejects_replay_but_accepts_a_new_boot();
   endpoint_configuration_fence_detects_equal_revision_divergence();
   bounded_roster_transition_requires_an_exact_adjacent_current_peer();
@@ -939,4 +1120,5 @@ void run_site_heartbeat_tests() {
   v6_heartbeat_cannot_erase_a_known_directory_fence();
   v7_heartbeat_cannot_erase_known_credential_readiness();
   v11_heartbeat_cannot_downgrade_a_known_v12_endpoint();
+  current_wire_probe_is_independent_of_peer_count();
 }

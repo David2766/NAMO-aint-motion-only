@@ -430,6 +430,14 @@ void automatic_replication_uses_stable_roster_slots_and_bounded_backoff() {
               site_replication_retry_delay_ms(5) == 30000 &&
               site_replication_retry_delay_ms(20) == 30000,
           "whole-session retry backoff must remain bounded");
+  require(SITE_REPLICATION_BUSY_RETRY_DELAY_MS == 2750 &&
+              site_replication_busy_retry_allowed(0) &&
+              site_replication_busy_retry_allowed(5) &&
+              !site_replication_busy_retry_allowed(6) &&
+              SITE_REPLICATION_BUSY_RETRY_DELAY_MS *
+                      SITE_REPLICATION_MAX_BUSY_RETRIES >=
+                  SiteReplicationSourceLease::LEASE_MS * 6U,
+          "source-busy retry window must cover all bounded follower slots");
 }
 
 void floorplan_source_lease_serializes_without_a_waiting_queue() {

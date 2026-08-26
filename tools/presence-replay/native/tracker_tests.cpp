@@ -2241,8 +2241,10 @@ int main(int argc, char **argv) {
       argc == 2 && std::strcmp(argv[1], "resources") == 0;
   const bool firmware_suite =
       argc == 2 && std::strcmp(argv[1], "firmware") == 0;
+  const bool site_heartbeat_suite =
+      argc == 2 && std::strcmp(argv[1], "site-heartbeat") == 0;
   if (argc > 1 && !role_suite && !coordinator_suite && !resource_suite &&
-      !firmware_suite) {
+      !firmware_suite && !site_heartbeat_suite) {
     std::cerr << "tracker_tests: unknown suite\n";
     return 2;
   }
@@ -2260,6 +2262,12 @@ int main(int argc, char **argv) {
     run_group_coordinator_tests();
     run_site_coordinator_tests();
     std::cout << "tracker_tests: coordinators ok\n";
+    return 0;
+  }
+  if (site_heartbeat_suite) {
+    run_site_group_summary_tests();
+    run_site_heartbeat_tests();
+    std::cout << "tracker_tests: site-heartbeat ok\n";
     return 0;
   }
   if (role_suite) {

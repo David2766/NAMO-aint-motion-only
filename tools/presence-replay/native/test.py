@@ -292,7 +292,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--suite",
-        choices=("coordinators", "firmware", "resources", "roles"),
+        choices=(
+            "coordinators",
+            "firmware",
+            "resources",
+            "roles",
+            "site-heartbeat",
+        ),
         help="Run one focused suite after building the native test binary.",
     )
     return parser.parse_args()

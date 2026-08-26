@@ -3,7 +3,7 @@ substitutions:
   friendly_name: Presence Sensor
   name_add_mac_suffix: "true"
   project_name: truststorm.presence-sensor
-  project_version: "0.6.0"
+  project_version: "0.6.1"
   shadow_transport_smoke: "false"
   production_fusion: "true"
   signed_ota: "false"

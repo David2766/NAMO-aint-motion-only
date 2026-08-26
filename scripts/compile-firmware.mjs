@@ -49,6 +49,7 @@ function usage() {
     "",
     "Options:",
     "  --beta          Build normally and write beta-named OTA/factory binaries",
+    "  --hotfix        Build an official patch release and advance the security epoch",
     "  --release       Build an official release and advance the security epoch",
     "  --release-type <type>  Select patch, minor, or major (default: patch)",
     "  --signer <role> Sign with none, developer, or release credentials",
@@ -72,6 +73,7 @@ function usage() {
     "",
     "Signed release build:",
     "  --release --signer release",
+    "  --hotfix --signer release",
     "",
     "Release version work also forces:",
     "  --dashboard, --clean, --config, and release-named OTA/factory binaries",
@@ -509,7 +511,7 @@ writeTextFileSync(versionPath, `${JSON.stringify(version, null, 2)}\n`);
 const buildStartedAt = new Date();
 const releaseBuildId = buildStartedAt.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 let signing = null;
-console.log(`compile-firmware: firmware ${currentFirmware} -> ${nextFirmware}${options.release ? ` (${options.releaseType} release)` : options.signer === "developer" ? " (signed developer)" : options.beta ? " (beta)" : ""}`);
+console.log(`compile-firmware: firmware ${currentFirmware} -> ${nextFirmware}${options.hotfix ? " (hotfix release)" : options.release ? ` (${options.releaseType} release)` : options.signer === "developer" ? " (signed developer)" : options.beta ? " (beta)" : ""}`);
 if (options.release) {
   console.log(`compile-firmware: dashboard ${currentDashboard} -> ${nextDashboard}`);
 }

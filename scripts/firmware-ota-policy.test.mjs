@@ -125,7 +125,8 @@ test("release builds require external keys and embed only the provisioned public
   assert.match(wrapper, /ProtectedData\]::Unprotect/);
   assert.match(wrapper, /firmware-key-validation\.mjs/);
   assert.match(wrapper, /finally \{/);
-  assert.match(wrapper, /-Release requires the separate -Signer release option/);
+  assert.match(wrapper, /-Release or -Hotfix requires the separate -Signer release option/);
+  assert.match(wrapper, /\$nodeArguments \+= "--hotfix"/);
   assert.match(wrapper, /NAMO_FIRMWARE_KEY_DIRECTORY/);
   assert.doesNotMatch(wrapper, /[A-Z]:\\[^"']*namo-signing-keys/i);
   assert.doesNotMatch(wrapper, /BEGIN (?:ENCRYPTED )?PRIVATE KEY/);

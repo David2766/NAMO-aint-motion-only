@@ -108,6 +108,16 @@ class PairingBootstrapActivationGlueTests(unittest.TestCase):
             "SiteConfigurationReplicationMode::AUTHENTICATED_ENROLLMENT",
             explicit_sync,
         )
+        already_current = explicit_sync.index(
+            "pairing_sync == PairingSiteSyncDecision::ALREADY_CURRENT"
+        )
+        strict_start = explicit_sync.index(
+            "pairing_sync == PairingSiteSyncDecision::START_STRICT"
+        )
+        self.assertIn(
+            "this->auto_directory_replication_due_ms_ = millis();",
+            explicit_sync[already_current:strict_start],
+        )
 
     def test_directory_loop_contains_only_bootstrap_and_standard_replication(
         self,
@@ -141,6 +151,39 @@ class PairingBootstrapActivationGlueTests(unittest.TestCase):
         self.assertIn("SiteDirectoryReplicationMode::INITIAL_BOOTSTRAP", body[:committing])
         self.assertNotIn("SiteDirectoryReplicationMode::AUTHORITY_REPAIR", body[:committing])
         self.assertIn("this->fail_(SiteReplicationResult::INVALID_OWNER);", body[:committing])
+
+    def test_source_busy_retries_inside_the_udp_replication_session(self) -> None:
+        response = function_body(
+            self.replication,
+            "void SiteReplicationTransport::accept_response_(",
+        )
+        busy = response.index(
+            "response_result == SiteReplicationResult::BUSY"
+        )
+        terminal_failure = response.index("this->fail_(response_result);", busy)
+        retry = response[busy:terminal_failure]
+
+        self.assertIn(
+            "site_replication_busy_retry_allowed(this->busy_retry_count_)",
+            retry,
+        )
+        self.assertIn("this->busy_retry_due_ms_ =", retry)
+        self.assertIn("SITE_REPLICATION_BUSY_RETRY_DELAY_MS", retry)
+        self.assertIn("++this->busy_retry_count_;", retry)
+        self.assertIn("return;", retry)
+        self.assertLess(busy, terminal_failure)
+
+        advance = function_body(
+            self.replication,
+            "void SiteReplicationTransport::advance_(",
+        )
+        retry_wait = advance.index("if (this->busy_retry_due_ms_ != 0)")
+        request_timeout = advance.index("if (this->awaiting_response_)")
+        self.assertLess(retry_wait, request_timeout)
+        self.assertIn(
+            "if (!time_reached(now_ms, this->busy_retry_due_ms_))",
+            advance[retry_wait:request_timeout],
+        )
 
     def test_activation_uses_replica_admission_before_mutation(
         self,
@@ -192,6 +235,27 @@ class PairingBootstrapActivationGlueTests(unittest.TestCase):
             "message.site_directory_revision = directory->topology_revision;",
             body,
         )
+
+    def test_heartbeat_wire_probe_is_bound_to_the_send_cycle(self) -> None:
+        body = function_body(
+            self.heartbeat,
+            "void SiteHeartbeatTransport::send_(",
+        )
+        cycle_start = body.index("this->send_cycle_sequence_++;")
+        peer_loop = body.index("while (this->send_cursor_ <")
+        self.assertLess(cycle_start, peer_loop)
+        self.assertIn(
+            "site_heartbeat_current_wire_probe(this->send_cycle_sequence_)",
+            body[cycle_start:peer_loop],
+        )
+        self.assertNotIn("message.sequence % 5U", body)
+
+        ordinary_start = body.index("const bool compatibility_v4")
+        summary_start = body.index("const bool summary_compatibility_v4")
+        ordinary = body[ordinary_start:summary_start]
+        summary = body[summary_start:]
+        self.assertEqual(ordinary.count("!this->current_wire_probe_"), 8)
+        self.assertEqual(summary.count("!this->current_wire_probe_"), 8)
 
 
 if __name__ == "__main__":

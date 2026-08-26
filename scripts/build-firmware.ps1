@@ -5,6 +5,8 @@ param(
 
   [switch]$Release,
 
+  [switch]$Hotfix,
+
   [ValidateSet("Patch", "Minor", "Major")]
   [string]$ReleaseType = "Patch",
 
@@ -31,13 +33,21 @@ if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) {
   Add-Type -AssemblyName System.Security
 }
 
-if ($Release -and $Signer -ne "release") {
-  throw "-Release requires the separate -Signer release option"
+$IsReleaseBuild = $Release -or $Hotfix
+
+if ($Release -and $Hotfix) {
+  throw "-Release and -Hotfix are mutually exclusive"
 }
-if (-not $Release -and $Signer -eq "release") {
-  throw "-Signer release requires -Release"
+if ($Hotfix -and $PSBoundParameters.ContainsKey("ReleaseType")) {
+  throw "-Hotfix is always a Patch release and cannot use -ReleaseType"
 }
-if (-not $Release -and $PSBoundParameters.ContainsKey("ReleaseType")) {
+if ($IsReleaseBuild -and $Signer -ne "release") {
+  throw "-Release or -Hotfix requires the separate -Signer release option"
+}
+if (-not $IsReleaseBuild -and $Signer -eq "release") {
+  throw "-Signer release requires -Release or -Hotfix"
+}
+if (-not $IsReleaseBuild -and $PSBoundParameters.ContainsKey("ReleaseType")) {
   throw "-ReleaseType requires -Release"
 }
 if ($ValidateOnly -and $Signer -eq "none") {
@@ -166,7 +176,10 @@ function Set-ValidatedCachedPassphrase {
 
 try {
   $nodeArguments = @($compileScript)
-  if ($Release) {
+  if ($Hotfix) {
+    $nodeArguments += "--hotfix"
+  }
+  elseif ($Release) {
     $nodeArguments += @(
       "--release",
       "--release-type",
@@ -239,7 +252,7 @@ try {
 
   if ($DryRun) {
     Write-Host "build-firmware: dry run"
-    Write-Host "build-firmware: signer=$Signer release=$($Release.IsPresent) releaseType=$ReleaseType"
+    Write-Host "build-firmware: signer=$Signer release=$($Release.IsPresent) hotfix=$($Hotfix.IsPresent) releaseType=$ReleaseType"
     Write-Host "build-firmware: node $($nodeArguments -join ' ')"
     return
   }

@@ -107,6 +107,7 @@ test("build arguments keep release versioning separate from signing identity", (
       config: false,
       dashboard: false,
       help: false,
+      hotfix: false,
       release: true,
       signer: "release",
       transportSmoke: false,
@@ -127,6 +128,16 @@ test("build arguments keep release versioning separate from signing identity", (
     ]).releaseType,
     "major"
   );
+  const hotfix = parseFirmwareBuildArgs([
+    "--hotfix", "--signer", "release"
+  ]);
+  assert.equal(hotfix.hotfix, true);
+  assert.equal(hotfix.release, true);
+  assert.equal(hotfix.releaseType, "patch");
+  assert.throws(
+    () => parseFirmwareBuildArgs(["--hotfix"]),
+    /requires the separate --signer release/
+  );
   assert.throws(
     () => parseFirmwareBuildArgs(["--release"]),
     /requires the separate --signer release/
@@ -145,6 +156,16 @@ test("build arguments keep release versioning separate from signing identity", (
     ]),
     /unsupported release type/
   );
+  assert.throws(
+    () => parseFirmwareBuildArgs(["--hotfix", "--release", "--signer", "release"]),
+    /mutually exclusive/
+  );
+  assert.throws(
+    () => parseFirmwareBuildArgs([
+      "--hotfix", "--release-type", "minor", "--signer", "release"
+    ]),
+    /always a patch release/
+  );
 });
 
 test("developer and unsigned signing modes never advance release versioning", () => {
@@ -152,6 +173,7 @@ test("developer and unsigned signing modes never advance release versioning", ()
     "--signer", "developer", "--dashboard", "custom.yaml"
   ]);
   assert.equal(developer.release, false);
+  assert.equal(developer.hotfix, false);
   assert.equal(developer.signer, "developer");
   assert.equal(developer.dashboard, true);
   assert.equal(developer.firmwareEntry, "custom.yaml");

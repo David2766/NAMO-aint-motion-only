@@ -101,7 +101,9 @@ export function parseFirmwareBuildArgs(args, {
   }
 
   const beta = values.includes("--beta");
-  const release = values.includes("--release");
+  const hotfix = values.includes("--hotfix");
+  const releaseRequested = values.includes("--release");
+  const release = releaseRequested || hotfix;
   const signedDeveloperAlias = values.includes("--signed-developer");
   const dashboard = values.includes("--dashboard");
   const clean = values.includes("--clean") || values.includes("--cmake-clean");
@@ -111,6 +113,7 @@ export function parseFirmwareBuildArgs(args, {
   const help = values.includes("--help") || values.includes("-h");
   const knownOptions = new Set([
     "--beta",
+    "--hotfix",
     "--release",
     "--signed-developer",
     "--dashboard",
@@ -134,6 +137,12 @@ export function parseFirmwareBuildArgs(args, {
   }
   if (beta && release) {
     throw new Error("--beta and --release are mutually exclusive");
+  }
+  if (hotfix && releaseRequested) {
+    throw new Error("--hotfix and --release are mutually exclusive");
+  }
+  if (hotfix && explicitReleaseType !== null) {
+    throw new Error("--hotfix is always a patch release and cannot use --release-type");
   }
   if (signedDeveloperAlias && explicitSigner !== null) {
     throw new Error("--signed-developer cannot be combined with --signer");
@@ -165,6 +174,7 @@ export function parseFirmwareBuildArgs(args, {
     config,
     dashboard,
     help,
+    hotfix,
     release,
     signer,
     transportSmoke,

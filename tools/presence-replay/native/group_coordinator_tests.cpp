@@ -993,6 +993,72 @@ void test_directory_assignment_fences_local_election() {
           "a missing assigned-leader credential must fail closed");
 }
 
+void test_roster_expansion_bootstrap_preserves_directory_incumbent() {
+  const auto local = identity("namo-node-10-fallback");
+  ParticipantRegistry participants{};
+  ParticipantReadinessRegistry readiness{};
+  const char *remote_ids[] = {
+      "namo-node-20-site", "namo-node-30-incumbent",
+      "namo-node-40-owner", "namo-node-50", "namo-node-60",
+  };
+  for (const char *participant_id : remote_ids)
+    add_active(&participants, &readiness, participant_id, "group-main");
+  auto configuration = canonical_configuration(local, participants);
+  std::strcpy(configuration.configuration_owner_node_id,
+              "namo-node-40-owner");
+  assign_canonical_group(&configuration, "group-main");
+
+  SiteDirectorySnapshot directory{};
+  std::strcpy(directory.site_id, local.site_id);
+  directory.generation = 1;
+  directory.topology_revision = configuration.roster_revision - 1;
+  directory.committed = true;
+  auto &entry = directory.groups[0];
+  entry.occupied = true;
+  std::strcpy(entry.group_id, "group-main");
+  std::strcpy(entry.floorplan_id, "floor-main");
+  std::strcpy(entry.leader_node_id, "namo-node-30-incumbent");
+  entry.assignment_revision = 30;
+  entry.member_count = 5;
+
+  ParticipantCredentialRegistry credentials{};
+  std::array<uint8_t, 32> key{};
+  key.fill(0x30);
+  uint64_t token = 300;
+  for (const char *participant_id : remote_ids) {
+    require(credentials.set(participant_id, ++token, 1, key.data(), true) ==
+                ParticipantCredentialResult::OK,
+            "the expansion bootstrap credential fixture failed");
+  }
+
+  GroupCoordinator coordinator{};
+  coordinator.update(local, participants, readiness, &configuration,
+                     &credentials, &directory, "namo-node-20-site", 1000);
+  auto incumbent = heartbeat("namo-node-30-incumbent", "group-main",
+                             "boot-incumbent", 1, 38);
+  incumbent.election_view_digest = 1;
+  require(coordinator.accept_heartbeat(
+              participants, readiness, &configuration, incumbent, 1000) ==
+              GroupHeartbeatResult::OK,
+          "the persisted incumbent heartbeat should be admitted");
+  coordinator.update(local, participants, readiness, &configuration,
+                     &credentials, &directory, "namo-node-20-site", 1000);
+
+  RoleElectionView contract{};
+  for (const auto &member : configuration.members) {
+    if (member.occupied)
+      contract.add(member.participant_id, configuration.roster_revision,
+                   true);
+  }
+  const auto *group = only_group(coordinator);
+  require(group->assignment_revision == 0 &&
+              !group->canonical_assignment &&
+              group->election_view_digest ==
+                  contract.winner_contract_digest(
+                      "group-main", "namo-node-30-incumbent"),
+          "a restarted 5-to-6 transition must elect the valid Directory incumbent before canonical promotion");
+}
+
 void test_divergent_directory_assignment_fails_closed_until_majority_agrees() {
   const auto local = identity("namo-node-z");
   ParticipantRegistry participants{};
@@ -1653,6 +1719,7 @@ void run_group_coordinator_tests() {
   test_indirect_canonical_group_member_can_lead();
   test_group_recovers_an_expired_higher_term();
   test_directory_assignment_fences_local_election();
+  test_roster_expansion_bootstrap_preserves_directory_incumbent();
   test_divergent_directory_assignment_fails_closed_until_majority_agrees();
   test_returning_member_preserves_established_group_leader_during_view_rollout();
   test_mixed_v11_v12_group_contracts_converge_through_seven_nodes();

@@ -327,6 +327,23 @@ void pairing_bootstrap_activation_flow_survives_restart_to_seven_nodes() {
     require(bootstrap_source != nullptr &&
                 std::strcmp(bootstrap_source, owner.node_id) == 0,
             "joiner did not select the paired Owner for Directory bootstrap");
+    require(owner_directory.topology_revision >
+                preserved_stale_directory.topology_revision,
+            "canonical catch-up fixture is not older than the Owner");
+    const char *catchup_source = site_directory_bootstrap_source(
+        joiner, joiner_configuration, preserved_stale_directory, joiner_site,
+        joiner_endpoints, joiner_credentials, 1000);
+    require(catchup_source != nullptr &&
+                std::strcmp(catchup_source, owner.node_id) == 0,
+            "quarantined joiner did not catch up from a strictly newer Owner Directory");
+
+    auto equal_revision_conflict = owner_directory;
+    equal_revision_conflict.groups[0].assignment_revision += 1;
+    require(site_directory_bootstrap_source(
+                joiner, joiner_configuration, equal_revision_conflict,
+                joiner_site, joiner_endpoints, joiner_credentials, 1000) ==
+                nullptr,
+            "equal-revision Directory divergence did not fail closed");
 
     SiteCoordinatorState owner_site{};
     owner_site.configuration_ready = true;

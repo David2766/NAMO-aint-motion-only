@@ -148,6 +148,9 @@ bool site_replication_response_matches_request(
 static constexpr uint32_t SITE_REPLICATION_SLOT_MS = 2500;
 static constexpr uint8_t SITE_REPLICATION_MAX_SESSION_RETRIES = 5;
 static constexpr uint32_t SITE_REPLICATION_BUSY_PAYLOAD_HASH = 0x42555359;
+static constexpr uint32_t SITE_REPLICATION_BUSY_RETRY_DELAY_MS =
+    SITE_REPLICATION_SLOT_MS + 250;
+static constexpr uint8_t SITE_REPLICATION_MAX_BUSY_RETRIES = 6;
 
 uint32_t site_replication_slot_delay_ms(
     const SiteConfigurationSnapshot &configuration,
@@ -156,6 +159,7 @@ uint32_t site_replication_source_slot_delay_ms(
     const SiteConfigurationSnapshot &configuration,
     const char *source_node_id, const char *local_node_id);
 uint32_t site_replication_retry_delay_ms(uint8_t retry_count);
+bool site_replication_busy_retry_allowed(uint8_t retry_count);
 
 enum class SiteReplicationRouteResult : uint8_t {
   OK = 0,
@@ -486,8 +490,10 @@ class SiteReplicationTransport {
   uint32_t session_id_{0};
   uint32_t session_started_ms_{0};
   uint32_t request_sent_ms_{0};
+  uint32_t busy_retry_due_ms_{0};
   uint32_t next_socket_attempt_ms_{0};
   uint8_t retry_count_{0};
+  uint8_t busy_retry_count_{0};
   uint8_t credential_probe_index_{0};
   uint32_t credential_session_key_version_{0};
   uint64_t credential_session_participant_token_{0};

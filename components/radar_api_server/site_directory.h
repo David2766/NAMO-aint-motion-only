@@ -141,6 +141,10 @@ uint32_t site_directory_payload_hash(
     const SiteDirectorySnapshot &directory);
 uint32_t group_directory_assignment_hash(
     const GroupDirectoryEntry &group);
+bool group_directory_has_exact_shape(const GroupDirectoryEntry *group,
+                                     uint8_t member_count);
+bool group_directory_is_expanding(const GroupDirectoryEntry *group,
+                                  uint8_t member_count);
 SiteDirectoryResult migrate_site_configuration_to_directory(
     const SiteConfigurationSnapshot &configuration,
     SiteDirectorySnapshot *directory);

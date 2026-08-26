@@ -111,7 +111,6 @@ const char *resolve_expected_group_leader(
   for (const auto &member : configuration.members) {
     if (member.occupied &&
         member.membership == ParticipantMembership::ACTIVE &&
-        member.type == ParticipantType::NAMO_NODE &&
         member.spatial_profile.committed &&
         std::strcmp(member.spatial_profile.group_id, group_id) == 0)
       ++member_count;
@@ -120,9 +119,11 @@ const char *resolve_expected_group_leader(
       directory != nullptr && directory->committed
           ? directory->find_group(group_id)
           : nullptr;
-  if (directory_group != nullptr &&
-      directory_group->assignment_revision != 0 && member_count != 0 &&
-      directory_group->member_count == member_count) {
+  const bool exact_directory_shape =
+      group_directory_has_exact_shape(directory_group, member_count);
+  const bool expanding_directory_shape =
+      group_directory_is_expanding(directory_group, member_count);
+  if (exact_directory_shape || expanding_directory_shape) {
     const auto *assigned =
         configuration.find(directory_group->leader_node_id);
     const bool assigned_local =
@@ -1001,6 +1002,11 @@ SiteHeartbeatAuthorityProjection project_site_heartbeat_authority(
           state.previous_election_view_digest, false};
 }
 
+bool site_heartbeat_current_wire_probe(uint32_t send_cycle_sequence) {
+  return send_cycle_sequence != 0 &&
+         send_cycle_sequence % SITE_HEARTBEAT_CURRENT_WIRE_PROBE_INTERVAL == 0;
+}
+
 #ifdef USE_ESP32
 
 namespace {
@@ -1306,6 +1312,11 @@ void SiteHeartbeatTransport::send_(
       return;
     this->send_cycle_active_ = true;
     this->send_cursor_ = 0;
+    this->send_cycle_sequence_++;
+    if (this->send_cycle_sequence_ == 0)
+      this->send_cycle_sequence_++;
+    this->current_wire_probe_ =
+        site_heartbeat_current_wire_probe(this->send_cycle_sequence_);
     this->next_send_ms_ = now_ms + HEARTBEAT_INTERVAL_MS;
   }
 
@@ -1415,41 +1426,41 @@ void SiteHeartbeatTransport::send_(
     }
     const bool compatibility_v4 =
         endpoint->site_configuration_authority_epoch == 0 &&
-        (message.sequence % 5U) != 0;
+        !this->current_wire_probe_;
     const bool compatibility_v5 =
         !compatibility_v4 && endpoint->site_topology_revision == 0 &&
-        (message.sequence % 5U) != 0;
+        !this->current_wire_probe_;
     const bool compatibility_v6 =
         !compatibility_v4 && !compatibility_v5 &&
         (message.site_directory_revision == 0 ||
          (endpoint->site_directory_revision == 0 &&
-          (message.sequence % 5U) != 0));
+          !this->current_wire_probe_));
     const bool compatibility_v7 =
         !compatibility_v4 && !compatibility_v5 && !compatibility_v6 &&
         endpoint->heartbeat_wire_version < CREDENTIAL_FENCE_HEARTBEAT_VERSION &&
-        (message.sequence % 5U) != 0;
+        !this->current_wire_probe_;
     const bool compatibility_v8 =
         !compatibility_v4 && !compatibility_v5 && !compatibility_v6 &&
         !compatibility_v7 &&
         (authority.control_plane_only ||
          (endpoint->heartbeat_wire_version < ELECTION_FENCE_HEARTBEAT_VERSION &&
-          (message.sequence % 5U) != 0));
+          !this->current_wire_probe_));
     const bool compatibility_v9 =
         !compatibility_v4 && !compatibility_v5 && !compatibility_v6 &&
         !compatibility_v7 && !compatibility_v8 &&
         endpoint->heartbeat_wire_version < STABLE_ELECTION_HEARTBEAT_VERSION &&
-        (message.sequence % 5U) != 0;
+        !this->current_wire_probe_;
     const bool compatibility_v10 =
         !compatibility_v4 && !compatibility_v5 && !compatibility_v6 &&
         !compatibility_v7 && !compatibility_v8 && !compatibility_v9 &&
         endpoint->heartbeat_wire_version < WINNER_ELECTION_HEARTBEAT_VERSION &&
-        (message.sequence % 5U) != 0;
+        !this->current_wire_probe_;
     const bool compatibility_v11 =
         !compatibility_v4 && !compatibility_v5 && !compatibility_v6 &&
         !compatibility_v7 && !compatibility_v8 && !compatibility_v9 &&
         !compatibility_v10 &&
         endpoint->heartbeat_wire_version < HEARTBEAT_VERSION &&
-        (message.sequence % 5U) != 0;
+        !this->current_wire_probe_;
     if (compatibility_v9) {
       message.site_election_view_digest =
           authority.previous_election_view_digest;
@@ -1507,46 +1518,46 @@ void SiteHeartbeatTransport::send_(
           local_group->participants_online;
       const bool summary_compatibility_v4 =
           endpoint->site_configuration_authority_epoch == 0 &&
-          (message.sequence % 5U) != 0;
+          !this->current_wire_probe_;
       const bool summary_compatibility_v5 =
           !summary_compatibility_v4 &&
           endpoint->site_topology_revision == 0 &&
-          (message.sequence % 5U) != 0;
+          !this->current_wire_probe_;
       const bool summary_compatibility_v6 =
           !summary_compatibility_v4 && !summary_compatibility_v5 &&
           (message.site_directory_revision == 0 ||
            (endpoint->site_directory_revision == 0 &&
-            (message.sequence % 5U) != 0));
+            !this->current_wire_probe_));
       const bool summary_compatibility_v7 =
           !summary_compatibility_v4 && !summary_compatibility_v5 &&
           !summary_compatibility_v6 &&
           endpoint->heartbeat_wire_version < CREDENTIAL_FENCE_HEARTBEAT_VERSION &&
-          (message.sequence % 5U) != 0;
+          !this->current_wire_probe_;
       const bool summary_compatibility_v8 =
           !summary_compatibility_v4 && !summary_compatibility_v5 &&
           !summary_compatibility_v6 && !summary_compatibility_v7 &&
           endpoint->heartbeat_wire_version < ELECTION_FENCE_HEARTBEAT_VERSION &&
-          (message.sequence % 5U) != 0;
+          !this->current_wire_probe_;
       const bool summary_compatibility_v9 =
           !summary_compatibility_v4 && !summary_compatibility_v5 &&
           !summary_compatibility_v6 && !summary_compatibility_v7 &&
           !summary_compatibility_v8 &&
           endpoint->heartbeat_wire_version < STABLE_ELECTION_HEARTBEAT_VERSION &&
-          (message.sequence % 5U) != 0;
+          !this->current_wire_probe_;
       const bool summary_compatibility_v10 =
           !summary_compatibility_v4 && !summary_compatibility_v5 &&
           !summary_compatibility_v6 && !summary_compatibility_v7 &&
           !summary_compatibility_v8 && !summary_compatibility_v9 &&
           endpoint->heartbeat_wire_version <
               WINNER_ELECTION_HEARTBEAT_VERSION &&
-          (message.sequence % 5U) != 0;
+          !this->current_wire_probe_;
       const bool summary_compatibility_v11 =
           !summary_compatibility_v4 && !summary_compatibility_v5 &&
           !summary_compatibility_v6 && !summary_compatibility_v7 &&
           !summary_compatibility_v8 && !summary_compatibility_v9 &&
           !summary_compatibility_v10 &&
           endpoint->heartbeat_wire_version < HEARTBEAT_VERSION &&
-          (message.sequence % 5U) != 0;
+          !this->current_wire_probe_;
       if (summary_compatibility_v9) {
         message.site_election_view_digest =
             authority.previous_election_view_digest;

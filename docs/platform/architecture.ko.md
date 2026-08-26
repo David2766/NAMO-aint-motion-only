@@ -7,11 +7,13 @@
   고정 메모리 7개 입력 Group fusion 및 Home Assistant custom integration.
 - **실기기 검증됨:** 단일 Group의 5대 Site에서 신규 기기 연결, 평면도 복제, 보정, 활성화,
   단일 역할 기기 장애, 두 역할 기기 동시 장애 및 정상 복귀 흐름을 완료했습니다. 생존한
-  strict majority에서는 자동화를 계속 사용할 수 있었습니다.
-- **남은 릴리스 게이트:** 4·6·7대 실기기 조합, 다중 Group 및 순차 업데이트.
+  strict majority에서는 자동화를 계속 사용할 수 있었습니다. 또한 7대까지 순차 확장하여
+  페어링, 복제, 보정, 활성화, 최종 7/7 canonical 수렴, 융합·자동화 및 자원 상태를 확인했습니다.
+- **남은 릴리스 게이트:** 다른 Group 규모의 장애·복귀 matrix, 다중 Group 및 순차 업데이트.
 - **미완료:** 제조사 attestation, 외부 Satellite SDK 및 SmartThings integration. 같은 revision
   복구 격리, 긴급 삼중 역할 fallback과 해제, pairing poll 복구, 하나로 통일된 pairing 수명 및
-  bounded handover retry는 host test로 검증했습니다.
+  bounded handover retry와 기존 Leader를 유지하는 5→6→7대 Group roster 확장은 host test로
+  검증했습니다.
 
 영문 문서: [architecture.md](architecture.md)
 

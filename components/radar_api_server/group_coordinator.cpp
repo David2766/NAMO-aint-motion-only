@@ -695,11 +695,12 @@ void GroupCoordinator::elect_leader_(
       directory != nullptr && directory->committed
           ? directory->find_group(group->state.group_id)
           : nullptr;
-  const bool directory_shape_matches =
-      directory_group != nullptr && directory_group->assignment_revision != 0 &&
-      directory_group->member_count == group->state.participants_expected;
+  const bool directory_shape_matches = group_directory_has_exact_shape(
+      directory_group, group->state.participants_expected);
+  const bool directory_expansion_transition = group_directory_is_expanding(
+      directory_group, group->state.participants_expected);
   bool canonical_assignment = false;
-  if (directory_shape_matches) {
+  if (directory_shape_matches || directory_expansion_transition) {
     const char *assigned = directory_group->leader_node_id;
     if (std::strcmp(assigned, identity.node_id) == 0) {
       if (local_candidate_ready &&
@@ -709,7 +710,7 @@ void GroupCoordinator::elect_leader_(
                identity.node_id))) {
         winner = identity.node_id;
         winner_heartbeat = nullptr;
-        canonical_assignment = true;
+        canonical_assignment = directory_shape_matches;
       }
     } else {
       const auto *assigned_participant = participants.find(assigned);
@@ -742,7 +743,7 @@ void GroupCoordinator::elect_leader_(
       if (assigned_eligible) {
         winner = assigned;
         winner_heartbeat = assigned_heartbeat;
-        canonical_assignment = true;
+        canonical_assignment = directory_shape_matches;
       }
     }
   }

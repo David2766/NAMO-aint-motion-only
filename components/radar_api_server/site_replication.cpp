@@ -552,6 +552,10 @@ uint32_t site_replication_retry_delay_ms(uint8_t retry_count) {
   return delay_ms > 30000U ? 30000U : delay_ms;
 }
 
+bool site_replication_busy_retry_allowed(uint8_t retry_count) {
+  return retry_count < SITE_REPLICATION_MAX_BUSY_RETRIES;
+}
+
 PairingSiteSyncDecision pairing_site_sync_decision(
     const SiteConfigurationSnapshot &configuration,
     const ParticipantRecord *participant,
@@ -897,12 +901,17 @@ const char *site_directory_bootstrap_source(
     const ParticipantEndpointCache &endpoints,
     const ParticipantCredentialRegistry &credentials, uint32_t now_ms) {
   const auto *local = configuration.find(identity.node_id);
+  const bool initial_mirror = directory.compatibility_mirror;
+  const bool quarantined_catchup =
+      local != nullptr &&
+      local->membership == ParticipantMembership::QUARANTINED &&
+      !directory.compatibility_mirror;
   if (!configuration.roster_committed ||
       std::strcmp(configuration.site_id, identity.site_id) != 0 ||
       local == nullptr || local->type != ParticipantType::NAMO_NODE ||
       local->membership == ParticipantMembership::REVOKED ||
       !valid_site_directory(directory) ||
-      !directory.compatibility_mirror ||
+      (!initial_mirror && !quarantined_catchup) ||
       std::strcmp(directory.site_id, identity.site_id) != 0)
     return nullptr;
 
@@ -912,10 +921,23 @@ const char *site_directory_bootstrap_source(
   // read-only Directory copy at every supported Site size. Role election is
   // deliberately not a prerequisite for enrollment bootstrap.
   const char *owner = configuration.configuration_owner_node_id;
-  if (owner[0] != '\0' && std::strcmp(owner, identity.node_id) != 0 &&
-      site_directory_bootstrap_candidate_ready(
-          configuration, endpoints, credentials, owner, now_ms))
-    return owner;
+  if (owner[0] != '\0' && std::strcmp(owner, identity.node_id) != 0) {
+    const bool owner_ready = site_directory_bootstrap_candidate_ready(
+        configuration, endpoints, credentials, owner, now_ms);
+    const auto *owner_endpoint = endpoints.find(owner);
+    if (owner_ready &&
+        (initial_mirror ||
+         (owner_endpoint != nullptr &&
+          owner_endpoint->site_directory_revision >
+              directory.topology_revision)))
+      return owner;
+  }
+
+  // A quarantined node may refresh a canonical enrollment copy only from its
+  // direct Configuration Owner and only when that Owner advertises a strictly
+  // newer revision. Equal-revision divergence remains fail-closed.
+  if (quarantined_catchup)
+    return nullptr;
 
   if (site.leader_node_id[0] != '\0' &&
       std::strcmp(site.leader_node_id, identity.node_id) != 0) {
@@ -1231,7 +1253,9 @@ void SiteReplicationTransport::cancel() {
   this->image_hash_ = 0;
   this->session_started_ms_ = 0;
   this->request_sent_ms_ = 0;
+  this->busy_retry_due_ms_ = 0;
   this->retry_count_ = 0;
+  this->busy_retry_count_ = 0;
   this->credential_probe_index_ = 0;
   this->credential_session_key_version_ = 0;
   this->credential_session_participant_token_ = 0;
@@ -1823,6 +1847,41 @@ void SiteReplicationTransport::accept_response_(
   const auto response_result = site_replication_response_result(
       envelope.frame.status, envelope.frame.payload_hash);
   if (response_result != SiteReplicationResult::OK) {
+    if (response_result == SiteReplicationResult::BUSY &&
+        site_replication_busy_retry_allowed(this->busy_retry_count_)) {
+      this->awaiting_response_ = false;
+      this->expected_request_id_ = 0;
+      this->expected_request_key_version_ = 0;
+      this->expected_request_participant_token_ = 0;
+      ++this->busy_retry_count_;
+      ++this->diagnostics_.retries;
+      this->diagnostics_.result = SiteReplicationResult::BUSY;
+      this->busy_retry_due_ms_ =
+          now_ms + SITE_REPLICATION_BUSY_RETRY_DELAY_MS;
+      ESP_LOGW(TAG,
+               "Replication source busy operation=%s state=%s retry=%u/%u "
+               "delay_ms=%u source=%s request_id=%u",
+               site_replication_target_to_string(this->diagnostics_.target),
+               site_replication_state_to_string(this->diagnostics_.state),
+               static_cast<unsigned>(this->busy_retry_count_),
+               static_cast<unsigned>(SITE_REPLICATION_MAX_BUSY_RETRIES),
+               static_cast<unsigned>(SITE_REPLICATION_BUSY_RETRY_DELAY_MS),
+               this->diagnostics_.owner_node_id,
+               static_cast<unsigned>(envelope.frame.request_id));
+      return;
+    }
+    if (response_result == SiteReplicationResult::BUSY) {
+      ESP_LOGE(TAG,
+               "Replication source remained busy operation=%s state=%s "
+               "retries=%u wait_ms=%u source=%s request_id=%u",
+               site_replication_target_to_string(this->diagnostics_.target),
+               site_replication_state_to_string(this->diagnostics_.state),
+               static_cast<unsigned>(this->busy_retry_count_),
+               static_cast<unsigned>(SITE_REPLICATION_BUSY_RETRY_DELAY_MS *
+                                     this->busy_retry_count_),
+               this->diagnostics_.owner_node_id,
+               static_cast<unsigned>(envelope.frame.request_id));
+    }
     if (credential_response &&
         this->diagnostics_.state ==
             SiteReplicationState::CREDENTIAL_METADATA &&
@@ -1856,6 +1915,9 @@ void SiteReplicationTransport::accept_response_(
   this->diagnostics_.responses++;
   this->awaiting_response_ = false;
   this->retry_count_ = 0;
+  this->busy_retry_count_ = 0;
+  this->busy_retry_due_ms_ = 0;
+  this->diagnostics_.result = SiteReplicationResult::IDLE;
   this->request_sent_ms_ = now_ms;
   if (this->diagnostics_.state ==
       SiteReplicationState::CREDENTIAL_METADATA) {
@@ -2186,6 +2248,11 @@ void SiteReplicationTransport::advance_(
       this->fail_(SiteReplicationResult::INVALID_OWNER);
       return;
     }
+  }
+  if (this->busy_retry_due_ms_ != 0) {
+    if (!time_reached(now_ms, this->busy_retry_due_ms_))
+      return;
+    this->busy_retry_due_ms_ = 0;
   }
   if (this->awaiting_response_) {
     if (!time_reached(now_ms, this->request_sent_ms_ + REQUEST_TIMEOUT_MS))
@@ -2730,6 +2797,7 @@ void SiteReplicationTransport::fail_(
     this->storage_->cancel_floorplan_replica();
   this->replica_started_ = false;
   this->awaiting_response_ = false;
+  this->busy_retry_due_ms_ = 0;
   this->expected_request_id_ = 0;
   this->expected_request_key_version_ = 0;
   this->expected_request_participant_token_ = 0;

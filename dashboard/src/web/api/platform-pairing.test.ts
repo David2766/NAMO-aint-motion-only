@@ -2549,6 +2549,26 @@ describe("platform pairing client", () => {
     expect(body).toBe("action=sync");
   });
 
+  it("does not retry a background Site sync when the source is busy", async () => {
+    let posts = 0;
+    const client = createPlatformPairingClient({
+      fetcher: async () => {
+        posts += 1;
+        return jsonResponse({
+          error: "busy",
+          errorInfo: { code: "busy" }
+        }, 409);
+      },
+      sleep: async () => {
+        throw new Error("background sync must not wait for a retry");
+      }
+    });
+
+    await expect(client.syncSiteConfiguration("http://local"))
+      .rejects.toMatchObject({ code: "busy" });
+    expect(posts).toBe(1);
+  });
+
   it("names the confirmed owner when a new Joiner has no inferred owner", async () => {
     let body = "";
     const fetcher: typeof fetch = async (_input, init) => {

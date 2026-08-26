@@ -98,6 +98,9 @@ SiteHeartbeatCodecResult parse_site_heartbeat(
 const char *site_heartbeat_codec_result_to_string(
     SiteHeartbeatCodecResult result);
 
+static constexpr uint32_t SITE_HEARTBEAT_CURRENT_WIRE_PROBE_INTERVAL = 5;
+bool site_heartbeat_current_wire_probe(uint32_t send_cycle_sequence);
+
 struct ParticipantEndpoint {
   bool occupied{false};
   bool authenticated{false};
@@ -327,8 +330,10 @@ class SiteHeartbeatTransport {
   uint32_t next_send_ms_{0};
   uint32_t next_discovery_ms_{0};
   uint32_t next_socket_attempt_ms_{0};
+  uint32_t send_cycle_sequence_{0};
   std::size_t send_cursor_{0};
   bool send_cycle_active_{false};
+  bool current_wire_probe_{false};
   bool drain_pending_{false};
   SiteHeartbeatDiagnostics diagnostics_{};
 

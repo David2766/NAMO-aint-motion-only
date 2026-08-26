@@ -94,6 +94,20 @@ package. It never writes private key material into generated firmware headers.
 .\scripts\build-firmware.ps1 -Release -Signer release
 ```
 
+For a patch-only hotfix release, use the explicit alias:
+
+```powershell
+.\scripts\build-firmware.ps1 -Hotfix -Signer release
+```
+
+`-Hotfix` is fixed to patch versioning. It produces the same signed Release
+package, advances the security epoch, and cannot be combined with `-Release` or
+`-ReleaseType`. Export it with:
+
+```powershell
+node .\scripts\export-firmware-dashboard.mjs --hotfix --allow-dirty-target
+```
+
 `-Release` advances the version and security epoch. `-Signer release` selects
 the Release signing identity. They remain separate options, and the wrapper
 rejects either option without the other before starting a build. Set
@@ -140,7 +154,7 @@ Build the legacy unsigned development image without loading any key:
 All three wrapper modes build the dashboard and clean by default. Use
 `-NoDashboard` or `-NoClean` only when intentionally skipping either step. The
 equivalent direct compiler arguments are `--signer none`, `--signer developer`,
-and `--release --signer release`.
+`--release --signer release`, and `--hotfix --signer release`.
 
 ## Release Or Developer Key Recovery
 

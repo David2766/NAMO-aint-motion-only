@@ -651,6 +651,18 @@ uint32_t group_directory_assignment_hash(
   return value == 0 ? 1 : value;
 }
 
+bool group_directory_has_exact_shape(const GroupDirectoryEntry *group,
+                                     uint8_t member_count) {
+  return group != nullptr && group->assignment_revision != 0 &&
+         member_count != 0 && group->member_count == member_count;
+}
+
+bool group_directory_is_expanding(const GroupDirectoryEntry *group,
+                                  uint8_t member_count) {
+  return group != nullptr && group->assignment_revision != 0 &&
+         group->member_count != 0 && group->member_count < member_count;
+}
+
 SiteDirectoryResult migrate_site_configuration_to_directory(
     const SiteConfigurationSnapshot &configuration,
     SiteDirectorySnapshot *directory) {

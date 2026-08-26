@@ -3241,8 +3241,10 @@ SiteReplicationResult RadarApiServer::start_site_replication(
       pairing_participant, pairing_credential, pairing_endpoint,
       this->platform_identity_.node_id, owner_node_id,
       this->local_floorplan_replica_ready_, millis());
-  if (pairing_sync == PairingSiteSyncDecision::ALREADY_CURRENT)
+  if (pairing_sync == PairingSiteSyncDecision::ALREADY_CURRENT) {
+    this->auto_directory_replication_due_ms_ = millis();
     return SiteReplicationResult::OK;
+  }
   if (pairing_sync == PairingSiteSyncDecision::OWNER_OFFLINE)
     return SiteReplicationResult::OWNER_OFFLINE;
   if (pairing_sync == PairingSiteSyncDecision::START_STRICT) {
