@@ -30,4 +30,3 @@ tools/presence-replay/native/tracker_runner
 tools/presence-replay/native/tracker_tests
 .DS_Store
 Thumbs.db
-hardware/hardware.zip

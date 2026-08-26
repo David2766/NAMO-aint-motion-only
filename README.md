@@ -88,9 +88,13 @@ and handed over automatically; users do not assign them manually.
   single-Group installation.
 - Sequential expansion through a seven-device single Group has passed physical
   pairing, Floorplan replication, calibration, activation, final 7/7 canonical
-  convergence, active fusion/automation, and target resource checks.
-- Physical failure/rejoin matrices at other Group sizes, multi-Group
-  installations, and rolling firmware upgrades remain release-validation work.
+  convergence, active fusion/automation, and target resource checks. The same
+  installation also passed quorum-loss and recovery testing: authority closed
+  at 3/7, roles were re-elected after quorum returned, and all seven devices
+  converged again without a second active authority.
+- Four- and six-device role matrices, multi-Group installations, overload at the
+  seven-input boundary, and rolling firmware upgrades remain release-validation
+  work.
 
 See [Multi-Device Setup](https://github.com/David2766/NAMO-aint-motion-only/wiki/Multi-Device-Setup)
 for pairing, floorplan selection, calibration, removal, and recovery instructions.
@@ -129,10 +133,11 @@ locking interface is not compatible with the legacy single-sensor
 <!-- release-firmware-version -->
 NAMO v0.6.1 is a public beta.
 
-The five-device failure/rejoin workflow and sequential expansion through seven
-physical devices are verified. The bounded host simulation covers two through
-seven processes, but it does not replace the remaining physical failure/rejoin
-release matrix. Exact implementation and verification status is maintained in the
+The five-device role matrix and the seven-device quorum-loss/recovery workflow
+are verified on physical devices. The bounded host simulation covers two through
+seven processes, but it does not replace the remaining four/six-device,
+multi-Group, overload, and mixed-version release matrices. Exact implementation
+and verification status is maintained in the
 [implementation roadmap](docs/platform/implementation-roadmap.md).
 
 ### Security
@@ -193,8 +198,10 @@ before enabling remote access or integrating third-party devices.
 - 5대 단일 Group 환경에서 전체 페어링, 보정, 활성화, 단일 역할 장애, 역할 기기
   두 대의 동시 장애 및 복귀 흐름을 실기기로 검증했습니다.
 - 단일 Group을 7대까지 순차 확장하여 페어링, 평면도 복제, 보정, 활성화, 최종 7/7
-  canonical 수렴, 융합·자동화 및 기기 자원 상태를 실기기로 확인했습니다.
-- 다른 Group 규모의 장애·복귀 matrix, 다중 Group 및 서로 다른 펌웨어의 순차
+  canonical 수렴, 융합·자동화 및 기기 자원 상태를 실기기로 확인했습니다. 같은 구성에서
+  3/7까지 감소했을 때 권한이 닫히고, 정족수 복구 후 역할을 다시 선출하여 이중 권한 없이
+  최종 7/7로 수렴하는 흐름도 검증했습니다.
+- 4대·6대 역할 matrix, 다중 Group, 7개 입력 경계의 과부하 및 서로 다른 펌웨어의 순차
   업데이트 검증은 아직 남아 있습니다.
 
 연결, 평면도 선택, 보정, 제거 및 복구 절차는
@@ -235,9 +242,9 @@ before enabling remote access or integrating third-party devices.
 <!-- release-firmware-version -->
 NAMO v0.6.1는 공개 베타입니다.
 
-위에서 설명한 5대 장애·복귀 흐름과 7대까지의 순차 확장·정상 운용은 실기기로
-검증했습니다. 2~7개 프로세스를 사용하는 제한형 호스트 시뮬레이션도 통과했지만,
-이는 남아 있는 실기기 장애·복귀 릴리즈 검증을 대체하지 않습니다. 정확한 구현 및 검증 상태는
+위에서 설명한 5대 역할 matrix와 7대 정족수 상실·복구 흐름은 실기기로 검증했습니다.
+2~7개 프로세스를 사용하는 제한형 호스트 시뮬레이션도 통과했지만, 이는 남아 있는
+4대·6대, 다중 Group, 과부하 및 혼합 버전 릴리즈 검증을 대체하지 않습니다. 정확한 구현 및 검증 상태는
 [구현 로드맵](docs/platform/implementation-roadmap.ko.md)에서 관리합니다.
 
 ### 보안

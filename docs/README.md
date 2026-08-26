@@ -49,6 +49,7 @@ Start here when deciding which project document to read or update.
 - [presence-simulation.ko.md](presence-simulation.ko.md): Korean version of simulation notes.
 - `tools/platform-sim`: Host-side V1 spatial protocol fixtures, validation, bounded authenticated datagrams, golden vectors, stream simulation, and MessagePack benchmarking. It is not a network service or Home Assistant integration.
 - `tools/namo-cluster`: Two-to-seven-process host integration for production coordinator, persisted configuration, UDP fault, restart, partition, and rejoin testing. It does not yet execute firmware HTTP pairing/calibration handlers or replace hardware testing.
+- `scripts/namo-failure-test.ps1`: Physical multi-Node role display, timestamped endpoint capture, operator markers, and post-capture analysis. The implementation roadmap defines the commands and evidence boundary.
 
 ## Editing Rules
 

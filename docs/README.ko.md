@@ -49,6 +49,7 @@
 - [presence-simulation.ko.md](presence-simulation.ko.md): 시뮬레이션 메모 한국어 문서.
 - `tools/platform-sim`: V1 공간 protocol fixture, validation, 크기가 제한된 인증 datagram, golden vector, stream simulation 및 MessagePack benchmark. Network service나 Home Assistant integration은 아닙니다.
 - `tools/namo-cluster`: production coordinator, 영속 설정, UDP 장애, 재시작, 분할 및 재합류를 2~7개 프로세스로 검증하는 host integration 도구입니다. 아직 firmware HTTP pairing·보정 handler를 실행하지 않으며 실기기 검증을 대체하지 않습니다.
+- `scripts/namo-failure-test.ps1`: 다중 Node 실기기의 역할 표시, timestamp 기반 endpoint 캡처, 사용자 marker 및 캡처 후 분석을 한 진입점으로 제공합니다. 실행법과 증거 범위는 구현 로드맵을 기준으로 합니다.
 
 ## 수정 규칙
 

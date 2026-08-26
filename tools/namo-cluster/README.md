@@ -53,6 +53,23 @@ python tools\namo-cluster\cluster.py run --nodes 5
 
 The `run` command prints each node's `/state` URL. Stop it with `Ctrl+C`.
 
+## Physical-device companion
+
+After the host matrix passes, use the repository wrapper to capture the same
+role-loss and rejoin behavior on physical devices:
+
+```powershell
+.\scripts\namo-failure-test.ps1 roles
+.\scripts\namo-failure-test.ps1 capture -DurationHours 2
+.\scripts\namo-failure-test.ps1 mark power_off_owner
+.\scripts\namo-failure-test.ps1 analyze
+```
+
+The wrapper accepts repeated `-Device alias=http://DEVICE_IP` arguments for a
+different installation. Its timestamped session combines state, Group,
+configuration, and system samples; operator markers are reference notes rather
+than the source of pass/fail decisions.
+
 ## Results
 
 Results are written below `test-result/namo-cluster/` by default:

@@ -8,12 +8,13 @@ Status: **Draft under incremental verification.**
   seven-input Group fusion, and the Home Assistant custom integration.
 - **Verified on hardware:** a five-Node, single-Group Site has completed the
   new-Node pairing, Floorplan replication, calibration, activation, single-role
-  outage, paired-role outage, and healthy rejoin flows. Automation remained
-  available on the surviving strict majority. Sequential expansion to seven
-  Nodes also completed pairing, replication, calibration, activation, final
-  7/7 canonical convergence, active fusion/automation, and resource checks.
-- **Remaining release gates:** physical failure/rejoin matrices at other Group
-  sizes, multi-Group operation, and rolling upgrades.
+  outage, paired-role outage, and healthy rejoin flows. A seven-Node Site also
+  completed sequential expansion, final 7/7 canonical convergence, resource
+  checks, strict-majority loss at 3/7, fail-closed authority withdrawal, role
+  re-election after quorum returned, and healthy 7/7 rejoin without concurrent
+  authority.
+- **Remaining release gates:** four- and six-Node role matrices, seven-input
+  overload and packet-loss testing, multi-Group operation, and rolling upgrades.
 - **Not complete:** manufacturer attestation, the external Satellite SDK, and
   SmartThings integration. Host tests cover same-revision recovery isolation,
   emergency triple-role fallback and relinquishment, pairing-poll resilience,
@@ -432,11 +433,12 @@ The current firmware keeps a flat twenty-participant relationship registry for
 local administration. Group membership and fusion are separately bounded at
 seven sensing participants, and the Site directory is bounded at eight Groups.
 The relationship registry is therefore not the Group capacity contract.
-Verification must separately cover a seven-input Group, an eight-Group Site
-directory, and the degraded case where one Node temporarily holds both Site and
-Group leadership. Tests measure packet rate, dropped observations, peak heap,
-largest free block, CPU time per fusion cycle, Leader handover time, and false
-transitions.
+Physical verification now covers steady seven-input operation and a seven-Node
+strict-majority loss/recovery cycle. Seven-input overload, sustained packet-loss
+behavior, an eight-Group Site directory, and the degraded case where one Node
+temporarily holds both Site and Group leadership remain separate targets. Tests
+measure packet rate, dropped observations, peak heap, largest free block, CPU
+time per fusion cycle, Leader handover time, and false transitions.
 
 ## 12. Security, Trust, and Device Attestation
 

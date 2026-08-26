@@ -91,8 +91,9 @@ python -m unittest `
 이 테스트는 standalone fallback, Site 하나의 여러 Space, 안정적인 Space 및 canonical 영역
 식별자, Configuration Owner 승계 식별자, 기존 Zone 및 Site 기기 정리, 표시 가능한 제한형
 Space 진단, 지연된 Repairs 보고와 복구, unavailable 원인 보고, 동적 Space와 영역 추가,
-번역 및 패키지 메타데이터를 검사합니다. Home Assistant container, 자동 발견, DHCP 및 실제
-Leader 승계 검증은 아직 릴리즈 gate로 남아 있습니다.
+번역 및 패키지 메타데이터를 검사합니다. 펌웨어의 실기기 7대 승계 경로는 별도로 검증했습니다.
+승계 중 Home Assistant container 동작, 자동 발견 및 DHCP 변경은 이 연동의 릴리즈 gate로
+남아 있습니다.
 
 ## 릴리스 저장소로 export
 

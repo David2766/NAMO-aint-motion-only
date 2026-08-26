@@ -98,9 +98,10 @@ These tests cover standalone fallback, multiple Spaces under one Site, stable
 Space and canonical-area identity, Configuration Owner handover identity,
 legacy Zone and Site-device cleanup, visible bounded Space diagnostics,
 delayed Repairs reporting and recovery, unavailable reason reporting, dynamic
-Space and area addition, translations, and package metadata. Home Assistant
-container, discovery, DHCP, and live Leader-handover verification remain
-release gates.
+Space and area addition, translations, and package metadata. The firmware's
+physical seven-Node handover path is verified separately; Home Assistant
+container behavior during live handover, discovery, and DHCP changes remains a
+release gate for this integration.
 
 ## Export the release repository
 

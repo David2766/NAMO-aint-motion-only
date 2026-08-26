@@ -6,11 +6,11 @@ seven-input fusion, and the Home Assistant Integration are implemented. A
   five-Node single-Group Site has passed the complete new-Node pairing,
   Floorplan replication, calibration, and activation workflow plus physical
   single-role and paired-role-holder power-loss/rejoin smoke with automation
-  continuity on the surviving strict majority. Sequential expansion to seven
-  Nodes has also passed pairing, replication, calibration, activation, final
-  7/7 convergence, active fusion/automation, and target resource checks.
-  Failure/rejoin at other Group sizes, multi-Group, and rolling-update release
-  matrices remain open. Official
+  continuity on the surviving strict majority. A seven-Node Site has passed
+  sequential expansion, final 7/7 convergence, target resource checks, loss of
+  strict majority at 3/7, fail-closed authority withdrawal, role re-election,
+  and healthy 7/7 recovery. Four- and six-Node role matrices, seven-input
+  overload, multi-Group, and rolling-update release matrices remain open. Official
   attestation, the Satellite SDK, and SmartThings are incomplete.**
 
 Korean version: [implementation-roadmap.ko.md](implementation-roadmap.ko.md)
@@ -62,11 +62,11 @@ These rules apply to every phase:
 | 1 | `implemented` | Local Observation Adapter; device smoke verification pending. |
 | 2 | `implemented` | V1 fixtures, validation, bounded simulator, and host benchmark implemented; MessagePack selected for V1. |
 | 3 | `in_progress` | 3A, 3B, and 3C are verified. Community discovery, secure pairing, connection management, and bilateral/offline cleanup UI passed target smoke. Official attestation and credential lifecycle remain in 3D. |
-| 4 | `in_progress` | Fixed-size Site/Group coordinators, strict canonical-roster quorum, independent term/lease election, authenticated heartbeat transport, RAM-only endpoint tracking, role-cascade avoidance, and atomic published role snapshots are implemented. Same-revision recovery isolation, multi-Node three-role exclusion, bounded handover retry, pairing-poll resilience, the unified three-minute invitation lifetime, adjacent-roster spatial data-plane continuity, incumbent-preserving 5-to-6-to-7 Group roster expansion, and independent Site/Group handoff stability pass host regression tests. A physical five-Node single-Group role-failure/rejoin matrix passes; other sizes and multi-Group validation remain open. |
-| 5 | `in_progress` | Phase 5A shared geometry/replication and the 5B/5C connection, calibration, and activation workflow are verified, including adding a fifth physical Node to an existing four-Node Site. Phase 5D automatic handover is implemented and two-Node plus five-Node single-Group takeover/rejoin smoke passes. Phase 5E now has a bounded directory, authenticated owner/Group metadata convergence, manifest-bound automatic Floorplan routing, and a queue-free serialized owner service; per-Floorplan pairing publication and handover remain. |
+| 4 | `in_progress` | Fixed-size Site/Group coordinators, strict canonical-roster quorum, independent term/lease election, authenticated heartbeat transport, RAM-only endpoint tracking, role-cascade avoidance, and atomic published role snapshots are implemented. Same-revision recovery isolation, multi-Node three-role exclusion, bounded handover retry, pairing-poll resilience, the unified three-minute invitation lifetime, adjacent-roster spatial data-plane continuity, incumbent-preserving 5-to-6-to-7 Group roster expansion, and independent Site/Group handoff stability pass host regression tests. Physical five-Node role matrices and seven-Node strict-majority loss/recovery pass; four/six-Node and multi-Group validation remain open. |
+| 5 | `in_progress` | Phase 5A shared geometry/replication and the 5B/5C connection, calibration, and activation workflow are verified, including adding a fifth physical Node to an existing four-Node Site. Phase 5D automatic handover is implemented; two-Node, five-Node, and seven-Node takeover/rejoin smoke passes, including authenticated seven-member convergence after Owner loss. Phase 5E now has a bounded directory, authenticated owner/Group metadata convergence, manifest-bound automatic Floorplan routing, and a queue-free serialized owner service; per-Floorplan pairing publication and handover remain. |
 | 6 | `implemented` | The fixed-memory seven-source Shadow Fusion core, authenticated development transport/runtime, canonical handover-safe spatial profiles, bounded diagnostics, and production comparison capture are implemented. Repeated one-person captures no longer contain a sustained duplicate-track episode; a real two-person crossing capture remains a production-release gate. |
-| 7 | `implemented` | Opt-in production fusion feeds target, presence, motion, Zone, and ESPHome paths through one fixed-size automation state. Complete sequenced snapshots, fail-closed invalidation, stable logical IDs, local diagnostics, and a non-extendable 30-second read-only handoff continuity window are implemented. Five-Node handover continuity smoke passes; mixed-upgrade and other-size target smoke remain release verification. |
-| 8 | `in_progress` | The internal-RAM/HTTP resource gate passes on standalone, two-Node, and steady seven-Node production builds. Each Node persists one bounded seven-member Group roster used by election, transport, and fusion; the Site Leader keeps at most eight authenticated low-rate Group summaries. Seven-Node and 8-by-7 host matrices pass. Physical role-loss/overload validation at other sizes and multi-Group Site validation remain. |
+| 7 | `implemented` | Opt-in production fusion feeds target, presence, motion, Zone, and ESPHome paths through one fixed-size automation state. Complete sequenced snapshots, fail-closed invalidation, stable logical IDs, local diagnostics, and a non-extendable 30-second read-only handoff continuity window are implemented. Five-Node handover continuity and seven-Node quorum-loss/recovery smoke pass; mixed-upgrade and four/six-Node target smoke remain release verification. |
+| 8 | `in_progress` | The internal-RAM/HTTP resource gate passes on standalone, two-Node, and steady seven-Node production builds. Each Node persists one bounded seven-member Group roster used by election, transport, and fusion; the Site Leader keeps at most eight authenticated low-rate Group summaries. Seven-Node and 8-by-7 host matrices pass, and physical seven-Node quorum-loss/recovery passes. Seven-input overload/packet-loss, physical four/six-Node role matrices, and multi-Group Site validation remain. |
 | 9 | `in_progress` | Secure enrollment, connection management, calibration, upload and polygon-drawn Floorplans, multi-radar placement, physical-wall and door editing, shared occlusion rendering, fusion health, and fused-target display exist. Connected-device actions use one responsive settings dialog, and the pairing trace harness records the complete browser/device workflow. Full local-versus-fused diagnostics, Satellite workflow, and broader browser regression coverage remain. |
 | 10 | `planned` | SmartThings Site/Space integration. |
 | 11 | `implemented` | Home Assistant NAMO Integration. One entry per Site, one device per Space, Floorplan-less standalone fallback, bounded routing, authority fences, Group diagnostics, persistent-problem Repairs, stable shared automation areas, dynamic Space discovery, and legacy entity cleanup are implemented and pass focused host tests. Home Assistant container, DHCP, handover, HACS, and upgrade verification remain before `verified`. |
@@ -156,8 +156,8 @@ required before Phase 4 can return to `verified`:
 Focused browser and native regression suites cover each correction, including
 seeded one-to-seven-Node role cases. The final full host suite and process-level
 two-to-seven-Node cluster matrix pass.
-Five-Node single-Group role-failure and rejoin smoke also passes; other physical
-sizes and multi-Group layouts remain. The separate survivor-membership
+Five-Node role matrices and seven-Node strict-majority loss/recovery smoke also
+pass; four/six-Node and multi-Group layouts remain. The separate survivor-membership
 policy for operating a five-Node configuration with only two survivors remains
 deferred; these corrections do not silently change the strict-majority contract.
 
@@ -345,7 +345,7 @@ Embedded resource gates for the rest of Phase 3:
 - require standalone boot, soft restart, local sensing, and cleanup smoke on a real
   device before a firmware boundary is marked `verified`.
 
-Current target-device smoke baseline, recorded through 2026-08-19:
+Current target-device smoke baseline, recorded through 2026-08-26:
 
 | Gate | Current result | Evidence required to keep it closed |
 | --- | --- | --- |
@@ -361,7 +361,10 @@ Current target-device smoke baseline, recorded through 2026-08-19:
 | Canonical Leader agreement, manual takeover, and healthy rejoin | Passed | `site_leader_handover_smoke.py --handover` confirms takeover and rejoin after power restoration |
 | Five-Node single-Group Owner/Site/Group role failure and rejoin | Passed | Single-role outages and all three paired role-holder absence combinations retained automation on the surviving 3/5 majority; no duplicate Site Leader, Group Leader, or concurrent configuration writer was observed. The 2026-08-19 rerun preserved fusion authority through Owner plus Site Leader loss/rejoin and returned to 5/5 |
 | Five-Node automatic-replacement eligibility change and subsequent power loss/rejoin | Passed | The eligibility rollout retained Site and Group terms, avoided a false multi-device outage, and the following target power cycle returned to the healthy 5/5 roster |
-| Seven-input Group under role loss/rejoin and overload; eight-Group Site | Not verified | Phase 8 physical/simulated load matrix; steady seven-Node operation alone does not close this gate |
+| Seven-Node strict-majority loss and full rejoin | Passed | The 2026-08-26 capture removed authority at 3/7, then converged at authority epoch 6/generation 136, Site term 45, and Group term 41 after quorum returned. Final state was healthy 7/7 with canonical assignment and complete credentials. All 39 missing-authority samples occurred below quorum; no inactive-authority sample remained once authority existed |
+| Seven-input overload, sustained packet loss, and multi-person load | Not verified | Steady operation and quorum recovery do not establish the processing and radio margins under worst-case observation load |
+| Four- and six-Node role failure/rejoin matrices | Not verified | Host coverage exists, but the formal physical role-combination matrix has not been repeated at these two sizes |
+| Eight-Group Site | Not verified | The 8-by-7 host matrix passes; physical multi-Group pairing, routing, handover, and resource smoke remain |
 
 The default device resource gate is 32 KiB minimum internal heap, 16 KiB
 largest internal block, 2 KiB minimum HTTP task stack headroom, 512 KiB firmware
@@ -381,6 +384,24 @@ Archive both target runs with:
 python tools/device_resource_smoke.py --device http://DEVICE_IP --mode observe --scope window --duration-seconds 3600 --interval 5 --output device-resource-observe.json
 python tools/device_resource_smoke.py --device http://DEVICE_IP --mode stress --scope lifecycle --rounds 30 --concurrency 4 --output device-resource-stress.json
 ```
+
+Use the repository failure-test wrapper for physical multi-Node capture. It
+resolves the workspace and Python interpreter, records endpoint samples in a
+timestamped session, writes operator markers from another terminal, and invokes
+the analyzer against that same session:
+
+```powershell
+.\scripts\namo-failure-test.ps1 roles
+.\scripts\namo-failure-test.ps1 capture -DurationHours 2
+.\scripts\namo-failure-test.ps1 mark power_off_owner
+.\scripts\namo-failure-test.ps1 analyze
+.\scripts\namo-failure-test.ps1 session
+```
+
+Use repeated `-Device alias=http://DEVICE_IP` arguments for a different test
+installation. An intentional `Ctrl+C` leaves an interrupted but analyzable
+capture; markers are operator notes, while pass/fail decisions come from the
+captured configuration, Group, fusion-authority, and system records.
 
 Phase 3B now has a verified ADR, a 768-byte UDP-unicast authenticated envelope,
 MessagePack/HMAC golden vector, host conformance and abuse tests, and an opt-in
@@ -552,7 +573,9 @@ Current implementation status:
 - a physical single-Group Site was sequentially expanded to seven Nodes. Pairing,
   Floorplan replication, calibration, activation, final 7/7 canonical agreement,
   authoritative fusion, healthy automation, and target memory/stack/flash/storage
-  checks passed. Seven-Node role-loss/rejoin and overload remain separate gates.
+  checks passed. A subsequent seven-Node capture also passed strict-majority loss
+  at 3/7, fail-closed authority withdrawal, fresh Site/Group terms after quorum
+  recovery, and final healthy 7/7 convergence. Overload remains a separate gate.
 
 Deliverables:
 
@@ -580,7 +603,7 @@ Current implementation status:
 | 5A | `verified` | Versioned Floorplan identity, authoritative manifest, bounded authenticated chunk replication, and atomic replica storage |
 | 5B | `verified` | Owner-driven connection wizard, shared-floorplan choice, resume at Floorplan selection after cancellation, local pose/zone preservation, empty-floorplan replication, and physical fifth-Node addition to an existing four-Node Site |
 | 5C | `verified` | Two-Node snapshots, bounded translation/rotation proposal, user approval, readiness persistence, bilateral activation, and target-device smoke that calibrates and activates a new Node in an existing four-Node Site |
-| 5D | `implemented` | Deterministic automatic configuration-owner handover with a persisted authority epoch, semantic digest fencing, fail-closed split detection, guarded source-selected recovery, retained roster/manifest, authenticated convergence, failed-write suppression, and bounded owner-mediated multi-member credential provisioning. Directional keys are rebound after Owner changes through a bounded authenticated probe while stale follower transmission is suppressed; two-Node and five-Node single-Group takeover/rejoin smoke pass while formal four/six/seven-Node role-handover/rejoin validation remains |
+| 5D | `implemented` | Deterministic automatic configuration-owner handover with a persisted authority epoch, semantic digest fencing, fail-closed split detection, guarded source-selected recovery, retained roster/manifest, authenticated convergence, failed-write suppression, and bounded owner-mediated multi-member credential provisioning. Directional keys are rebound after Owner changes through a bounded authenticated probe while stale follower transmission is suppressed; two-Node, five-Node, and seven-Node takeover/rejoin smoke pass while formal four/six-Node role-handover/rejoin validation remains |
 | 5E | `in_progress` | One independent Configuration Owner per Floorplan, one owned Floorplan per physical NAMO Node, and a bounded owner directory. The codec, transactional ESP32 flash store, boot compatibility mirror, deterministic projection, heartbeat v6 metadata convergence, explicit and automatic manifest-bound routing, and queue-free one-follower owner lease are implemented; per-Floorplan pairing publication, per-Floorplan automatic handover, and the public directory API remain. |
 
 The automatic Canonical Site Directory fork-repair loop has been removed.
@@ -754,9 +777,9 @@ public directory API, and physical multi-Floorplan smoke remain.
   promote a successor that lacks any required pairwise credential. A two-Node
   Site therefore has a complete path today. Larger Sites now prepare the
   bounded credential topology automatically through the configuration owner.
-  Steady seven-Node authenticated topology passed target validation; Owner
-  handover/rejoin at six and seven Nodes remains open, and the implementation
-  blocks instead of silently dropping members;
+  Steady seven-Node authenticated topology and seven-member Owner handover/rejoin
+  passed target validation. Four/six-Node formal matrices remain open, and the
+  implementation blocks instead of silently dropping members;
 - host tests cover confirmed crossed-owner role reversal,
   authoritative-manifest convergence, target-aware return-link cleanup, transform
   axes, direct-upgrade scale hydration, reboot persistence, solver bounds,
@@ -766,8 +789,8 @@ public directory API, and physical multi-Floorplan smoke remain.
   takeover and healthy rejoin also passed target smoke. Adding, calibrating,
   and activating a fifth Node in an existing four-Node Site, followed by role
   loss and healthy rejoin, also passed. Formal single-peer role-reversal target
-  smoke, similar-angle and different-angle placement verification, and six- or
-  seven-Node credential-topology handover/rejoin validation remain.
+  smoke, similar-angle and different-angle placement verification, and four- or
+  six-Node credential-topology handover/rejoin validation remain.
 
 Target multi-Floorplan extension for Phase 5E:
 
@@ -1031,9 +1054,9 @@ Current foundation:
   remains capped at six tracks. Native regressions cover one, two, four, six,
   and seven inputs, deterministic dropping of excess independent measurements,
   and fail-closed rejection before an eighth source can access the bounded
-  arrays. Steady seven-Node resource verification passes; physical role-loss,
-  overload, timing, and packet-loss verification at the supported boundary
-  remains required;
+  arrays. Steady seven-Node resource verification and strict-majority
+  loss/recovery pass; overload, timing, and sustained packet-loss verification
+  at the supported boundary remain required;
 - a configured Group with only one online Node remains a Group instead of
   being rewritten as standalone. After deterministic Leader election, its
   valid local observation is admitted as a one-source production input;
@@ -1199,9 +1222,10 @@ Tests and exit criteria:
 - peak resource usage stays inside an approved safety margin;
 - local tracking remains responsive under overload and packet loss.
 
-Passing this phase is required before documentation may claim verified
-seven-input Group or eight-Group Site support. Earlier releases may state only
-that the design targets them.
+The physical seven-Node steady-state and quorum-loss/recovery baseline may be
+reported as verified. Passing the remaining Phase 8 load matrix is required
+before documentation may claim verified seven-input overload capacity or an
+eight-Group physical Site.
 
 ### Phase 9: Dashboard Workflow
 

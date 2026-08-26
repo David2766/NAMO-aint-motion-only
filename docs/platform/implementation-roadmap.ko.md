@@ -4,9 +4,10 @@
 leadership, observation transport, 최대 7개 입력 fusion 및 Home Assistant Integration을
 구현했습니다. 단일 Group의 실제 5대 Site에서 신규 기기 연결부터 평면도 복제, 보정, 활성화까지
 관통하는 workflow와 역할 한 대 및 역할 기기 두 대의 전원 차단·복귀, 생존 과반수의 자동화
-연속성을 검증했습니다. 또한 7대까지 순차 확장하여 페어링, 평면도 복제, 보정, 활성화, 최종 7/7
-canonical 수렴, 융합·자동화 및 기기 자원 상태를 확인했습니다. 다른 Group 규모의 장애·복귀,
-다중 Group 및 순차 업데이트 릴리즈 matrix는 남아 있습니다. 공식
+연속성을 검증했습니다. 7대 Site에서는 순차 확장, 최종 7/7 canonical 수렴과 자원 상태뿐 아니라
+3/7 정족수 상실, 권한의 fail-closed 해제, 정족수 복구 후 역할 재선출 및 정상 7/7 복귀까지
+확인했습니다. 4대·6대 역할 matrix, 7개 입력 과부하, 다중 Group 및 순차 업데이트 릴리즈
+matrix는 남아 있습니다. 공식
 attestation, Satellite SDK 및 SmartThings는 미완성입니다.**
 
 영문 문서: [implementation-roadmap.md](implementation-roadmap.md)
@@ -53,11 +54,11 @@ attestation, Satellite SDK 및 SmartThings는 미완성입니다.**
 | 1 | `implemented` | Local Observation Adapter 구현, 실제 기기 smoke 검증 대기. |
 | 2 | `implemented` | V1 fixture, validation, bounded simulator 및 호스트 benchmark 구현. V1 인코딩으로 MessagePack 선택. |
 | 3 | `in_progress` | 3A, 3B, 3C 검증 완료. Community 자동 발견, 보안 연결, 연결 관리와 양방향·오프라인 정리 UI를 실기기에서 확인했습니다. 공식 attestation과 credential lifecycle은 3D로 분리합니다. |
-| 4 | `in_progress` | 고정 크기 Site/Group coordinator, 엄격한 canonical-roster quorum, 독립 term/lease 선출, 인증 heartbeat, RAM 전용 endpoint 추적, 역할 연쇄 방지와 원자적으로 공개되는 역할 snapshot을 구현했습니다. 같은 revision 복구 격리, 적격 후보가 없는 Group의 제한적 삼중 역할 fallback과 후보 등장 시 해제, 제한된 승계 재시도, pairing poll 복구, 통일된 3분 invitation 수명, 인접 roster 전환 중 공간 데이터 평면 연속성, 기존 Leader를 유지하는 5→6→7대 Group roster 확장 및 독립 Site/Group 승계 안정성은 host 회귀 테스트를 통과했습니다. 단일 Group의 실제 5대 역할 장애·복귀 matrix도 통과했으며 다른 규모와 다중 Group 검증은 남아 있습니다. |
-| 5 | `in_progress` | 5A 공유 geometry와 복제, 5B 연결 workflow 및 5C 보정·활성화 경로는 검증 완료했고 기존 4대 Site에 다섯 번째 기기를 추가하는 실기기 workflow도 통과했습니다. 5D 자동 승계는 구현했고 두 Node와 5대 단일 Group 승계·재합류 smoke를 통과했습니다. 5E는 제한된 directory codec, transaction 저장소, 결정적인 단일 Floorplan runtime projection 및 대기열 없는 원본 직렬 처리를 구현했으며 다중 Floorplan 자동 routing이 남아 있습니다. |
+| 4 | `in_progress` | 고정 크기 Site/Group coordinator, 엄격한 canonical-roster quorum, 독립 term/lease 선출, 인증 heartbeat, RAM 전용 endpoint 추적, 역할 연쇄 방지와 원자적으로 공개되는 역할 snapshot을 구현했습니다. 같은 revision 복구 격리, 적격 후보가 없는 Group의 제한적 삼중 역할 fallback과 후보 등장 시 해제, 제한된 승계 재시도, pairing poll 복구, 통일된 3분 invitation 수명, 인접 roster 전환 중 공간 데이터 평면 연속성, 기존 Leader를 유지하는 5→6→7대 Group roster 확장 및 독립 Site/Group 승계 안정성은 host 회귀 테스트를 통과했습니다. 실기기 5대 역할 matrix와 7대 정족수 상실·복구도 통과했으며 4대·6대 및 다중 Group 검증은 남아 있습니다. |
+| 5 | `in_progress` | 5A 공유 geometry와 복제, 5B 연결 workflow 및 5C 보정·활성화 경로는 검증 완료했고 기존 4대 Site에 다섯 번째 기기를 추가하는 실기기 workflow도 통과했습니다. 5D 자동 승계는 구현했고 두 Node, 5대 및 7대 승계·재합류 smoke를 통과했습니다. 7대에서는 Owner 상실 뒤 인증된 전체 구성원 수렴도 확인했습니다. 5E는 제한된 directory codec, transaction 저장소, 결정적인 단일 Floorplan runtime projection 및 대기열 없는 원본 직렬 처리를 구현했으며 다중 Floorplan 자동 routing이 남아 있습니다. |
 | 6 | `implemented` | 고정 메모리 기반 7개 관측원 Shadow Fusion 코어, 개발용 인증 transport·런타임, 승계 후에도 유지되는 canonical spatial profile, 제한된 진단 및 production 비교 수집을 구현했습니다. 반복한 단일 인물 수집에서 지속적인 중복 track episode는 사라졌으며 실제 2인 교차 수집은 production 릴리즈 gate로 남깁니다. |
-| 7 | `implemented` | Opt-in production fusion이 기존 target, presence, motion, Zone 및 ESPHome 경로를 하나의 고정 크기 자동화 상태로 연결합니다. 완전한 sequence snapshot, fail-closed 무효화, 안정적인 논리 ID, 로컬 진단과 연장 불가능한 30초 읽기 전용 승계 연속성을 구현했습니다. 5대 승계 연속성 smoke는 통과했으며 혼합 업데이트와 다른 규모 실기기 smoke는 릴리즈 검증으로 남깁니다. |
-| 8 | `in_progress` | standalone, 두 Node 및 정상 운용 중인 7대 production build의 내부 RAM·HTTP 자원 gate를 통과했습니다. 각 Node는 선출, transport와 fusion이 함께 사용하는 최대 7대 Group roster 하나를 영속 저장하고, Site Leader는 인증된 저빈도 Group 요약을 최대 8개만 보관합니다. 7대와 8×7 host matrix도 통과했습니다. 다른 규모의 역할 장애·과부하와 다중 Group Site 검증은 남아 있습니다. |
+| 7 | `implemented` | Opt-in production fusion이 기존 target, presence, motion, Zone 및 ESPHome 경로를 하나의 고정 크기 자동화 상태로 연결합니다. 완전한 sequence snapshot, fail-closed 무효화, 안정적인 논리 ID, 로컬 진단과 연장 불가능한 30초 읽기 전용 승계 연속성을 구현했습니다. 5대 승계 연속성과 7대 정족수 상실·복구 smoke는 통과했으며 혼합 업데이트와 4대·6대 실기기 smoke는 릴리즈 검증으로 남깁니다. |
+| 8 | `in_progress` | standalone, 두 Node 및 정상 운용 중인 7대 production build의 내부 RAM·HTTP 자원 gate를 통과했습니다. 각 Node는 선출, transport와 fusion이 함께 사용하는 최대 7대 Group roster 하나를 영속 저장하고, Site Leader는 인증된 저빈도 Group 요약을 최대 8개만 보관합니다. 7대와 8×7 host matrix 및 실기기 7대 정족수 상실·복구도 통과했습니다. 7개 입력 과부하·packet loss, 실기기 4대·6대 역할 matrix와 다중 Group Site 검증은 남아 있습니다. |
 | 9 | `in_progress` | 보안 연결, 연결 관리, 보정, 업로드 및 다각형 직접 작성 평면도, 다중 레이더 배치, 물리 벽과 문 편집, 공용 차폐 렌더링, fusion health 및 융합 타깃 표시를 구현했습니다. 연결된 기기 작업은 반응형 설정 창 하나로 정리했고 pairing trace 도구가 전체 브라우저·기기 workflow를 기록합니다. 전체 local-versus-fused 진단, Satellite workflow 및 더 넓은 브라우저 회귀 검증이 남아 있습니다. |
 | 10 | `planned` | SmartThings Site/Space integration. |
 | 11 | `implemented` | Home Assistant NAMO Integration. Site별 한 개 등록, Group별 기기, 평면도 없는 단독 기기 처리, 제한된 경로와 권한 검증, Group 진단, 지속 문제 Repairs 알림, 안정적인 공용 자동화 구역, 동적 Space 추가 및 기존 엔티티 정리를 구현하고 집중 호스트 테스트를 통과했습니다. `verified` 전에는 Home Assistant 컨테이너, DHCP, 역할 변경, HACS 및 업데이트 검증이 남아 있습니다. |
@@ -69,8 +70,8 @@ attestation, Satellite SDK 및 SmartThings는 미완성입니다.**
 ### 구현 완료한 분산 제어 수정
 
 다음 항목은 새 아키텍처 단계가 아니라 현재 제한된 제어 평면의 릴리즈 수정 사항입니다.
-구현과 집중 host 회귀 검증은 완료했으며, 4단계를 `verified`로 올리기 전 완료한 5대 단일
-Group matrix 밖의 실기기 검증은 여전히 필요합니다.
+구현과 집중 host 회귀 검증은 완료했으며, 5대 역할 matrix와 7대 정족수 상실·복구 밖의
+4대·6대 및 다중 Group 실기기 검증은 4단계를 `verified`로 올리기 전에 여전히 필요합니다.
 
 - **P0 - 같은 revision 복구 격리:** 권위 tracker는 숫자 revision 전체가 아니라 거부된
   의미상 후보 fingerprint만 막습니다. 같은 revision이어도 quorum-backed source, digest, mode
@@ -126,8 +127,9 @@ Group matrix 밖의 실기기 검증은 여전히 필요합니다.
   계약으로 돌아갑니다.
 
 각 수정은 집중 browser·native 회귀 테스트와 seed 기반 1~7대 역할 case로 검증했고 전체
-host suite와 프로세스 기반 2~7대 cluster matrix도 통과했습니다. 5대 단일 Group 역할 장애·복귀
-실기기 smoke도 통과했으며 다른 규모와 다중 Group 검증은 남아 있습니다. 5대 설정에서 생존 기기 2대만으로
+host suite와 프로세스 기반 2~7대 cluster matrix도 통과했습니다. 5대 역할 matrix와 7대
+strict-majority 상실·복구 실기기 smoke도 통과했으며 4대·6대와 다중 Group 검증은 남아 있습니다.
+5대 설정에서 생존 기기 2대만으로
 계속 운용하는 survivor-membership 정책은 별도 보류 항목이며, 이번 수정은 엄격한 과반수
 계약을 조용히 바꾸지 않습니다.
 
@@ -315,7 +317,7 @@ Home Assistant 상태 및 standalone 재시작이 바뀌지 않아야 합니다.
 - firmware 경계를 `verified`로 표시하기 전에 실기기에서 standalone 부팅, 소프트 재시작,
   로컬 감지 및 정리 smoke를 확인합니다.
 
-2026-08-19까지 기록한 현재 실기기 smoke 기준선:
+2026-08-26까지 기록한 현재 실기기 smoke 기준선:
 
 | 검증 항목 | 현재 결과 | 완료 상태를 유지하기 위한 근거 |
 | --- | --- | --- |
@@ -331,7 +333,10 @@ Home Assistant 상태 및 standalone 재시작이 바뀌지 않아야 합니다.
 | canonical Leader 합의, 수동 takeover 및 정상 재합류 | 통과 | `site_leader_handover_smoke.py --handover`가 takeover와 전원 복구 후 rejoin을 확인 |
 | 5대 단일 Group의 Owner·Site·Group 역할 장애 및 재합류 | 통과 | 역할 한 대 장애와 세 가지 역할 기기 두 대 부재 조합에서 생존 3/5의 자동화를 유지했고 Site Leader, Group Leader 및 설정 writer 중복이 없었음. 2026-08-19 재검증에서는 Owner와 Site Leader 부재·복귀 중에도 fusion authority가 유지되고 최종 5/5로 수렴함 |
 | 5대 자동 대체 자격 변경 후 전원 차단·복귀 | 통과 | 자격 변경 중 Site와 Group term을 유지하고 여러 기기가 오프라인으로 잘못 표시되지 않았으며, 이어진 대상 기기 전원 차단·복귀 후 정상 5/5 roster로 수렴함 |
-| 7개 입력 Group의 역할 장애·복귀 및 과부하, 8개 Group Site | 미검증 | 8단계 실기기·simulator 부하 행렬입니다. 7대 정상 운용 확인만으로 이 gate를 닫지 않습니다. |
+| 7대 strict-majority 상실 및 전체 재합류 | 통과 | 2026-08-26 캡처에서 3/7일 때 권한을 해제했고, 정족수 복구 후 authority epoch 6/generation 136, Site term 45 및 Group term 41로 수렴했습니다. 최종 상태는 canonical assignment와 credential 완전성을 갖춘 healthy 7/7이었습니다. 권한이 없었던 sample 39개는 모두 정족수 미달 구간이었고 권한 생성 후 inactive sample은 없었습니다. |
+| 7개 입력 과부하, 지속적인 packet loss 및 다중 인원 부하 | 미검증 | 정상 운용과 정족수 복구만으로 최악 조건의 처리량과 무선 여유를 입증할 수 없습니다. |
+| 4대·6대 역할 장애·복귀 matrix | 미검증 | Host coverage는 있지만 두 규모의 정식 실기기 역할 조합 matrix는 반복하지 않았습니다. |
+| 8개 Group Site | 미검증 | 8×7 host matrix는 통과했지만 실기기 다중 Group pairing, routing, handover 및 resource smoke가 남아 있습니다. |
 
 기본 자원 gate는 내부 heap 최소 32 KiB, 내부 최대 연속 block 16 KiB,
 HTTP task stack 최소 여유 2 KiB, firmware slot 여유 512 KiB, 저장소 여유
@@ -349,6 +354,22 @@ platform workspace에 고정 크기로 기록합니다.
 python tools/device_resource_smoke.py --device http://DEVICE_IP --mode observe --scope window --duration-seconds 3600 --interval 5 --output device-resource-observe.json
 python tools/device_resource_smoke.py --device http://DEVICE_IP --mode stress --scope lifecycle --rounds 30 --concurrency 4 --output device-resource-stress.json
 ```
+
+다중 Node 실기기 장애 캡처에는 저장소의 공용 wrapper를 사용합니다. 이 도구는 workspace와
+Python 경로를 자동으로 찾고, timestamp가 붙은 session에 endpoint sample을 기록하며, 다른
+terminal의 사용자 marker와 같은 session을 분석기에 전달합니다.
+
+```powershell
+.\scripts\namo-failure-test.ps1 roles
+.\scripts\namo-failure-test.ps1 capture -DurationHours 2
+.\scripts\namo-failure-test.ps1 mark power_off_owner
+.\scripts\namo-failure-test.ps1 analyze
+.\scripts\namo-failure-test.ps1 session
+```
+
+다른 설치 환경에서는 `-Device alias=http://DEVICE_IP`를 기기별로 반복해서 전달합니다. 의도적으로
+`Ctrl+C`로 중단한 캡처도 분석할 수 있습니다. Marker는 사용자 참고 기록이며, 통과 여부는 캡처된
+configuration, Group, fusion authority 및 system record로 판단합니다.
 
 3B는 검증 완료된 ADR, 768바이트 UDP unicast 인증 envelope, MessagePack/HMAC golden vector,
 호스트 conformance·오용 테스트와 명시적으로 켜는 firmware 수신 전용 shadow 경로까지
@@ -452,6 +473,9 @@ production adapter는 Site 및 Group 권한 gate를 통과한 뒤에만 authorit
   계속 제공했고 Group 승계에는 제한된 연속성이 적용됐습니다. 과거 권위 기기는 복귀 후 역할을
   되찾지 않았으며, 수집한 역할 sample 252개에서 Site Leader나 Group Leader 중복은 없었습니다.
   Configuration 수렴 중 writer도 두 대 이상 동시에 열리지 않았습니다.
+- 7대 Site에서는 3/7까지 내려가 strict majority를 잃었을 때 권한이 fail-closed로 해제됐고,
+  정족수 복구 후 새 Site·Group term으로 역할을 재선출했습니다. 최종 상태는 이중 권한 없이
+  canonical assignment와 완전한 credential을 갖춘 healthy 7/7로 수렴했습니다.
 
 산출물:
 
@@ -478,7 +502,7 @@ production adapter는 Site 및 Group 권한 gate를 통과한 뒤에만 authorit
 | 5A | `verified` | 버전이 있는 Floorplan identity, 권위 있는 manifest, 제한된 인증 chunk 복제 및 원자적 replica 저장 |
 | 5B | `verified` | 한쪽에서 진행하는 연결 마법사, 공유 평면도 선택, 취소 후 선택 단계 재개, 로컬 pose·구역 보존 및 빈 평면도 동기화. 기존 4대 Site에 다섯 번째 기기를 추가하는 실기기 연결 workflow 통과 |
 | 5C | `verified` | 두 Node snapshot, 제한된 이동·회전 보정안, 사용자 승인, readiness 저장, 양방향 활성화 및 기존 4대 Site에 새 기기를 보정·활성화하는 실기기 smoke |
-| 5D | `implemented` | 결정적 자동 설정 원본 승계, 영속 authority epoch, 설정 digest fencing, fail-closed 분기 감지, 사용자가 원본을 지정하는 제한된 복구, roster·manifest 보존, 인증 수렴 및 저장 실패 반복 방지를 구현했습니다. 두 Node와 5대 단일 Group 승계·재합류 smoke는 통과했으며 정식 4·6·7대 역할 승계·재합류와 다중 구성원 인증 관계 검증이 남아 있습니다. |
+| 5D | `implemented` | 결정적 자동 설정 원본 승계, 영속 authority epoch, 설정 digest fencing, fail-closed 분기 감지, 사용자가 원본을 지정하는 제한된 복구, roster·manifest 보존, 인증 수렴 및 저장 실패 반복 방지를 구현했습니다. 두 Node, 5대 및 7대 승계·재합류 smoke는 통과했으며 정식 4대·6대 역할 승계·재합류 검증이 남아 있습니다. |
 | 5E | `in_progress` | Floorplan별 독립 Configuration Owner 한 대, 물리 NAMO Node당 소유 Floorplan 하나 및 제한된 원본 directory. codec, ESP32 transaction flash 저장소, 부팅 호환 mirror, 결정적인 단일 Floorplan runtime projection, 명시적 동기화 원본 해석기, manifest gate 및 대기열 없는 단일 follower 원본 lease를 구현했으며 다중 Floorplan 자동 routing이 남아 있습니다. |
 
 Canonical Site Directory fork를 자동으로 복구하는 반복 경로는 제거했습니다. 정상 pairing, 자격 변경
@@ -617,8 +641,8 @@ pairing 배포, Floorplan별 generation 자동 routing과 공개 directory API�
   실기기 smoke는 통과했습니다. 자동 두 Node 설정 원본 승계와 정상 재합류도 실기기 smoke를
   통과했습니다. 기존 4대 Site에 다섯 번째 기기를 연결·보정·활성화하고 이후 역할 장애와 재합류까지
   확인했습니다. 단독 peer 역할 교체의 정식 실기기 smoke, 비슷한 시야각과 서로 다른 시야각 배치
-  검증 및 6·7대 Site에서 Owner 승계·복귀가 포함된 인증 관계 검증은 남아 있습니다. 정상 운용
-  중인 7대의 인증 endpoint와 credential 완전성은 확인했습니다.
+  검증 및 4대·6대 Site에서 Owner 승계·복귀가 포함된 인증 관계 검증은 남아 있습니다. 7대는
+  Owner 승계·복귀 후 인증 endpoint와 credential 완전성까지 확인했습니다.
 
 5E의 목표 다중 Floorplan 확장:
 
@@ -846,8 +870,9 @@ local tracker 동작도 그대로 유지합니다.
   workspace에 둡니다. source 순서는 결정적이고 중복 participant token은 거부하며,
   제한된 incremental candidate만 association에 사용합니다. 출력은 계속 track 최대
   6개로 제한합니다. 네이티브 회귀는 1·2·4·6·7개 입력, 초과 독립 관측의 결정적 drop,
-  여덟 번째 입력의 배열 접근 전 fail-closed 거부를 검증했습니다. 물리 4·6·7대의 부하,
-  처리 시간, packet loss 및 자원 검증은 남아 있습니다.
+  여덟 번째 입력의 배열 접근 전 fail-closed 거부를 검증했습니다. 7대 정상 자원 상태와
+  strict-majority 상실·복구는 통과했으며, 물리 4대·6대 부하와 7개 입력 경계의 과부하,
+  처리 시간 및 지속적인 packet loss 검증은 남아 있습니다.
 - 설정된 Group에서 온라인 Node가 한 대만 남아도 Group을 standalone으로 바꾸지 않습니다.
   결정적인 Leader 선출 뒤 해당 기기의 유효한 로컬 관측을 단일 source production 입력으로
   받아 automation을 계속 제공하고, Site health는 빠진 설정 구성원을 `degraded`로
@@ -976,8 +1001,9 @@ local tracker 동작도 그대로 유지합니다.
 - peak resource 사용량이 승인된 safety margin 안에 있음;
 - overload와 packet loss에서도 local tracking이 응답성을 유지.
 
-이 단계를 통과해야 문서에서 검증된 7개 입력 Group 또는 8개 Group Site 지원을 선언할 수 있습니다.
-이전 릴리즈에서는 설계 목표라는 표현만 사용합니다.
+실기기 7대 정상 운용과 정족수 상실·복구 기준선은 검증 완료로 표시할 수 있습니다. 남은 8단계
+부하 matrix를 통과하기 전에는 7개 입력 과부하 용량이나 실기기 8개 Group Site 지원을 검증
+완료로 선언하지 않습니다.
 
 ### 9단계: 대시보드 Workflow
 
