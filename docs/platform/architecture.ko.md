@@ -5,16 +5,15 @@
 - **구현됨:** 안정적인 identity, 크기가 제한된 registry, 안전한 Community NAMO Node 연결,
   인증 heartbeat와 observation transport, 공유 평면도 복제, 보정, 결정적인 역할 승계,
   고정 메모리 7개 입력 Group fusion 및 Home Assistant custom integration.
-- **실기기 검증됨:** 단일 Group의 5대 Site에서 신규 기기 연결, 평면도 복제, 보정, 활성화,
+- **검증 완료한 단일 Group 범위:** 5대 Site에서 신규 기기 연결, 평면도 복제, 보정, 활성화,
   단일 역할 기기 장애, 두 역할 기기 동시 장애 및 정상 복귀 흐름을 완료했습니다. 7대 Site에서는
   순차 확장, 최종 7/7 canonical 수렴과 자원 상태뿐 아니라 3/7 정족수 상실, 권한의 fail-closed
-  해제, 정족수 복구 후 역할 재선출 및 이중 권한 없는 최종 7/7 재합류까지 확인했습니다.
-- **남은 릴리스 게이트:** 4대·6대 역할 matrix, 7개 입력 과부하·packet loss, 다중 Group 및
-  순차 업데이트.
-- **미완료:** 제조사 attestation, 외부 Satellite SDK 및 SmartThings integration. 같은 revision
-  복구 격리, 긴급 삼중 역할 fallback과 해제, pairing poll 복구, 하나로 통일된 pairing 수명 및
-  bounded handover retry와 기존 Leader를 유지하는 5→6→7대 Group roster 확장은 host test로
-  검증했습니다.
+  해제, 정족수 복구 후 역할 재선출, 이중 권한 없는 최종 7/7 재합류 및 3일 연속 정상 운용까지
+  확인했습니다. 정확한 2~7대 host 역할·packet loss matrix도 통과했습니다.
+- **현재 릴리스에 남은 검증:** 실기기 7대의 최악 동시 관측·무선 부하, 실제 근접·교차
+  다중 인원 추적 및 혼합 버전 순차 업데이트.
+- **향후 확장 범위:** 실기기 다중 Group, 제조사 attestation, 외부 Satellite SDK 및
+  SmartThings integration. 현재 단일 Group 릴리스의 완료 조건에는 포함하지 않습니다.
 
 영문 문서: [architecture.md](architecture.md)
 
@@ -373,9 +372,11 @@ Site control plane과 Group data plane의 용량을 서로 독립적으로 제�
 현재 펌웨어는 로컬 관계 관리를 위해 평평한 20개 participant registry를 유지합니다. Group
 membership과 fusion은 센싱 participant 7대로 별도 제한하며, Site directory는 Group 8개로
 제한합니다. 따라서 관계 registry의 크기는 Group 용량 계약이 아닙니다. 7개 입력의 정상 운용과
-7대 strict-majority 상실·복구는 실기기로 확인했습니다. 7개 입력 과부하와 지속적인 packet loss,
-8개 Group Site directory 및 한 기기가 일시적으로 Site와 Group Leader를 겸하는 장애 상태는
-별도 검증 대상입니다. 패킷 빈도, 누락된 observation, peak heap, largest free block,
+7대 strict-majority 상실·복구는 실기기로 확인했고, 정확한 2~7대 host matrix에서 통제된
+주기적 packet loss 복구를 확인했습니다. partition 치유는 정족수를 구성할 수 있는 3~7대
+matrix에서 확인했습니다. 실기기 최악 관측·무선 부하, 실제 근접·교차
+다중 인원 추적, 8개 Group Site directory 및 한 기기가 일시적으로 Site와 Group Leader를
+겸하는 장애 상태는 별도 검증 대상입니다. 패킷 빈도, 누락된 observation, peak heap, largest free block,
 fusion cycle당 CPU 시간, Leader 전환 시간 및 잘못된 상태 transition을 측정합니다.
 
 ## 12. 보안, 신뢰 및 기기 Attestation

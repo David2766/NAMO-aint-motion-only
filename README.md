@@ -92,9 +92,15 @@ and handed over automatically; users do not assign them manually.
   installation also passed quorum-loss and recovery testing: authority closed
   at 3/7, roles were re-elected after quorum returned, and all seven devices
   converged again without a second active authority.
-- Four- and six-device role matrices, multi-Group installations, overload at the
-  seven-input boundary, and rolling firmware upgrades remain release-validation
-  work.
+- **Verified single-Group scope:** exact two-to-seven-device host role matrices,
+  physical five- and seven-device quorum boundaries, seven-device failure and
+  recovery, and three consecutive days of stable seven-device operation.
+- **Remaining release validation:** worst-case simultaneous seven-input
+  observation/radio load, real close/crossing multi-person tracking, and mixed-
+  version rolling firmware upgrades.
+- **Future expansion, not a current single-Group release blocker:** physical
+  multi-Group operation, manufacturer attestation, the external Satellite SDK,
+  and SmartThings integration.
 
 See [Multi-Device Setup](https://github.com/David2766/NAMO-aint-motion-only/wiki/Multi-Device-Setup)
 for pairing, floorplan selection, calibration, removal, and recovery instructions.
@@ -134,10 +140,12 @@ locking interface is not compatible with the legacy single-sensor
 NAMO v0.6.1 is a public beta.
 
 The five-device role matrix and the seven-device quorum-loss/recovery workflow
-are verified on physical devices. The bounded host simulation covers two through
-seven processes, but it does not replace the remaining four/six-device,
-multi-Group, overload, and mixed-version release matrices. Exact implementation
-and verification status is maintained in the
+are verified on physical devices. Together with the exact two-through-seven
+process host matrix, these runs cover the bounded single-Group role and quorum
+sizes without claiming separate physical repetitions at four and six devices.
+Physical multi-Group, worst-case observation and close/crossing multi-person
+load, and mixed-version release matrices remain. Exact implementation and
+verification status is maintained in the
 [implementation roadmap](docs/platform/implementation-roadmap.md).
 
 ### Security
@@ -201,7 +209,8 @@ before enabling remote access or integrating third-party devices.
   canonical 수렴, 융합·자동화 및 기기 자원 상태를 실기기로 확인했습니다. 같은 구성에서
   3/7까지 감소했을 때 권한이 닫히고, 정족수 복구 후 역할을 다시 선출하여 이중 권한 없이
   최종 7/7로 수렴하는 흐름도 검증했습니다.
-- 4대·6대 역할 matrix, 다중 Group, 7개 입력 경계의 과부하 및 서로 다른 펌웨어의 순차
+- 정확한 2~7대 host 역할 matrix와 실기기 5대·7대 정족수 경계는 검증했습니다. 실기기 다중
+  Group, 7개 입력의 최악 관측 부하와 근접·교차 다중 인원 추적 및 서로 다른 펌웨어의 순차
   업데이트 검증은 아직 남아 있습니다.
 
 연결, 평면도 선택, 보정, 제거 및 복구 절차는
@@ -242,10 +251,14 @@ before enabling remote access or integrating third-party devices.
 <!-- release-firmware-version -->
 NAMO v0.6.1는 공개 베타입니다.
 
-위에서 설명한 5대 역할 matrix와 7대 정족수 상실·복구 흐름은 실기기로 검증했습니다.
-2~7개 프로세스를 사용하는 제한형 호스트 시뮬레이션도 통과했지만, 이는 남아 있는
-4대·6대, 다중 Group, 과부하 및 혼합 버전 릴리즈 검증을 대체하지 않습니다. 정확한 구현 및 검증 상태는
-[구현 로드맵](docs/platform/implementation-roadmap.ko.md)에서 관리합니다.
+- **검증 완료한 단일 Group 범위:** 정확한 2~7개 프로세스 역할 matrix, 실기기 5대·7대
+  정족수 경계, 7대 장애·복구 및 실기기 7대의 3일 연속 정상 운용을 확인했습니다.
+- **현재 릴리스에 남은 검증:** 7대가 동시에 최대 관측을 전송하는 최악 무선·처리 부하,
+  실제 근접·교차 다중 인원 추적 및 혼합 버전 순차 업데이트입니다.
+- **향후 확장 범위:** 실기기 다중 Group, 제조사 attestation, 외부 Satellite SDK 및
+  SmartThings 연동입니다. 현재 단일 Group 릴리스의 완료 조건에는 포함하지 않습니다.
+
+정확한 구현 및 검증 상태는 [구현 로드맵](docs/platform/implementation-roadmap.ko.md)에서 관리합니다.
 
 ### 보안
 

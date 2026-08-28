@@ -6,20 +6,21 @@ Status: **Draft under incremental verification.**
   pairing, authenticated heartbeat and observation transport, shared Floorplan
   replication, calibration, deterministic role handover, fixed-memory
   seven-input Group fusion, and the Home Assistant custom integration.
-- **Verified on hardware:** a five-Node, single-Group Site has completed the
+- **Verified single-Group scope:** a five-Node Site has completed the
   new-Node pairing, Floorplan replication, calibration, activation, single-role
   outage, paired-role outage, and healthy rejoin flows. A seven-Node Site also
   completed sequential expansion, final 7/7 canonical convergence, resource
   checks, strict-majority loss at 3/7, fail-closed authority withdrawal, role
-  re-election after quorum returned, and healthy 7/7 rejoin without concurrent
-  authority.
-- **Remaining release gates:** four- and six-Node role matrices, seven-input
-  overload and packet-loss testing, multi-Group operation, and rolling upgrades.
-- **Not complete:** manufacturer attestation, the external Satellite SDK, and
-  SmartThings integration. Host tests cover same-revision recovery isolation,
-  emergency triple-role fallback and relinquishment, pairing-poll resilience,
-  one bounded pairing lifetime, bounded handover retry, and incumbent-preserving
-  five-to-six-to-seven Group roster expansion.
+  re-election after quorum returned, healthy 7/7 rejoin without concurrent
+  authority, and three consecutive days of stable operation. Exact
+  two-to-seven-Node host role and
+  packet-loss matrices also pass.
+- **Remaining release validation:** physical worst-case simultaneous seven-input
+  observation/radio load, real close/crossing multi-person tracking, and mixed-
+  version rolling upgrades.
+- **Future expansion:** physical multi-Group operation, manufacturer attestation,
+  the external Satellite SDK, and SmartThings integration. These are not
+  completion gates for the current single-Group release.
 
 Korean version: [architecture.ko.md](architecture.ko.md)
 
@@ -434,9 +435,12 @@ local administration. Group membership and fusion are separately bounded at
 seven sensing participants, and the Site directory is bounded at eight Groups.
 The relationship registry is therefore not the Group capacity contract.
 Physical verification now covers steady seven-input operation and a seven-Node
-strict-majority loss/recovery cycle. Seven-input overload, sustained packet-loss
-behavior, an eight-Group Site directory, and the degraded case where one Node
-temporarily holds both Site and Group leadership remain separate targets. Tests
+strict-majority loss/recovery cycle, while exact two-to-seven-Node host matrices
+cover controlled periodic packet-loss recovery and the three-to-seven-Node
+sizes also cover partition/heal. Physical
+worst-case observation/radio load, real close/crossing multi-person tracking, an
+eight-Group Site directory, and the degraded case where one Node temporarily
+holds both Site and Group leadership remain separate targets. Tests
 measure packet rate, dropped observations, peak heap, largest free block, CPU
 time per fusion cycle, Leader handover time, and false transitions.
 
